@@ -7,12 +7,12 @@ class parseArgs():
 	def __init__(self):
 		#Define options
 		try:
-			options, remainder = getopt.getopt(sys.argv[1:], 'hs:i:r:pd:a:lw:o:g', \
+			options, remainder = getopt.getopt(sys.argv[1:], 'hs:i:r:pd:a:lw:o:gP:L:S:', \
 			["shp=", "help", "input=", "run=", "pop", "pops","dist=", "agg_method=",
 			"het", "genmat=", "snp", "snps", "msat", "msats", "log", "and_log", "iterative",
 			"weight=", "out=", "method=", "plots", "plot","perm=", "phased", "median",
 			"diploid", "geopop", "geopops", "global_het", "haploid", "loc_agg=", 
-			"pop_agg="])
+			"pop_agg=", "sdist_agg="])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -39,8 +39,9 @@ class parseArgs():
 		self.median=False
 		self.ploidy=2
 		self.global_het=False
-		self.loc_agg = "HARM"
+		self.loc_agg = "ARITH"
 		self.pop_agg = "ARITH"
+		self.sdist_agg="ARITH"
 
 
 		#First pass to see if help menu was called
@@ -122,11 +123,11 @@ class parseArgs():
 				self.ploidy=1
 			elif opt=="global_het":
 				self.global_het=True
-			elif opt=="pop_agg":
+			elif opt=="pop_agg" or opt=="P":
 				self.pop_agg = arg.upper()
 				if self.pop_agg not in ["HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX", "MIN"]:
 					self.display_help("Invalid option "+str(arg).upper()+" for option <--pop_agg>")
-			elif opt=="loc_agg":
+			elif opt=="loc_agg" or opt=="L":
 				self.loc_agg = arg.upper()
 				if self.loc_agg not in ["HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX", "MIN"]:
 					self.display_help("Invalid option "+str(arg).upper()+" for option <--loc_agg>")
@@ -145,13 +146,18 @@ class parseArgs():
 		if self.ploidy > 2 or self.ploidy < 1:
 			self.display_help("Ploidy of",self.ploidy,"not currently allowable. Please choose 1 (haploid) or 2 (diploid)")
 
+		#sanity checks
+		if self.dist not in ["PDIST", "TN84", "TN93", "K2P", "JC69"]:
+			if not self.pop and not self.geopop:
+				print("ERROR: Distance metric",self.dist,"not possible without --pop or --geopop data.")
+				sys.exit(1)
 
 		###DIE FOR OPTIONS NOT YET IMPLEMENTED
 		if self.genmat:
 			print("Sorry: Option --genmat not yet implemented.")
 			sys.exit(0)
-		if self.dist in ["IBD", "EXHAUSTIVE", "REACHFIT"]:
-			print("Sorry: Option --dist",self.dist," not yet implemented.")
+		if self.run in ["IBD", "EXHAUSTIVE", "REACHFIT"]:
+			print("Sorry: Option --dist",self.run," not yet implemented.")
 			sys.exit(0)
 
 
@@ -227,9 +233,9 @@ and uses a least-squares method to fit distances to stream segments.")
 		--global_het	: Estimate Ht using global frequencies (default is averaged over pops) 
 	
 	Aggregation options: 
-		--pop_agg	: Define aggregator function for certain genetic distances w/ --pops:
-		--loc_agg	: Define aggregator function for aggregating locus-wise distances:
-		--dist_agg	: Define aggregator function for aggregating stream distances:
+		-P,--pop_agg	: Define aggregator function for certain genetic distances w/ --pops:
+		-L,--loc_agg	: Define aggregator function for aggregating locus-wise distances:
+		-S,--sdist_agg	: Define aggregator function for aggregating stream distances:
 			All of these can take the following options:
 			  ARITH		: [default] Use arithmetic mean
 			  MEDIAN	: Use median distance
