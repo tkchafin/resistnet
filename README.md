@@ -1,5 +1,5 @@
 # autoStreamTree
-Automated pipeline for examining patterns of genetic differentiation in stream networks
+Automated pipeline for examining patterns of genetic differentiation in stream networks from single-gene, multi-gene, or SNP datasets.
 
 --In progress--
 

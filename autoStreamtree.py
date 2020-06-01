@@ -600,8 +600,12 @@ def fitLeastSquaresDistances(D, X, iterative, weight=None):
 	ls = np.zeros(num_segments)
 	d = vectorizeMat(D)
 	W=generateWeightsMatrix(d, weight)
+	print("Weights matrix:")
+	print(W)
 	ls = np.matmul(np.linalg.inv(np.matmul(np.matmul(X.transpose(),W),X)), np.matmul(np.matmul(X.transpose(), W),d))
 	print(ls)
+	ls_ord = np.matmul(np.linalg.inv(np.matmul(X.transpose(),X)), np.matmul(X.transpose(),d))
+	print(ls_ord)
 	
 	if iterative:
 		constrains = list()
@@ -627,7 +631,18 @@ def fitLeastSquaresDistances(D, X, iterative, weight=None):
 
 #function generates weights matrix for least-squares method, where weights are on diagonals
 def generateWeightsMatrix(d,weight):
-	W=np.zeros((,), dtype=int)
+	W=np.zeros((len(d), len(d)), dtype=float)
+	if weight.upper()=="CSE67":
+		row,col=np.diag_indices(W.shape[0])
+		W[row,col] = np.ones(len(d))
+		return(W)
+	else:
+		print("ERROR: Weight option",weight,"not recognized. Using ordinary least-squares instead.")
+		row,col=np.diag_indices(W.shape[0])
+		W[row,col] = np.ones(len(d))
+		return(W)
+	#sys.exit()
+	
 
 #function to convert a pairwise matrix to a 1D vector
 def vectorizeMat(mat):
