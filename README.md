@@ -21,7 +21,44 @@ Conda installation coming soon.
 
 ### Available distance models 
 
-Coming soon
+Currently I provide options for individual-based distances (p-distance and various substitution-model corrected distances), and population-based distances which use allele frequency data (such as Fst):
+
+```
+	Genetic distance options:
+		-d,--dist	: Use which metric of distance? Options are:
+			Substitution models (individual-based):
+			  PDIST			: Uncorrected p-distances [# Differences / Length]
+			  JC69 			: [default] Jukes-Cantor (1969) corrected p-distances
+			  K2P			: Kimura 2-parameter distances
+			  TN84			: Tajima and Nei's (1984) distance
+			  TN93			: Tamura and Nei's (1993) distance
+			Frequency models (when using --pop):
+			  FST			: Weir and Cockerham's Fst formulation (theta)
+			  GST			: Hedrick's (2005) correction of Nei's (1987) Gst [=G'st]
+			  GSTPRIME		: Meirmans & Hedrick (2011) corrected G'st [=G''st]
+			  LINFST		: [default] Rousset's (1997) linearized Fst [=Fst/(1-Fst)]
+			  JOST			: Jost's (2008) D
+			  LINJOST		: 1/1-D, where D=Jost's (2008) D
+			  NEI72			: Nei's (1972) standard genetic distance 
+			  NEI83			: Nei and Chesser (1983) Da
+			  EUCLID		: Euclidean distance
+			  CHORD			: Cavalli-Sforza and Edwards (1967) chord distance
+```
+
+Optionally, the user can also opt to aggregate individual-based distance measures (when using a priori population assignments or the --geopop option). This can be provided using the --pop_agg argument, with any of the following options available:
+```
+	Aggregation options: 
+		--pop_agg	: Define aggregator function for certain genetic distances w/ --pops:
+			All of these can take the following options:
+			  ARITH		: [default] Use arithmetic mean
+			  MEDIAN	: Use median distance
+			  HARM		: Use harmonic mean
+			  ADJHARM	: Adjusted harmonic mean (see docs)
+			  GEOM		: Use geometric mean
+			  MIN		: Use minimum distance
+			  MAX		: Use maximum distance
+```
+
 
 ### StreamTree method
 
