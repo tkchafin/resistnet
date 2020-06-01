@@ -192,6 +192,8 @@ def main():
 	if params.run in ["STREAMTREE"]:
 		print("Incidence matrix:")
 		print(inc)
+		ofh=out+".incidenceMatrix.txt"
+		np.savetxt(ofh, inc, sep="\t")
 		print("Incidence matrix dimensions:")
 		print(inc.shape)
 
@@ -605,7 +607,7 @@ def fitLeastSquaresDistances(D, X, iterative, out, weight=None):
 	print("Weights matrix:")
 	print(W)
 	ofh=out+".weightsMatrix.txt"
-	savetxt(ofh, W, delimiter="\t")
+	np.savetxt(ofh, W, delimiter="\t")
 	
 	#weighted least-squares optimization
 	ls = np.matmul(np.linalg.inv(np.matmul(np.matmul(X.transpose(),W),X)), np.matmul(np.matmul(X.transpose(), W),d))
