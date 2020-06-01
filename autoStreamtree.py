@@ -148,7 +148,7 @@ def main():
 		#print(edge_labels)
 		nx.draw_networkx_edge_labels(K, pos, edge_labels=edge_labels, font_size=6)
 
-	network_plot=str(params.out) + "_subGraph.pdf"
+	network_plot=str(params.out) + ".subGraph.pdf"
 	plt.savefig(network_plot)
 	#sys.exit()
 
@@ -192,7 +192,7 @@ def main():
 	if params.run in ["STREAMTREE"]:
 		print("Incidence matrix:")
 		print(inc)
-		ofh=out+".incidenceMatrix.txt"
+		ofh=params.out+".incidenceMatrix.txt"
 		np.savetxt(ofh, inc, sep="\t")
 		print("Incidence matrix dimensions:")
 		print(inc.shape)
@@ -606,8 +606,8 @@ def fitLeastSquaresDistances(D, X, iterative, out, weight=None):
 	W=generateWeightsMatrix(d, weight)
 	print("Weights matrix:")
 	print(W)
-	ofh=out+".weightsMatrix.txt"
-	np.savetxt(ofh, W, delimiter="\t")
+	#ofh=out+".weightsMatrix.txt"
+	#np.savetxt(ofh, W, delimiter="\t")
 	
 	#weighted least-squares optimization
 	ls = np.matmul(np.linalg.inv(np.matmul(np.matmul(X.transpose(),W),X)), np.matmul(np.matmul(X.transpose(), W),d))
@@ -636,7 +636,7 @@ def fitLeastSquaresDistances(D, X, iterative, out, weight=None):
 		#print(ls)
 		
 		#write original and constrained results to log file
-		ofh=out+"leastSquaresConstrained.txt"
+		ofh=out+".leastSquaresConstrained.txt"
 		df=pd.DataFrame({'LS.original':ls_old, 'LS.constrained':ls})
 		df.to_csv(ofh, sep="\t")
 		
