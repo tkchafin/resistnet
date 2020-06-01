@@ -3,6 +3,8 @@ Automated pipeline for examining patterns of genetic differentiation in stream n
 
 --In progress--
 
+Contact: tkchafin@uark.edu 
+
 ## Software Description
 autoStreamTree is a Python software package providing various analyses aimed at analyzing patterns of genetic differentiation among aquatic stream-dwelling organisms. The intention is to take what was previously a tedious process involving multiple discrete steps and to integrate these all in one place. 
 
@@ -59,6 +61,7 @@ Optionally, the user can also opt to aggregate individual-based distance measure
 			  MAX		: Use maximum distance
 ```
 
+For datasets containing multiple non-contacenated loci, note that individual-based distances (e.g. PDIST or JC69) will also need to be aggregated among loci within each pairwise calculation. Any of the above options can again be used here, provided using the --loc_agg argument. 
 
 ### StreamTree method
 
@@ -66,7 +69,11 @@ Coming soon -- some changes, including added weights (see Felsenstein 2004 chapt
 
 ### Requirements for input shapefiles
 
-Coming soon
+Details coming soon
+
+I highly recommend using the existing global stream datasets provided by the [HydroLab group](https://wp.geog.mcgill.ca/hydrolab/) at McGill University, specifically the [HydroAtlas](https://www.hydrosheds.org/page/hydroatlas) or [free-flowing rivers dataset](https://wp.geog.mcgill.ca/hydrolab/free-flowing-rivers/) as these are already proporly formatted for use. Because of their size, I would recommend clipping them to the relevant scale (e.g. the drainage encompassing all of your samples).
+
+Note that a valid path is required between all sites in order to calculate pairwise stream distances. Thus, if you are analysing data from multiple drainages which only share an oceanic connection, you will need to augment the shapefile. For example this could be accomplished by adding a vector representing the coastline to create an artificial connection among drainages. 
 
 ### Example workflows 
 
