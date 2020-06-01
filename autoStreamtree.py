@@ -196,7 +196,7 @@ def main():
 		print(inc.shape)
 
 		#fit least-squares branch lengths
-		R = fitLeastSquaresDistances(gen, inc, params.iterative, params.weight)
+		R = fitLeastSquaresDistances(gen, inc, params.iterative, params.out,params.weight)
 		print("Fitted least-squares distances:")
 		print(R)
 		
@@ -594,54 +594,72 @@ def uniqAlleles(s):
 
 #function to compute least-squares branch lengths from a vector of genetic distances D and incidence matrix X
 #when iterative = True, negative distances are constrained to 0 and then recomputed
-def fitLeastSquaresDistances(D, X, iterative, weight=None):
+def fitLeastSquaresDistances(D, X, iterative, out, weight=None):
 	num_segments = (np.size(X,1))
 	print(num_segments)
 	ls = np.zeros(num_segments)
 	d = vectorizeMat(D)
+	
+	#calculate weights matrix and write to file
 	W=generateWeightsMatrix(d, weight)
 	print("Weights matrix:")
 	print(W)
-	ls = np.matmul(np.linalg.inv(np.matmul(np.matmul(X.transpose(),W),X)), np.matmul(np.matmul(X.transpose(), W),d))
-	print(ls)
-	ls_ord = np.matmul(np.linalg.inv(np.matmul(X.transpose(),X)), np.matmul(X.transpose(),d))
-	print(ls_ord)
+	ofh=out+".weightsMatrix.txt"
+	savetxt(ofh, W, delimiter="\t")
 	
+	#weighted least-squares optimization
+	ls = np.matmul(np.linalg.inv(np.matmul(np.matmul(X.transpose(),W),X)), np.matmul(np.matmul(X.transpose(), W),d))
+	print("Least-squared optimized distances:")
+	print(ls)
+	#ls_ord = np.matmul(np.linalg.inv(np.matmul(X.transpose(),X)), np.matmul(X.transpose(),d))
+	#print(ls_ord)
+	
+	#if using iterative approach
 	if iterative:
-		constrains = list()
+		ls_old=ls
+		if(np.count_nonzero(ls<0.0) > 0):
+			print("LS-optimized distances contain negative values: Using iterative approach to re-calculate...")
+		constrains = list() #save indices of all constrained values
+		
 		#if negative distances, use iterative procedure to re-calculate
-		while ((ls < 0.0).any()):
+		while (np.count_nonzero(ls<0.0) > 0):
 			bad_ind = np.argmin(ls)
 			constrains.append(bad_ind)
 			#constrain to 0 by removing from incidence matrix
 			X = np.delete(X, bad_ind, 1)
 			#re-compute values
-			ls = np.matmul(np.linalg.inv(np.matmul(X.transpose(),X)), np.matmul(X.transpose(),d))
-		r = np.zeros(num_segments)
-		adjust=0
-		for i in range(0, num_segments):
-			if i in constrains:
-				r[i] = 0.0
-				adjust = adjust+1
-			else:
-				r[i] = ls[i-adjust]
-		return(r)
+			ls = np.matmul(np.linalg.inv(np.matmul(np.matmul(X.transpose(),W),X)), np.matmul(np.matmul(X.transpose(), W),d))
+		for i in reversed(constrains):
+			ls=np.insert(ls, i, 0.0)
+		#print(ls)
+		
+		#write original and constrained results to log file
+		ofh=out+"leastSquaresConstrained.txt"
+		df=pd.DataFrame({'LS.original':ls_old, 'LS.constrained':ls})
+		df.to_csv(ofh, sep="\t")
+		
+		return(ls)
 	else:
 		return(ls)
 
 #function generates weights matrix for least-squares method, where weights are on diagonals
 def generateWeightsMatrix(d,weight):
 	W=np.zeros((len(d), len(d)), dtype=float)
+	row,col=np.diag_indices(W.shape[0])
 	if weight.upper()=="CSE67":
-		row,col=np.diag_indices(W.shape[0])
 		W[row,col] = np.ones(len(d))
-		return(W)
+	elif weight.upper()=="BEYER74":
+		if(np.count_nonzero(d==0) > 0):
+			print("WARNING: Divide-by-zero in weighted least-squares (weight=1/D).")
+		W[row,col] = np.divide(1.0, d, out=np.zeros_like(d), where=d!=0)
+	elif weight.upper()=="FM67":
+		if(np.count_nonzero(d==0) > 0):
+			print("WARNING: Divide-by-zero in weighted least-squares (weight=1/D^2).")
+		W[row,col] = np.divide(1.0, np.square(d), out=np.zeros_like(d), where=d!=0)
 	else:
 		print("ERROR: Weight option",weight,"not recognized. Using ordinary least-squares instead.")
-		row,col=np.diag_indices(W.shape[0])
 		W[row,col] = np.ones(len(d))
-		return(W)
-	#sys.exit()
+	return(W)
 	
 
 #function to convert a pairwise matrix to a 1D vector
