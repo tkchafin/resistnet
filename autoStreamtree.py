@@ -23,24 +23,15 @@ import matplotlib.pyplot as plt
 from geopy.distance import geodesic
 
 import genetic_distances as gendist
+import clusterpop_dbscan as clust
 from ast_menu import parseArgs
 
 
 #TODO:
 #--Jost D option to use global freq rather than average across pops
-#--Add CLI and argument parsing
-#--finish least-squares fitting
-#--option to use Fst, or linearized Fst
 #--option to log stream distances
 #--options for how gaps, Ns, ambigs are treated in p-distance calculation
 #--add some sort of outlier detection? Maybe inspited by ABGD algorithm
-#-----How? Delete nodes w/ gen distance edges which are significantly larger than mean?
-#-----Would then need to re-fit distances
-#--Add method to prevent negative distances fit to segments
-#----Streamtree method: Constrain most negative one to zero (remove), then re-fit.
-#----Check the Felsenstein book, there might be something in there. I think he has a solution in FITCH
-#----Also allow option to input this manually (some may have specialized datasets, e.g. SNPs or msats and might want to use a diff method, or calc Fst)
-#--As we add in ecological information, we can consider IBE as well
 
 #TODO: Some parsing to make sure that dist calcs are compatible with data types 
 #TODO: Add msat compatibility. I might just convert them to dummy nucleotide values??
@@ -82,10 +73,12 @@ def main():
 			name = row[0]
 			data = tuple([row[3], row[2]])
 		else:
-			#TODO: If --pop need to calculate centroids here? Can replace ind coords with centroid
-			
-			#print(tuple([row[3], row[2]]))
-			node = snapToNode(G, tuple([row[3], row[2]]))
+			if not params.pop and not params.clusterpop:
+				#print(tuple([row[3], row[2]]))
+				#--geopop and individual-level snap coordinates to nodes here
+				node = snapToNode(G, tuple([row[3], row[2]]))
+			else:
+				node = tuple([row[3], row[2]])
 			#print(node)
 			data = node
 			name = row[0]
@@ -118,9 +111,51 @@ def main():
 	if params.pop or params.geopop:
 		print("Read populations in this order:")
 		print(list(popmap.keys()))
-		print()	
+		print()
+	
+	#TODO: If --clusterpop use clustering algorithm here to build popmap 
+	if params.clusterpop:
+		print("Running DBSCAN clustering with min_samples=",params.min_samples,"and epsilon=",params.epsilon)
+		popmap=clust.dbscan_cluster(point_coords, params.epsilon, params.min_samples)
+		num_clusters=len(popmap.keys())
+		print("Found",str(num_clusters),"clusters!")
+		print(popmap)
+		print("\n")
+	
 
+	#traverse graph to fill: streamdists, gendists, and incidence matrix
+	#calculate genetic distance matrix -- right now that is a JC69-corrected Hamming distance
+	#D
+	gen = None
+	pop_gen = None
+	if params.dist in ["PDIST", "TN84", "TN93", "K2P", "JC69"]:
+		gen = gendist.getGenMat(params.dist, point_coords, seqs, ploidy=params.ploidy, het=params.het, loc_agg=params.loc_agg)
+		print("Genetic distances:")
+		np.set_printoptions(precision=3)
+		print(gen, "\n")
+		if params.pop or params.geopop or params.clusterpop:
+			print("Aggregating pairwise population genetic distances from individual distances using:",params.pop_agg)
+	else:
+		if not params.pop and not params.geopop:
+			print("ERROR: Distance metric",params.dist,"not possible without population data.")
+			sys.exit(1)
+	if params.pop or params.geopop:
+		pop_gen = gendist.getPopGenMat(params.dist, gen, popmap, point_coords, seqs, pop_agg=params.pop_agg, loc_agg=params.loc_agg, ploidy=params.ploidy, global_het=params.global_het)
+		print("Population genetic distances:")
+		np.set_printoptions(precision=3)
+		print(pop_gen, "\n")
+	if params.run == "GENDIST":
+		sys.exit(0)
 
+	print(popmap)
+	for ia,ib in itertools.combinations(range(0,len(popmap)),2):
+		print(popmap.keys()[ia])
+		print(popmap.keys()[ib])
+
+	sys.exit()
+	
+
+	#EXTRACT SUBGRAPH
 	if params.run != "GENDIST":
 		#first pass grabs subgraph from master shapefile graph
 		#print(point_coords)
@@ -154,29 +189,7 @@ def main():
 	network_plot=str(params.out) + ".subGraph.pdf"
 	plt.savefig(network_plot)
 	#sys.exit()
-
-	#traverse graph to fill: streamdists, gendists, and incidence matrix
-	#calculate genetic distance matrix -- right now that is a JC69-corrected Hamming distance
-	#D
-	gen = None
-	pop_gen = None
-	if params.dist in ["PDIST", "TN84", "TN93", "K2P", "JC69"]:
-		gen = gendist.getGenMat(params.dist, point_coords, seqs, ploidy=params.ploidy, het=params.het, loc_agg=params.loc_agg)
-		print("Genetic distances:")
-		np.set_printoptions(precision=3)
-		print(gen, "\n")
-	else:
-		if not params.pop and not params.geopop:
-			print("ERROR: Distance metric",params.dist,"not possible without --pop or --geopop data.")
-			sys.exit(1)
-	if params.pop or params.geopop:
-		pop_gen = gendist.getPopGenMat(params.dist, gen, popmap, point_coords, seqs, pop_agg=params.pop_agg, loc_agg=params.loc_agg, ploidy=params.ploidy, global_het=params.global_het)
-		print("Population genetic distances:")
-		np.set_printoptions(precision=3)
-		print(pop_gen, "\n")
-	if params.run == "GENDIST":
-		sys.exit(0)
-		
+	
 	#calculate pairwise observed stream distances and indence matrix
 	#calculate incidence matrix X, which takes the form:
 	#nrows = rows in column vector form of D
@@ -205,11 +218,10 @@ def main():
 		print(inc.shape)
 
 		#fit least-squares branch lengths
-		R = fitLeastSquaresDistances(gen, inc, params.iterative, params.out,params.weight)
+		R = fitLeastSquaresDistances(gen, inc.astype(int), params.iterative, params.out,params.weight)
 		print("Fitted least-squares distances:")
 		print(R)
-		
-		sys.exit()
+
 
 #only necessary for later
 #eventually will add capacity to handle phased loci and msats
@@ -222,7 +234,7 @@ def parseLoci(opts, data, verbose=False):
 		elif "/" not in data[0] and len(data) == 1:
 			if verbose:
 				print("Data appears to consist of unphased concatenated SNPs...")
-			return([phaseSnp(x.replace(" ","").lower()) for x in data[0]])
+			return([gendist.phaseSnp(x.replace(" ","").lower()) for x in data[0]])
 		elif "/" in data[0] and len(data) > 1:
 			if verbose:
 				print("Data appears to consist of phased un-concatenated SNPs...")
@@ -230,7 +242,7 @@ def parseLoci(opts, data, verbose=False):
 		elif "/" not in data[0] and len(data) > 1:
 			if verbose:
 				print("Data appears to consist of unphased un-concatenated SNPs...")
-			return([phaseSnp(str(x).replace(" ","").lower()) for x in data])
+			return([gendist.phaseSnp(str(x).replace(" ","").lower()) for x in data])
 		else:
 			print("ERROR: Unable to parse SNP input. Please check input file")
 			sys.exit(1)

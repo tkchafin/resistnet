@@ -7,12 +7,12 @@ class parseArgs():
 	def __init__(self):
 		#Define options
 		try:
-			options, remainder = getopt.getopt(sys.argv[1:], 'hs:i:r:pd:a:lw:o:gP:L:S:', \
+			options, remainder = getopt.getopt(sys.argv[1:], 'hs:i:r:pd:a:lw:o:gP:L:S:c', \
 			["shp=", "help", "input=", "run=", "pop", "pops","dist=", "agg_method=",
 			"het", "genmat=", "snp", "snps", "msat", "msats", "log", "and_log", "iterative",
 			"weight=", "out=", "method=", "plots", "plot","perm=", "phased", "median",
 			"diploid", "geopop", "geopops", "global_het", "haploid", "loc_agg=", 
-			"pop_agg=", "sdist_agg="])
+			"pop_agg=", "sdist_agg=", "clusterpop", "epsilon=", "min_samples="])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -23,6 +23,7 @@ class parseArgs():
 		self.run = "ALL"
 		self.pop = False
 		self.geopop = False
+		self.clusterpop=False
 		self.dist = "JC69"
 		self.het = False
 		self.genmat = None
@@ -42,6 +43,10 @@ class parseArgs():
 		self.loc_agg = "ARITH"
 		self.pop_agg = "ARITH"
 		self.sdist_agg="ARITH"
+		
+		#dbscan Options
+		self.min_samples=1
+		self.epsilon=20
 
 
 		#First pass to see if help menu was called
@@ -88,6 +93,12 @@ class parseArgs():
 				self.and_log = True
 			elif opt == "iterative":
 				self.iterative = True
+			elif opt=="clusterpop" or opt=="c":
+				self.clusterpop=True
+			elif opt=="epsilon":
+				self.epsilon = float(arg)
+			elif opt=="min_samples":
+				self.min_samples=int(arg)
 			elif opt == "w" or opt == "weight":
 				self.weight = arg.upper()
 				if self.weight == "FM" or self.weight=="1/D":
@@ -202,6 +213,11 @@ and uses a least-squares method to fit distances to stream segments.")
 		-p,--pop		: Pool individuals based on column 2 of input file
 			NOTE: The location will be taken as the centroid among individual samples
 		-g,--geopop		: Pool individuals having identical coordinates
+		-c,--clusterpop	: Use DBSCAN algorithm to automatically cluster populations
+	
+	DBSCAN options (only when --clusterpop):
+		--min_samples	: Minimum samples per cluster [default=1]
+		--epsilon		: Maximum distance (in km) within a cluster [default=20]
 
 	Genetic distance options:
 		-d,--dist	: Use which metric of distance? Options are:
@@ -212,10 +228,10 @@ and uses a least-squares method to fit distances to stream segments.")
 			  TN84			: Tajima and Nei's (1984) distance
 			  TN93			: Tamura and Nei's (1993) distance
 			Frequency models (when using --pop):
-			  FST			: Weir and Cockerham's Fst formulation (theta)
-			  GST			: Hedrick's (2005) correction of Nei's (1987) Gst [=G'st]
+			  FST			: Weir and Cockerham's Fst formulation (=THETAst)
+			  GST			: Hedrick's (2005) correction of Nei (1987) Gst [=G'st]
 			  GSTPRIME		: Meirmans & Hedrick (2011) corrected G'st [=G''st]
-			  LINFST		: [default] Rousset's (1997) linearized Fst [=Fst/(1-Fst)]
+			  LINFST		: [default] Rousset's (1997) Fst [=Fst/(1-Fst)]
 			  JOST			: Jost's (2008) D
 			  LINJOST		: 1/1-D, where D=Jost's (2008) D
 			  NEI72			: Nei's (1972) standard genetic distance 
@@ -224,12 +240,13 @@ and uses a least-squares method to fit distances to stream segments.")
 			  CHORD			: Cavalli-Sforza and Edwards (1967) chord distance
 			  --NOTE: Individual-based metrics can also be computed for
 		  	          populations. You can set how these are aggregated w/ --pop_agg
-			--NOTE: Multiple loci for PDIST, JC69, K2P, and EUCLID distances
+			  --NOTE: Multiple loci for PDIST, JC69, K2P, and EUCLID distances
 		  	        will be reported using the method defined in --loc_agg
-			--NOTE: TN84 will use empirical base frequencies from full per-locus alignments
-		--genmat	: Skip calculation and use the provided labeled .tsv matrix
-		--het		: [Boolean] Count partial differences [e.g. ind1=T, ind2=W] as a fraction
-		--snp		: [Boolean] Bases should be considered as separate loci
+			  --NOTE: TN84 will use empirical base frequencies
+		--genmat	: xxxSkip calculation and use the provided labeled .tsv matrix
+		--het		: [Boolean] Count partial differences [e.g. ind1=T, ind2=W]
+		--snp		: [Boolean] Data represent SNPs
+		--msat		: xxx[Boolean] Data represent msat alleles [not yet implemented]
 		--global_het	: Estimate Ht using global frequencies (default is averaged over pops) 
 	
 	Aggregation options: 
@@ -244,7 +261,6 @@ and uses a least-squares method to fit distances to stream segments.")
 			  GEOM		: Use geometric mean
 			  MIN		: Use minimum distance
 			  MAX		: Use maximum distance
-
 
 	Stream distance/ IBD options:
 		-l,--log	: Report natural log of stream distances
