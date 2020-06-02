@@ -122,6 +122,10 @@ def main():
 		print(popmap)
 		print("\n")
 	
+	#get population centroids
+	if params.clusterpop:
+		pop_coords=clust.getClusterCentroid(point_coords, popmap, params.out)
+		sys.exit()
 
 	#traverse graph to fill: streamdists, gendists, and incidence matrix
 	#calculate genetic distance matrix -- right now that is a JC69-corrected Hamming distance

@@ -11,7 +11,7 @@ from sortedcontainers import SortedDict
 
 #here coords should be a dictionary with key=ID and value=tuple of lat,long
 #epsilon=max distance (in km) between points in a cluster
-def dbscan_cluster(coords, epsilon, min_samples):
+def dbscan_cluster(coords, epsilon, min_samples, out=None):
 	kms_per_radian = 6371.0088
 
 	points=coordsToMatrix(coords)
@@ -39,3 +39,43 @@ def dbscan_cluster(coords, epsilon, min_samples):
 #function to convert SortedDict of coordinates to a numpy matrix 
 def coordsToMatrix(coords):
 	return(pd.DataFrame([[coords[k][0], coords[k][1]] for k in coords], columns=["long", "lat"]).to_numpy())
+
+
+#function to find the centroid of a set of points
+#requires a SortedDict of coordinates and a SortedDict giving population IDs
+"""Coords:
+	key 	value
+	SampleName	Tuple(Lat, Long)
+	
+	popmap:
+	PopulationName	list(SampleName,...)
+"""
+def getClusterCentroid(coords, popmap, out=None):
+	centroids=SortedDict()
+	ofh=None
+	if out:
+		ofh=out+".clusterCentroids.txt"
+	log=""
+	for pop in popmap.keys():
+		cluster=getPopCoordsMatrix(coords, popmap[pop])
+		if len(cluster)<1:
+			print("ERROR: getClusterCentroid(): No coordinates in cluster:",pop)
+			sys.exit(1)
+		
+		#add cluster to logfile (if provided)
+		log=log+"Population="+pop+"\n"
+		log=log+str(cluster)+"\n"
+		
+		#get centroid point
+		centroid = (MultiPoint(cluster).centroid.x, MultiPoint(cluster).centroid.y)
+		log=log+"Centroid="+str(centroid)+"\n"
+	
+	if out:
+		f=open(ofh, "w")
+		f.write(log)
+		f.close()
+	
+#returns a matrix of coordinates from a SortedDict of sample coordinates, given a list to subset
+def getPopCoordsMatrix(d, l):
+	return(pd.DataFrame([[d[k][0], d[k][1]] for k in d if k in l], columns=["long", "lat"]).to_numpy())
+
