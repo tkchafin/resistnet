@@ -61,7 +61,17 @@ Optionally, the user can also opt to aggregate individual-based distance measure
 			  MAX		: Use maximum distance
 ```
 
-For datasets containing multiple non-contacenated loci, note that individual-based distances (e.g. PDIST or JC69) will also need to be aggregated among loci within each pairwise calculation. Any of the above options can again be used here, provided using the --loc_agg argument. 
+For datasets containing multiple non-contacenated loci, note that individual-based distances (e.g. PDIST or JC69) will also need to be aggregated among loci within each pairwise calculation. Any of the above options can again be used here, provided using the --loc_agg argument.
+
+### Defining populations
+There are currently three ways in which you can define populations for population-wise analysis. The first (specified using --pop) assumes that the 2nd column in the input file contains population identifiers. These can take any form (e.g., integer or string). The second (--geopop) will group any samples into populations which "snap" to the same stream node (see below). 
+
+A third option (--clusterpop) will automatically cluster geographically similar individuals using the DBSCAN algorithm in scikit-learn, using great-circle geographic distances (i.e., this is not informed by stream distances calculated as a part of some workflows). Two relevant options are provided for manipulating the DBSCAN results:
+```
+DBSCAN options (only when --clusterpop):
+	--min_samples	: Minimum samples per cluster [default=1]
+	--epsilon		: Maximum distance (in km) within a cluster [default=20]
+```
 
 ### StreamTree method
 
