@@ -124,8 +124,8 @@ def main():
 	#get population centroids
 	if params.clusterpop:
 		pop_coords=clust.getClusterCentroid(point_coords, popmap, params.out)
-		print(pop_coords)
-		clust.plotClusteredPoints(point_coords, popmap, params.out)
+		#print(pop_coords)
+		clust.plotClusteredPoints(point_coords, popmap, params.out, pop_coords)
 		sys.exit()
 
 	#traverse graph to fill: streamdists, gendists, and incidence matrix

@@ -86,11 +86,9 @@ def getPopCoordsMatrix(d, l):
 	return(pd.DataFrame([[d[k][0], d[k][1]] for k in d if k in l], columns=["long", "lat"]).to_numpy())
 
 #function plots clustered coordinates given a SortedDict of coords and a population map
-def plotClusteredPoints(point_coords, popmap, out=None):
-	ofh="clusteredPoints.pdf"
-	if out:
-		ofh=out+".clusteredPoints.pdf"
-
+def plotClusteredPoints(point_coords, popmap, out, centroids=None):
+	#set output file name
+	ofh=out+".clusteredPoints.pdf"
 	sns.set(style="ticks")
 	
 	#get 1D popmap
@@ -99,11 +97,16 @@ def plotClusteredPoints(point_coords, popmap, out=None):
 	
 	df=pd.DataFrame([[ind, pmap[ind], point_coords[ind][0], point_coords[ind][1]] for ind in point_coords], columns=["sample", "pop", "long", "lat"])
 	
-	
 	cmap = sns.cubehelix_palette(dark=.3, light=.8, as_cmap=True)
 	ax = sns.scatterplot(x="long", y="lat", hue="pop",palette="Set2",data=df)
 	
-	plt.show()
+	#plot centroid positions if available
+	if centroids:
+		cdf=pd.DataFrame([[p, centroids[p][0], centroids[p][1]] for p in centroids], columns=["pop", "long", "lat"])
+		#print(cdf)
+		sns.scatterplot(x="long", y="lat", hue="pop", palette="Set2", data=cdf, legend=False, marker="X", ax=ax)
+		
+	plt.savefig(ofh)
 
 #utility function, converts popmap of form key=pop; value=list(inds) to key=ind; value=pop
 def flattenPopmap(popmap):
