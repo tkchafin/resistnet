@@ -17,6 +17,21 @@ If you use this package for analysis of fitted distances using the streamtree mo
 
 Conda installation coming soon. 
 
+### Prerequisites
+* Python 3
+* NumPY
+* SciPY
+* Matplotlib
+* Seaborn
+* networkx
+* pandas
+* geopandas
+* sortedcontainers
+* shapely
+* geopy
+* scikit-bio
+* scikit-learn
+
 ## Usage
 
 

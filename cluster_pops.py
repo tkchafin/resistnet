@@ -2,10 +2,13 @@ import os
 import sys
 import pandas as pd
 import numpy as np
+import seaborn as sns
 from sklearn.cluster import DBSCAN
 from geopy.distance import great_circle
 from shapely.geometry import MultiPoint
 from sortedcontainers import SortedDict
+
+import matplotlib.pyplot as plt
 
 #credit to Geoff Boeing at https://geoffboeing.com/2014/08/clustering-to-reduce-spatial-data-set-size/ for the tutorial
 
@@ -69,13 +72,43 @@ def getClusterCentroid(coords, popmap, out=None):
 		#get centroid point
 		centroid = (MultiPoint(cluster).centroid.x, MultiPoint(cluster).centroid.y)
 		log=log+"Centroid="+str(centroid)+"\n"
+		centroids[pop] = centroid
 	
+	#write optional logfile
 	if out:
 		f=open(ofh, "w")
 		f.write(log)
 		f.close()
-	
+	return(centroids)
+
 #returns a matrix of coordinates from a SortedDict of sample coordinates, given a list to subset
 def getPopCoordsMatrix(d, l):
 	return(pd.DataFrame([[d[k][0], d[k][1]] for k in d if k in l], columns=["long", "lat"]).to_numpy())
 
+#function plots clustered coordinates given a SortedDict of coords and a population map
+def plotClusteredPoints(point_coords, popmap, out=None):
+	ofh="clusteredPoints.pdf"
+	if out:
+		ofh=out+".clusteredPoints.pdf"
+
+	sns.set(style="ticks")
+	
+	#get 1D popmap
+	pmap=flattenPopmap(popmap)
+	#print(pmap)
+	
+	df=pd.DataFrame([[ind, pmap[ind], point_coords[ind][0], point_coords[ind][1]] for ind in point_coords], columns=["sample", "pop", "long", "lat"])
+	
+	
+	cmap = sns.cubehelix_palette(dark=.3, light=.8, as_cmap=True)
+	ax = sns.scatterplot(x="long", y="lat", hue="pop",palette="Set2",data=df)
+	
+	plt.show()
+
+#utility function, converts popmap of form key=pop; value=list(inds) to key=ind; value=pop
+def flattenPopmap(popmap):
+	new_popmap=dict()
+	for k in popmap:
+		for i in popmap[k]:
+			new_popmap[i]=k
+	return(new_popmap)

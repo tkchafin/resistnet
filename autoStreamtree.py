@@ -13,7 +13,6 @@ import geopandas as gpd
 import numpy as np
 import networkx as nx
 from sortedcontainers import SortedDict
-from skbio import DistanceMatrix
 from sklearn.linear_model import LinearRegression
 from skbio.stats.distance import mantel
 from shapely.geometry import LineString, point, Point
@@ -23,7 +22,7 @@ import matplotlib.pyplot as plt
 from geopy.distance import geodesic
 
 import genetic_distances as gendist
-import clusterpop_dbscan as clust
+import cluster_pops as clust
 from ast_menu import parseArgs
 
 
@@ -125,6 +124,8 @@ def main():
 	#get population centroids
 	if params.clusterpop:
 		pop_coords=clust.getClusterCentroid(point_coords, popmap, params.out)
+		print(pop_coords)
+		clust.plotClusteredPoints(point_coords, popmap, params.out)
 		sys.exit()
 
 	#traverse graph to fill: streamdists, gendists, and incidence matrix
