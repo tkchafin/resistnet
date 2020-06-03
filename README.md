@@ -13,6 +13,9 @@ Currently, autoStreamTree provides a companion library of functions for calculat
 If you use this package for analysis of fitted distances using the streamtree model, please cite the following:
 * Kalinowski ST, MH Meeuwig, SR Narum, ML Taper (2008) Stream trees: a statistical method for mapping genetic differences between populations of freshwater organisms to the sections of streams that connect them. Canadian Journal of Fisheries and Aquatic Sciences (65:2752-2760).
 
+If you find the code here useful for your research, for now please cite this repository:
+Chafin TK. autoStreamTree: Automating workflows for examining patterns of genetic differentiation in stream networks. DOI: Coming soon.
+
 ## Installation
 
 Conda installation coming soon. 

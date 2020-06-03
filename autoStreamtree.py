@@ -119,22 +119,34 @@ def main():
 		print(list(popmap.keys()))
 		print()
 	
-	#TODO: If --clusterpop use clustering algorithm here to build popmap 
-	if params.clusterpop:
-		print("Running DBSCAN clustering with min_samples=",params.min_samples,"and epsilon=",params.epsilon)
-		popmap=clust.dbscan_cluster(point_coords, params.epsilon, params.min_samples)
-		num_clusters=len(popmap.keys())
-		print("Found",str(num_clusters),"clusters!")
-		print(popmap)
-		print("\n")
-	
-	#get population centroids
-	if params.clusterpop:
-		pop_coords=clust.getClusterCentroid(point_coords, popmap, params.out)
-		#print(pop_coords)
-		clust.plotClusteredPoints(point_coords, popmap, params.out, pop_coords)
-		sys.exit()
+	"""
+	For population-level analyses, generate population maps and centroids here 
+	according to user-input options: --pop, --geopop, --clusterpop
+	"""
+	#get population centroid
+	if params.pop or params.geopop or params.clusterpop:
+		if params.clusterpop:
+			#create population clusters using DBSCAN
+			print("Running DBSCAN clustering with min_samples=",params.min_samples,"and epsilon=",params.epsilon)
+			popmap=clust.dbscan_cluster(point_coords, params.epsilon, params.min_samples)
+			num_clusters=len(popmap.keys())
+			print("Found",str(num_clusters),"clusters!")
+			print(popmap)
+			print("\n")
 
+			#calculate centroids for clusters
+			pop_coords=clust.getClusterCentroid(point_coords, popmap, params.out)
+		elif params.pop or params.geopop:
+			#popmap generated earlier when parsing input file!
+			#still need to calculate centroids:
+			pop_coords=clust.getClusterCentroid(point_coords, popmap, params.out)
+			#note in the case of --geopop the centroid is the joint snapped-to location
+		
+		#plot grouped samples
+		#TODO: for --geopop maybe plot original coordinates with "snap" as centroid here??
+		clust.plotClusteredPoints(point_coords, popmap, params.out, pop_coords)
+		
+		
 	#traverse graph to fill: streamdists, gendists, and incidence matrix
 	#calculate genetic distance matrix -- right now that is a JC69-corrected Hamming distance
 	#D
@@ -165,25 +177,21 @@ def main():
 
 	#EXTRACT SUBGRAPH
 	if params.run != "GENDIST":
+		if params.pop or params.geopop or params.clusterpop:
+			points=pop_coords
+		else:
+			points=point_coords
 		#first pass grabs subgraph from master shapefile graph
-		#print(point_coords)
-		#print(G.nodes)
 		print("Extracting full subgraph...")
-		ktemp=pathSubgraph(G, point_coords, extractFullSubgraph)
+		ktemp=pathSubgraph(G, points, extractFullSubgraph)
 		del G
-		#sys.exit()
-		#print(nx.get_node_attributes(ktemp))
-		#print(ktemp.nodes)
+
 		#second pass to simplify subgraph and collapse redundant nodes
 		print("Merging redundant paths...")
-		K=pathSubgraph(ktemp, point_coords, extractMinimalSubgraph)
+		K=pathSubgraph(ktemp, points, extractMinimalSubgraph)
 		del ktemp
 		
-		#nx.relabel_nodes(K, point_labels, copy=False)
-		#print("nodes:")
-		#print(K.nodes)
-		
-		#print("pos dict")
+		#grab real coordinates as node positions for plotting
 		pos=dict()
 		for n in K.nodes:
 			pos[n] = n

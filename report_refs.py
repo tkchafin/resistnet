@@ -7,6 +7,12 @@ e.g. if using StreamTree, output Kalinowski et al
 For weighted LS, gen distances, etc
 """
 
+def fetch_references(params):
+	refs=""
+	return(refs)
+
+
+"""
 	References:
 		Beyer WM, Stein M, Smith T, Ulam S. 1974. A molecular sequence metric and
 		evolutionary trees. Mathematical Biosciences. 19: 9-25.
@@ -42,3 +48,4 @@ For weighted LS, gen distances, etc
 		Sere M, Thevenon S, Belem AMG, De Meeus T. 2017. Comparison of different genetic
 			distances to test isolation by distance between populations. 2017. 119(2):55-63.
 		Wright S. 1965. Isolation by distance. Genetics. 28: 114-138.
+"""
