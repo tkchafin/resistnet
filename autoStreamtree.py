@@ -39,6 +39,10 @@ from ast_menu import parseArgs
 
 #TODO: Option to either die or remove points that can't be reached from rest of network 
 
+#TODO: It should probably be an option to delimit clusters using DBSCAN on stream distances? 
+
+#TODO: Give some report of how far samples are moved to be snapped. Maybe a table and figure? 
+
 def main():
 
 	params = parseArgs()
@@ -184,10 +188,22 @@ def main():
 		for n in K.nodes:
 			pos[n] = n
 		#print(pos)
-		#pos = nx.spring_layout(K)
-		nx.draw_networkx(K, pos, with_labels=False, node_size=50)
+		
+		#make a color map to color sample points and junctions differently 
+		color_map = []
+		for node in K:
+			if node in point_coords.values():
+				color_map.append("blue")
+			else:
+				color_map.append("black")
+		#draw networkx 
+		nx.draw_networkx(K, pos, with_labels=False, node_color=color_map, node_size=50)
+		
+		#get LENGTH_KM attributes for labelling edges
 		edge_labels = nx.get_edge_attributes(K,'LENGTH_KM')
-		#print(edge_labels)
+		for e in edge_labels:
+			edge_labels[e] = "{:.2f}".format(edge_labels[e])
+		
 		nx.draw_networkx_edge_labels(K, pos, edge_labels=edge_labels, font_size=6)
 
 	network_plot=str(params.out) + ".subGraph.pdf"
@@ -198,11 +214,8 @@ def main():
 	#calculate incidence matrix X, which takes the form:
 	#nrows = rows in column vector form of D
 	#ncols = number of collapsed branches in stream network K
-	
 	if params.run in ["STREAMDIST", "DISTANCES", "STREAMTREE"]:
 		(sdist, inc) = getStreamMats(point_coords, K)
-		#print(len(K.edges))
-		#sys.exit()
 		print("Stream distances:")
 		print(sdist)
 		
@@ -441,27 +454,36 @@ def extractFullSubgraph(subgraph, graph, nodelist, path):
 #extracts a simplified subgraph from paths
 #only keeping terminal and junction nodes
 def extractMinimalSubgraph(subgraph, graph, nodelist, path):
-	curr_edge = {"REACH_ID":list(), "LENGTH_KM":0}
+	curr_edge = {"REACH_ID":list(), "LENGTH_KM":0.0}
 	curr_start=None
+	#print("Path:",path)
+	#print("nodelist:",nodelist)
+	#for each pair of nodes in path
 	for first, second in zip(path, path[1:]):
 		#if first is either: 1) a site node; or 2) a junction node: add to new graph
 		#if second is either:a site or junction, add edge and node to new graph
 		#if not, keep edge attributes for next edge
-		if first in nodelist or len(graph[first])>2:
-			#add to new graph if it doesn't exist
-			if not curr_start:
-				curr_start=first
-			if first not in subgraph:
+		if not curr_start:
+			curr_start=first
+			if first in nodelist or len(graph[first])>2:
 				subgraph.add_node(first)
-				#print("adding",first)
-		if second in nodelist or len(graph[second])>2 :
-			dat=graph.get_edge_data(first, second)
-			curr_edge["REACH_ID"].extend([dat["REACH_ID"]] if not isinstance(dat["REACH_ID"], list) else dat["REACH_ID"])
-			curr_edge["LENGTH_KM"]+=dat["LENGTH_KM"]
-			subgraph.add_node(second)
+		#add path attributes to current edge
+		dat=graph.get_edge_data(first, second)
+		curr_edge["REACH_ID"].extend([dat["REACH_ID"]] if not isinstance(dat["REACH_ID"], list) else dat["REACH_ID"])
+		curr_edge["LENGTH_KM"]=float(curr_edge["LENGTH_KM"])+float(dat["LENGTH_KM"])
+		
+		#if second node is a STOP node (=in nodelist or is a junction):
+		if second in nodelist or len(graph[second])>2:
+			#add node to subgraph
+			subgraph.add_node(second) 
+			#link current attribute data
 			subgraph.add_edge(curr_start, second, **curr_edge)
+			#empty edge attributes and set current second to curr_start
 			curr_edge = {"REACH_ID":list(), "LENGTH_KM":0}
 			curr_start = second
+		else:
+			#otherwise continue building current edge
+			continue
 
 
 #function to calculate weights for Dijkstra's shortest path algorithm
