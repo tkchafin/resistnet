@@ -37,6 +37,8 @@ from ast_menu import parseArgs
 
 #option to apply weights, e.g. Fitch and Margouliash (see Felsenstein 2004 page 152)
 
+#TODO: Option to either die or remove points that can't be reached from rest of network 
+
 def main():
 
 	params = parseArgs()
@@ -77,6 +79,7 @@ def main():
 				#--geopop and individual-level snap coordinates to nodes here
 				node = snapToNode(G, tuple([row[3], row[2]]))
 			else:
+				#if pop or clusterpop, extract centroid later
 				node = tuple([row[3], row[2]])
 			#print(node)
 			data = node
@@ -152,13 +155,9 @@ def main():
 	if params.run == "GENDIST":
 		sys.exit(0)
 
-	print(popmap)
-	for ia,ib in itertools.combinations(range(0,len(popmap)),2):
-		print(popmap.keys()[ia])
-		print(popmap.keys()[ib])
-
-	sys.exit()
-	
+	#for ia,ib in itertools.combinations(range(0,len(popmap)),2):
+	#	print(popmap.keys()[ia])
+	#	print(popmap.keys()[ib])
 
 	#EXTRACT SUBGRAPH
 	if params.run != "GENDIST":
@@ -186,7 +185,7 @@ def main():
 			pos[n] = n
 		#print(pos)
 		#pos = nx.spring_layout(K)
-		nx.draw(K, pos, with_labels=False)
+		nx.draw_networkx(K, pos, with_labels=False, node_size=50)
 		edge_labels = nx.get_edge_attributes(K,'LENGTH_KM')
 		#print(edge_labels)
 		nx.draw_networkx_edge_labels(K, pos, edge_labels=edge_labels, font_size=6)
@@ -218,7 +217,8 @@ def main():
 		print("Incidence matrix:")
 		print(inc)
 		ofh=params.out+".incidenceMatrix.txt"
-		np.savetxt(ofh, inc, delimiter="\t")
+		with np.printoptions(precision=0, suppress=True):
+			np.savetxt(ofh, inc, delimiter="\t")
 		print("Incidence matrix dimensions:")
 		print(inc.shape)
 
