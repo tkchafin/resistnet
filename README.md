@@ -88,11 +88,16 @@ DBSCAN options (only when --clusterpop):
 	--epsilon		: Maximum distance (in km) within a cluster [default=20]
 ```
 
+If using population labels, whether provided in the input file (--pop/--geopop) or calculating using DBSCAN (--clusterpop), autoStreamTree will output a plot showing cluster membership in 2-D space called $OUT.clusteredPoints.pdf:
+
+![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.clusteredPoints.png)
+
+
 ### StreamTree method
 
 Coming soon -- some changes
 
-The first thing autoStreamTree will do upon reading your input shapefile is to calculate a minimally reduced sub-network which collapses the input river network into continuous reaches (="edges"), with nodes either representing sample localities or junctions. Because the full river network will likely contain many branches and contiguous reaches which do not contain samples, these are removed to speed up computation. The underlying metadata will be preserved, and provided in the outputs <<FILL THIS IN LATER>>. 
+The first thing autoStreamTree will do upon reading your input shapefile is to calculate a minimally reduced sub-network which collapses the input river network into continuous reaches (="edges"), with nodes either representing sample localities or junctions. Because the full river network will likely contain many branches and contiguous reaches which do not contain samples, these are removed to speed up computation. The underlying metadata will be preserved, and provided in the outputs **FILL THIS IN LATER**. 
 
 The reduced sub-network will be plotted for you in a file called $OUT.subGraph.pdf:
 ![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.subGraph.png)
