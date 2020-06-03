@@ -95,7 +95,7 @@ Coming soon -- some changes
 The first thing autoStreamTree will do upon reading your input shapefile is to calculate a minimally reduced sub-network which collapses the input river network into continuous reaches (="edges"), with nodes either representing sample localities or junctions. Because the full river network will likely contain many branches and contiguous reaches which do not contain samples, these are removed to speed up computation. The underlying metadata will be preserved, and provided in the outputs <<FILL THIS IN LATER>>. 
 
 The reduced sub-network will be plotted for you in a file called $OUT.subGraph.pdf:
-![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/out.clusteredPoints.pdf)
+![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.clusteredPoints.pdf)
 
 ### Requirements for input shapefiles
 
