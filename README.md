@@ -85,13 +85,14 @@ A third option (--clusterpop) will automatically cluster geographically similar 
 ```
 DBSCAN options (only when --clusterpop):
 	--min_samples	: Minimum samples per cluster [default=1]
-	--epsilon		: Maximum distance (in km) within a cluster [default=20]
+	--epsilon	: Maximum distance (in km) within a cluster [default=20]
 ```
 
 If using population labels, whether provided in the input file (--pop/--geopop) or calculating using DBSCAN (--clusterpop), autoStreamTree will output a plot showing cluster membership in 2-D space called $OUT.clusteredPoints.pdf:
 
 ![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.clusteredPoints.png)
 
+In this example, DBSCAN was used (hence population IDs are formatted as "DB_"#). Population centroids, which are ultimately used to "snap" populations to the stream network are shown with an "x". Note that this means that the population will only be represented by a single point on the network! 
 
 ### StreamTree method
 
@@ -101,6 +102,8 @@ The first thing autoStreamTree will do upon reading your input shapefile is to c
 
 The reduced sub-network will be plotted for you in a file called $OUT.subGraph.pdf:
 ![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.subGraph.png)
+
+Here, the total cumulative stream length (in km) is plotted along edges (NOTE: Any natural curvature in the river is not preserved in this plot), with sample sites as blue dots and junctions as black dots.
 
 ### Requirements for input shapefiles
 
