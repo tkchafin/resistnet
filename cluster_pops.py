@@ -108,6 +108,15 @@ def plotClusteredPoints(point_coords, popmap, out, centroids=None):
 		
 	plt.savefig(ofh)
 
+#plots a simple histogram
+def plotHistogram(dat, out):
+	ofh=str(out) + ".snapDistances.pdf"
+	sns.set(style="ticks")
+	
+	x = pd.Series(dat, name="Snap distance (km)")
+	sns.distplot(x, kde=True, rug=True)
+	plt.savefig(ofh)
+
 #utility function, converts popmap of form key=pop; value=list(inds) to key=ind; value=pop
 def flattenPopmap(popmap):
 	new_popmap=dict()

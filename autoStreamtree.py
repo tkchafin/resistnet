@@ -19,6 +19,7 @@ from networkx import NetworkXNoPath
 import matplotlib.pyplot as plt
 from geopy.distance import geodesic
 import pickle
+from math import radians, degrees, sin, cos, asin, acos, sqrt
 
 import genetic_distances as gendist
 import cluster_pops as clust
@@ -34,13 +35,7 @@ from ast_menu import parseArgs
 #TODO: Some parsing to make sure that dist calcs are compatible with data types 
 #TODO: Add msat compatibility. I might just convert them to dummy nucleotide values??
 
-#option to apply weights, e.g. Fitch and Margouliash (see Felsenstein 2004 page 152)
-
 #TODO: Option to either die or remove points that can't be reached from rest of network 
-
-#TODO: It should probably be an option to delimit clusters using DBSCAN on stream distances? 
-
-#TODO: Give some report of how far samples are moved to be snapped. Maybe a table and figure? 
 
 def main():
 
@@ -49,8 +44,7 @@ def main():
 	print("Starting...\n")
 	geoDF = gpd.read_file(params.shapefile)
 	#print(geoDF)
-	#if params.run != "GENDIST":
-	#G=
+
 	if params.network:
 		print("Reading network from saved file: ", params.network)
 		G=nx.read_gpickle(params.network).to_undirected()
@@ -58,11 +52,6 @@ def main():
 		print("Building network from shapefile:",params.shapefile)
 		print("WARNING: This can take a while with very large files! If taking too long, try clipping your shapefile to a smaller area.")
 		G=nx.read_shp(params.shapefile, simplify=False).to_undirected()
-	#print(G.nodes)
-	#nx.draw(G, with_labels=True)
-	#plt.show()
-	#plt.savefig("network.png")
-	#sys.exit()
 
 	#if reading populations by 2nd column
 	popmap = SortedDict()
@@ -72,6 +61,7 @@ def main():
 	point_coords=SortedDict()
 	point_labels=dict()
 	numLoci=len(points.columns)-4
+	snapDists=dict()
 	seqs = list()
 	verb=True
 	for loc in range(0,numLoci):
@@ -88,6 +78,7 @@ def main():
 				#print(tuple([row[3], row[2]]))
 				#--geopop and individual-level snap coordinates to nodes here
 				node = snapToNode(G, tuple([row[3], row[2]]))
+				snapDists[row[0]] = great_circle(node[0], node[1], row[3], row[2])
 			else:
 				#if pop or clusterpop, extract centroid later
 				node = tuple([row[3], row[2]])
@@ -141,16 +132,44 @@ def main():
 			print("\n")
 
 			#calculate centroids for clusters
-			pop_coords=clust.getClusterCentroid(point_coords, popmap, params.out)
+			pop_temp=clust.getClusterCentroid(point_coords, popmap, params.out)
+			
+			#now, snap pop_coords to nodes
+			pop_coords = dict()
+			for p in pop_temp:
+				node = snapToNode(G, pop_temp[p])
+				snapDists[p] = great_circle(node[0], node[1], pop_temp[p][0], pop_temp[p][1])
+				pop_coords[p]=node
 		elif params.pop or params.geopop:
 			#popmap generated earlier when parsing input file!
 			#still need to calculate centroids:
-			pop_coords=clust.getClusterCentroid(point_coords, popmap, params.out)
+			print("Calculating population centroids...")
+			pop_temp=clust.getClusterCentroid(point_coords, popmap, params.out)
 			#note in the case of --geopop the centroid is the joint snapped-to location
+			
+			#now, snap pop_coords to nodes
+			pop_coords = dict()
+			if params.geopop:
+				pop_coords = pop_temp
+			else:
+				for p in pop_temp:
+					node = snapToNode(G, pop_temp[p])
+					snapDists[p] = great_circle(node[0], node[1], pop_temp[p][0], pop_temp[p][1])
+					pop_coords[p]=node
 		
 		#plot grouped samples
 		#TODO: for --geopop maybe plot original coordinates with "snap" as centroid here??
 		clust.plotClusteredPoints(point_coords, popmap, params.out, pop_coords)
+
+		
+	#plot histogram of snap distances
+	clust.plotHistogram(list(snapDists.values()), params.out)
+	dtemp = pd.DataFrame(list(snapDists.items()), columns=['name', 'km'])
+	dtout = str(params.out) + ".snapDistances.txt"
+	dtemp.to_csv(dtout, sep="\t")
+	del dtemp
+	del dtout
+	del snapDists
 		
 		
 	#traverse graph to fill: streamdists, gendists, and incidence matrix
@@ -220,9 +239,15 @@ def main():
 		
 		nx.draw_networkx_edge_labels(K, pos, edge_labels=edge_labels, font_size=6)
 		
-		#save minimized network to file 
-		net_out=str(params.out) + ".network"
-		nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
+		#save minimized network to file (unless we already read from one)
+		if not params.network:
+			net_out=str(params.out) + ".network"
+			nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
+		elif params.overwrite:
+			net_out=str(params.out) + ".network"
+			nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
+		else:
+			print("NOTE: Not over-writing existing network. To change this, use --overwrite")
 
 	network_plot=str(params.out) + ".subGraph.pdf"
 	plt.savefig(network_plot)
@@ -258,6 +283,14 @@ def main():
 		print("Fitted least-squares distances:")
 		print(R)
 
+
+#function to calculate great circle distances
+#returns in units of KILOMETERS
+def great_circle(lon1, lat1, lon2, lat2):
+	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+	return 6371 * (
+		acos(sin(lat1) * sin(lat2) + cos(lat1) * cos(lat2) * cos(lon1 - lon2))
+	)
 
 #only necessary for later
 #eventually will add capacity to handle phased loci and msats
@@ -390,7 +423,7 @@ def getStreamMats(points, graph):
 
 	#for each combination, get shortest path and sum the lengths
 	index=0
-	print(points)
+	#print(points)
 	for ia, ib in itertools.combinations(range(0,len(points)),2):
 		path = nx.bidirectional_dijkstra(graph, points.values()[ia], points.values()[ib], weight=dijkstra_weight)
 		if path:
