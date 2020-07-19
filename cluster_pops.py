@@ -98,7 +98,7 @@ def plotClusteredPoints(point_coords, popmap, out, centroids=None):
 	df=pd.DataFrame([[ind, pmap[ind], point_coords[ind][0], point_coords[ind][1]] for ind in point_coords], columns=["sample", "pop", "long", "lat"])
 	
 	cmap = sns.cubehelix_palette(dark=.3, light=.8, as_cmap=True)
-	ax = sns.scatterplot(x="long", y="lat", hue="pop",palette="Set2",data=df)
+	ax = sns.scatterplot(x="long", y="lat", hue="pop", palette="Set2",data=df)
 	
 	#plot centroid positions if available
 	if centroids:
@@ -107,15 +107,17 @@ def plotClusteredPoints(point_coords, popmap, out, centroids=None):
 		sns.scatterplot(x="long", y="lat", hue="pop", palette="Set2", data=cdf, legend=False, marker="X", ax=ax)
 		
 	plt.savefig(ofh)
+	plt.clf()
 
 #plots a simple histogram
 def plotHistogram(dat, out):
-	ofh=str(out) + ".snapDistances.pdf"
+	of=str(out) + ".snapDistances.pdf"
 	sns.set(style="ticks")
 	
 	x = pd.Series(dat, name="Snap distance (km)")
-	sns.distplot(x, kde=True, rug=True)
-	plt.savefig(ofh)
+	dp = sns.distplot(x, kde=True, rug=True)
+	plt.savefig(of)
+	plt.clf()
 
 #utility function, converts popmap of form key=pop; value=list(inds) to key=ind; value=pop
 def flattenPopmap(popmap):

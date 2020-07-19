@@ -180,6 +180,7 @@ def main():
 	#traverse graph to fill: streamdists, gendists, and incidence matrix
 	#calculate genetic distance matrix -- right now that is a JC69-corrected Hamming distance
 	#D
+	gen=None
 	if params.dist in ["PDIST", "TN84", "TN93", "K2P", "JC69"]:
 		gen = gendist.getGenMat(params.dist, point_coords, seqs, ploidy=params.ploidy, het=params.het, loc_agg=params.loc_agg)
 		print("Genetic distances:")
@@ -297,9 +298,7 @@ def main():
 			#plot geographic x genetic DISTANCES
 			gn=get_lower_tri(gen)
 			go=get_lower_tri(sdist)
-			def r2(x, y):
-				return (stats.pearsonr(x, y)[0] ** 2)
-			sns.jointplot(gn, go, kind="reg", stat_func=r2)
+			sns.jointplot(gn, go, kind="reg", stat_func=r2, x="Genetic distance", y="Geographic distance (km)")
 			plt.savefig((str(params.out)+".genXgeo.pdf"))
 			# sns.jointplot(gn, np.log(go), kind="reg", stat_func=r2)
 			# plt.savefig((str(params.out)+".genXlngeo.pdf"))
@@ -322,6 +321,16 @@ def main():
 		R = fitLeastSquaresDistances(gen, inc.astype(int), params.iterative, params.out,params.weight)
 		print("\nFitted least-squares distances:")
 		print(R)
+		
+		#check observed versus fitten distances:
+		pred=getFittedD(points, gen, inc, R)
+		print("\nComparing observed versus predicted genetic distances:")
+		print(pred)
+		pred.to_csv((str(params.out)+".obsVersusFittedD.txt"), sep="\t")
+		sns.jointplot("observed_D", "predicted_D", data=pred, kind="reg", stat_func=r2)
+		plt.savefig((str(params.out)+".obsVersusFittedD.pdf"))
+		#plt.show()
+		
 	
 	#Now, annotate originate geoDF with dissolved reach IDs
 	#also, need to collect up the stream tree fitted D to each dissolved reach
@@ -360,6 +369,24 @@ def main():
 	plt.title("Stream network colored by EDGE_ID")
 	plt.savefig((str(params.out)+".streamsByEdgeID.pdf"))
 
+#returns r2
+def r2(x, y):
+	return (stats.pearsonr(x, y)[0] ** 2)
+
+#function takes fitted streamtree distances and calculates predicted genetic distacnes
+def getFittedD(points, genmat, inc, r):
+	rows=list()
+	names=list(points.keys())
+	inc_row=0 #tracks what ROW we are in the incidence matrix (streams are columns!)
+	for ia, ib in itertools.combinations(range(0,len(points)),2):
+		obs=genmat[ia,ib]
+		inc_streams=inc[inc_row,]
+		pred_dist=np.sum(r[inc_streams==1])
+		inc_row+=1
+		rows.append([names[ia], names[ib], obs, pred_dist, np.abs(obs-pred_dist)])
+	D=pd.DataFrame(rows, columns=['from','to','observed_D', 'predicted_D', 'abs_diff'])
+	return(D)
+		
 
 #function to calculate great circle distances
 #returns in units of KILOMETERS
@@ -441,7 +468,7 @@ def parseLoci(opts, data, verbose=False):
 #when iterative = True, negative distances are constrained to 0 and then recomputed
 def fitLeastSquaresDistances(D, X, iterative, out, weight=None):
 	num_segments = (np.size(X,1))
-	print(num_segments)
+	#print(num_segments)
 	ls = np.zeros(num_segments)
 	d = vectorizeMat(D)
 	
@@ -454,7 +481,7 @@ def fitLeastSquaresDistances(D, X, iterative, out, weight=None):
 	
 	#weighted least-squares optimization
 	ls = np.matmul(np.linalg.inv(np.matmul(np.matmul(X.transpose(),W),X)), np.matmul(np.matmul(X.transpose(), W),d))
-	print("Least-squared optimized distances:")
+	print("\nLeast-squared optimized distances:")
 	print(ls)
 	#ls_ord = np.matmul(np.linalg.inv(np.matmul(X.transpose(),X)), np.matmul(X.transpose(),d))
 	#print(ls_ord)
@@ -463,7 +490,7 @@ def fitLeastSquaresDistances(D, X, iterative, out, weight=None):
 	if iterative:
 		ls_old=ls
 		if(np.count_nonzero(ls<0.0) > 0):
-			print("LS-optimized distances contain negative values: Using iterative approach to re-calculate...")
+			print("\nLS-optimized distances contain negative values: Using iterative approach to re-calculate...")
 		constrains = list() #save indices of all constrained values
 		
 		#if negative distances, use iterative procedure to re-calculate
