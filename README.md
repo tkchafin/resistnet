@@ -14,16 +14,14 @@ If you use this package for analysis of fitted distances using the streamtree mo
 * Kalinowski ST, MH Meeuwig, SR Narum, ML Taper (2008) Stream trees: a statistical method for mapping genetic differences between populations of freshwater organisms to the sections of streams that connect them. Canadian Journal of Fisheries and Aquatic Sciences (65:2752-2760).
 
 If you find the code here useful for your research, for now please cite this repository:
-Chafin TK. autoStreamTree: Automating workflows for examining patterns of genetic differentiation in stream networks. DOI: Coming soon.
+* Chafin TK. autoStreamTree: Automating workflows for examining patterns of genetic differentiation in stream networks. DOI: Coming soon.
 
 ## Installation
 
-Conda installation coming soon. 
-
 ### Prerequisites
 * Python 3
-* NumPY
-* SciPY
+* numpy
+* scipy
 * Matplotlib
 * Seaborn
 * networkx
@@ -35,11 +33,37 @@ Conda installation coming soon.
 * scikit-bio
 * scikit-learn
 
+### Installation with conda
+
+A full conda installation will come soon. For now, you can install manually using conda like so:
+```
+#update conda and shared packages and set channel
+conda config --add channels conda-forge
+conda update --all
+
+#create a virtual env 
+conda create -n geo python=3.6
+
+#activate virtual env
+conda activate geo
+
+#install gdal
+conda install gdal
+
+#deactivate + reactivate; sets the environmental variables
+conda deactivate; conda activate geo
+
+#install the rest of the packages
+conda install scipy pandas geopandas shapely geopy sortedcontainers matplotlib networkx seaborn scikit-learn
+
+```
+
+Next, clone this directory and you're all set!
+
+
 ## Usage
 
-
-
-### Available distance models 
+### Genetic distance models 
 
 Currently I provide options for individual-based distances (p-distance and various substitution-model corrected distances), and population-based distances which use allele frequency data (such as Fst):
 

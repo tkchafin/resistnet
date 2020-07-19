@@ -6,7 +6,6 @@ import itertools
 import traceback
 import math
 import getopt
-import skbio
 import scipy
 import pandas as pd
 import geopandas as gpd
@@ -14,18 +13,18 @@ import numpy as np
 import networkx as nx
 from sortedcontainers import SortedDict
 from sklearn.linear_model import LinearRegression
-from skbio.stats.distance import mantel
 from shapely.geometry import LineString, point, Point
 from networkx import NodeNotFound
 from networkx import NetworkXNoPath
 import matplotlib.pyplot as plt
 from geopy.distance import geodesic
+import pickle
 
 import genetic_distances as gendist
 import cluster_pops as clust
 from ast_menu import parseArgs
 
-
+#from skbio.stats.distance import mantel
 #TODO:
 #--Jost D option to use global freq rather than average across pops
 #--option to log stream distances
@@ -51,7 +50,14 @@ def main():
 	geoDF = gpd.read_file(params.shapefile)
 	#print(geoDF)
 	#if params.run != "GENDIST":
-	G=nx.read_shp(params.shapefile, simplify=False).to_undirected()
+	#G=
+	if params.network:
+		print("Reading network from saved file: ", params.network)
+		G=nx.read_gpickle(params.network).to_undirected()
+	else:
+		print("Building network from shapefile:",params.shapefile)
+		print("WARNING: This can take a while with very large files! If taking too long, try clipping your shapefile to a smaller area.")
+		G=nx.read_shp(params.shapefile, simplify=False).to_undirected()
 	#print(G.nodes)
 	#nx.draw(G, with_labels=True)
 	#plt.show()
@@ -213,9 +219,15 @@ def main():
 			edge_labels[e] = "{:.2f}".format(edge_labels[e])
 		
 		nx.draw_networkx_edge_labels(K, pos, edge_labels=edge_labels, font_size=6)
+		
+		#save minimized network to file 
+		net_out=str(params.out) + ".network"
+		nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
 
 	network_plot=str(params.out) + ".subGraph.pdf"
 	plt.savefig(network_plot)
+	
+	
 	#sys.exit()
 	
 	#calculate pairwise observed stream distances and indence matrix
@@ -223,16 +235,14 @@ def main():
 	#nrows = rows in column vector form of D
 	#ncols = number of collapsed branches in stream network K
 	if params.run in ["STREAMDIST", "DISTANCES", "STREAMTREE"]:
-		(sdist, inc) = getStreamMats(point_coords, K)
+		if params.pop or params.geopop or params.clusterpop:
+			points=pop_coords
+		else:
+			points=point_coords
+		(sdist, inc) = getStreamMats(points, K)
 		print("Stream distances:")
 		print(sdist)
 		
-		#TODO: If --pop or --geopop, need to summarize stream dist network here
-	
-	#print("Stream distance dimensions:")
-	#print(sdist.shape)
-	#print("Genetic distance dimensions:")
-	#print(gen.shape)
 	
 	if params.run in ["STREAMTREE"]:
 		print("Incidence matrix:")

@@ -7,12 +7,13 @@ class parseArgs():
 	def __init__(self):
 		#Define options
 		try:
-			options, remainder = getopt.getopt(sys.argv[1:], 'hs:i:r:pd:a:lw:o:gP:L:S:c', \
+			options, remainder = getopt.getopt(sys.argv[1:], 'hs:i:r:pd:a:lw:o:gP:L:Scn:', \
 			["shp=", "help", "input=", "run=", "pop", "pops","dist=", "agg_method=",
 			"het", "genmat=", "snp", "snps", "msat", "msats", "log", "and_log", "iterative",
 			"weight=", "out=", "method=", "plots", "plot","perm=", "phased", "median",
 			"diploid", "geopop", "geopops", "global_het", "haploid", "loc_agg=", 
-			"pop_agg=", "sdist_agg=", "clusterpop", "epsilon=", "min_samples="])
+			"pop_agg=", "sdist_agg=", "clusterpop", "epsilon=", "min_samples=", "sclusterpop",
+			"network="])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -21,9 +22,11 @@ class parseArgs():
 		self.shapefile = None
 		self.geodb = None
 		self.run = "ALL"
+		self.network = None
 		self.pop = False
 		self.geopop = False
 		self.clusterpop=False
+		self.sclusterpop=False
 		self.dist = "JC69"
 		self.het = False
 		self.genmat = None
@@ -95,6 +98,8 @@ class parseArgs():
 				self.iterative = True
 			elif opt=="clusterpop" or opt=="c":
 				self.clusterpop=True
+			elif opt=="sclusterpop" or opt=="S":
+				self.sclusterpop=True
 			elif opt=="epsilon":
 				self.epsilon = float(arg)
 			elif opt=="min_samples":
@@ -134,6 +139,8 @@ class parseArgs():
 				self.ploidy=1
 			elif opt=="global_het":
 				self.global_het=True
+			elif opt=="network" or opt=="n":
+				self.network=arg
 			elif opt=="pop_agg" or opt=="P":
 				self.pop_agg = arg.upper()
 				if self.pop_agg not in ["HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX", "MIN"]:
@@ -170,6 +177,9 @@ class parseArgs():
 		if self.run in ["IBD", "EXHAUSTIVE", "REACHFIT"]:
 			print("Sorry: Option --dist",self.run," not yet implemented.")
 			sys.exit(0)
+		if self.sclusterpop:
+			print("Sorry: Option --sclusterpop not yet implemented.")
+			sys.exit(0)
 
 
 
@@ -198,6 +208,8 @@ and uses a least-squares method to fit distances to stream segments.")
 
 	General options:
 		-o,--out	: Output prefix [default="out"]
+		-n,--network	: Provide an already optimized network output from a previous run
+			This will be the $out.network file written by autoStreamTree
 		-h,--help	: Displays help menu
 		-r,--run	: Run which steps? Options: [all, gendist, ibd, streamdist, streamtree]
 			ALL			: Run all steps
@@ -207,7 +219,6 @@ and uses a least-squares method to fit distances to stream segments.")
 			IBD		: xxxGENDIST + STREAMDIST + Mantel test
 			STREAMTREE	: GENDIST + STREAMDIST + fit StreamTree model
 			REACHFIT	: xxxSTREAMTREE + regress reach distances x length
-			EXHAUSTIVE	: xxxRun all steps with all possible distances/ transformations
 			xxx = NOT YET IMPLEMENTED
 		-p,--pop		: Pool individuals based on column 2 of input file
 			NOTE: The location will be taken as the centroid among individual samples
