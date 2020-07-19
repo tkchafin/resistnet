@@ -12,6 +12,8 @@ import geopandas as gpd
 import numpy as np
 import networkx as nx
 import Mantel
+import seaborn as sns
+from scipy import stats
 from sortedcontainers import SortedDict
 from sklearn.linear_model import LinearRegression
 from shapely.geometry import LineString, point, Point
@@ -222,12 +224,12 @@ def main():
 		else:
 			points=point_coords
 		#first pass grabs subgraph from master shapefile graph
-		print("Extracting full subgraph...")
+		print("\nExtracting full subgraph...")
 		ktemp=pathSubgraph(G, points, extractFullSubgraph)
 		del G
 
 		#second pass to simplify subgraph and collapse redundant nodes
-		print("Merging redundant paths...")
+		print("\nMerging redundant paths...\n")
 		K=pathSubgraph(ktemp, points, extractMinimalSubgraph)
 		del ktemp
 		
@@ -277,22 +279,37 @@ def main():
 	if params.run in ["STREAMDIST", "DISTANCES", "STREAMTREE", "IBD", "ALL"]:
 		if params.pop or params.geopop or params.clusterpop:
 			points=pop_coords
+			gen=pop_gen
 		else:
 			points=point_coords
-		print(points)
-		print(point_coords)
+
+		#calculate stream distances and incidence matrix
 		(sdist, inc) = getStreamMats(points, K)
-		print("Stream distances:")
+		print("\nStream distances:")
 		print(sdist)
-	
-		#HERE: Implement the IBD calculations and plots
 		
-		
+		#if user requested testing isolation-by-distance:
+		if params.run in ['ALL', 'IBD']:
+			#HERE: Implement the IBD calculations and plots
+			print("\nTesting for isolation-by-distance using Mantel test with",params.permutations,"permutations")
+			testIBD(gen, sdist, params.out, params.permutations)
+			
+			#plot geographic x genetic DISTANCES
+			gn=get_lower_tri(gen)
+			go=get_lower_tri(sdist)
+			def r2(x, y):
+				return (stats.pearsonr(x, y)[0] ** 2)
+			sns.jointplot(gn, go, kind="reg", stat_func=r2)
+			plt.savefig((str(params.out)+".genXgeo.pdf"))
+			# sns.jointplot(gn, np.log(go), kind="reg", stat_func=r2)
+			# plt.savefig((str(params.out)+".genXlngeo.pdf"))
+			
+			
 	
 	if params.run in ["STREAMTREE", "ALL"]:
 		if params.pop or params.geopop or params.clusterpop:
 			gen=pop_gen
-		print("Incidence matrix:")
+		print("\nIncidence matrix:")
 		print(inc)
 		ofh=params.out+".incidenceMatrix.txt"
 		with np.printoptions(precision=0, suppress=True):
@@ -301,8 +318,9 @@ def main():
 		print(inc.shape)
 
 		#fit least-squares branch lengths
+		print()
 		R = fitLeastSquaresDistances(gen, inc.astype(int), params.iterative, params.out,params.weight)
-		print("Fitted least-squares distances:")
+		print("\nFitted least-squares distances:")
 		print(R)
 	
 	#Now, annotate originate geoDF with dissolved reach IDs
@@ -325,7 +343,7 @@ def main():
 	r2eDF.to_csv((str(params.out)+".reachToEdgeTable.txt"), sep="\t")
 	
 	#read in original shapefile as geoDF and subset it
-	print("Extracting attributes from original dataframe...")
+	print("\nExtracting attributes from original dataframe...")
 	geoDF = gpd.read_file(params.shapefile)
 	mask = geoDF['REACH_ID'].isin(list(reach_to_edge.keys()))
 	temp = geoDF.loc[mask]
@@ -340,7 +358,7 @@ def main():
 	#annotate 
 	geoDF.plot(column="EDGE_ID", cmap = "prism")
 	plt.title("Stream network colored by EDGE_ID")
-	plt.show()
+	plt.savefig((str(params.out)+".streamsByEdgeID.pdf"))
 
 
 #function to calculate great circle distances
@@ -350,6 +368,34 @@ def great_circle(lon1, lat1, lon2, lat2):
 	return 6371 * (
 		acos(sin(lat1) * sin(lat2) + cos(lat1) * cos(lat2) * cos(lon1 - lon2))
 	)
+
+def get_lower_tri(mat):
+	n=mat.shape[0]
+	i=np.tril_indices(n,-1)
+	return(mat[i])
+
+#function computes Mantel test using various transformations
+def testIBD(gen, geo, out, perms):
+	#get flattened lower triangle of each matrix
+	gen = get_lower_tri(gen)
+	geo = get_lower_tri(geo)
+
+	#non-log pearson
+	res=list(Mantel.test(gen, geo, perms=int(perms), method='pearson'))
+	rows=list()
+	rows.append(['genXgeo','pearson', str(perms), res[0], res[1], res[2]])
+
+	#non-log spearman
+	res=list(Mantel.test(gen, geo, perms=int(perms), method='spearman'))
+	rows.append(['genXgeo','spearman', str(perms), res[0], res[1], res[2]])
+
+	#print(rows)
+	ibd=pd.DataFrame(rows,  columns=['test', 'method', 'perms', 'r', 'p' ,'z'])
+	print("Mantel test results:")
+	print(ibd)
+	ibd.to_csv((str(out) + ".mantelTest.txt"))
+	print()
+	
 
 #only necessary for later
 #eventually will add capacity to handle phased loci and msats
