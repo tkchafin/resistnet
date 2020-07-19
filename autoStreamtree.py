@@ -11,6 +11,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 import networkx as nx
+import Mantel
 from sortedcontainers import SortedDict
 from sklearn.linear_model import LinearRegression
 from shapely.geometry import LineString, point, Point
@@ -285,6 +286,7 @@ def main():
 		print(sdist)
 	
 		#HERE: Implement the IBD calculations and plots
+		
 		
 	
 	if params.run in ["STREAMTREE", "ALL"]:
