@@ -63,6 +63,14 @@ Next, clone this directory and you're all set!
 
 ## Usage
 
+### Input data 
+
+Fill in details later... 
+
+Points will be 'snapped' to nodes in the stream network. autoStreamTree will output both a table($out.snapDistances.txt) and a histogram plot ($out.snapDistances.pdf) showing distances in kilometers that samples or populations had to be snapped:
+
+![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.snapDistances.png)
+
 ### Genetic distance models 
 
 Currently I provide options for individual-based distances (p-distance and various substitution-model corrected distances), and population-based distances which use allele frequency data (such as Fst):
