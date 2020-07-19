@@ -42,8 +42,6 @@ def main():
 	params = parseArgs()
 
 	print("Starting...\n")
-	geoDF = gpd.read_file(params.shapefile)
-	#print(geoDF)
 
 	if params.network:
 		print("Reading network from saved file: ", params.network)
@@ -282,6 +280,28 @@ def main():
 		R = fitLeastSquaresDistances(gen, inc.astype(int), params.iterative, params.out,params.weight)
 		print("Fitted least-squares distances:")
 		print(R)
+	
+	#Now, annotate originate geoDF with dissolved reach IDs
+	#also, need to collect up the stream tree fitted D to each dissolved reach
+	#finally, could add residuals of fitting D vs LENGTH_KM?
+	#maybe include logDxlength, DxlogLength, logDxlogLength as well?
+	
+	#get list of all REACHIDs to extract from geoDF
+	edge_data = nx.get_edge_attributes(K,'REACH_ID')
+	reach_ids = sum(edge_data.values(), [])
+	#print(reach_ids)
+	
+	#read in original shapefile as geoDF and subset it
+	print("Extracting attributes from original dataframe...")
+	geoDF = gpd.read_file(params.shapefile)
+	dat = list(edge_data.values())
+	mask = geoDF['REACH_ID'].isin(reach_ids)
+	maskDF = geoDF.loc[mask]
+	del geoDF
+	
+	#annotate 
+	maskDF.plot()
+	plt.show()
 
 
 #function to calculate great circle distances
