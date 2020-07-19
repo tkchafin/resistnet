@@ -220,7 +220,7 @@ and uses a least-squares method to fit distances to stream segments.")
 			GENDIST		: Only calculate genetic distance matrix
 			STREAMDIST	: Only compute pairwise stream distances
 			DISTANCES	: Only compute GENDIST + STREAMDIST
-			IBD		: xxxGENDIST + STREAMDIST + Mantel test
+			IBD		: GENDIST + STREAMDIST + Mantel test
 			STREAMTREE	: GENDIST + STREAMDIST + fit StreamTree model
 			xxx = NOT YET IMPLEMENTED
 		-p,--pop		: Pool individuals based on column 2 of input file

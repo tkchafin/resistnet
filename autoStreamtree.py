@@ -45,11 +45,11 @@ def main():
 
 	if params.network:
 		print("Reading network from saved file: ", params.network)
-		G=nx.read_gpickle(params.network).to_undirected()
+		G=nx.OrderedGraph(nx.read_gpickle(params.network).to_undirected())
 	else:
 		print("Building network from shapefile:",params.shapefile)
 		print("WARNING: This can take a while with very large files! If taking too long, try clipping your shapefile to a smaller area.")
-		G=nx.read_shp(params.shapefile, simplify=False).to_undirected()
+		G=nx.OrderedGraph(nx.read_shp(params.shapefile, simplify=False).to_undirected())
 
 	#if reading populations by 2nd column
 	popmap = SortedDict()
@@ -105,12 +105,12 @@ def main():
 	print("Found",len(points.columns)-4,"loci.\n")
 	#points["node"]=point_coords
 
-	print("Read individuals in this order:")
+	print("Read",str(len(point_coords.keys())),"individuals in this order:")
 	print(list(point_coords.keys()))
 	print()
 	
 	if params.pop or params.geopop:
-		print("Read populations in this order:")
+		print("Read",str(len(popmap.keys())),"populations in this order:")
 		print(list(popmap.keys()))
 		print()
 	
@@ -133,7 +133,7 @@ def main():
 			pop_temp=clust.getClusterCentroid(point_coords, popmap, params.out)
 			
 			#now, snap pop_coords to nodes
-			pop_coords = dict()
+			pop_coords = SortedDict()
 			for p in pop_temp:
 				node = snapToNode(G, pop_temp[p])
 				snapDists[p] = great_circle(node[0], node[1], pop_temp[p][0], pop_temp[p][1])
@@ -146,7 +146,7 @@ def main():
 			#note in the case of --geopop the centroid is the joint snapped-to location
 			
 			#now, snap pop_coords to nodes
-			pop_coords = dict()
+			pop_coords = SortedDict()
 			if params.geopop:
 				pop_coords = pop_temp
 			else:
@@ -154,6 +154,10 @@ def main():
 					node = snapToNode(G, pop_temp[p])
 					snapDists[p] = great_circle(node[0], node[1], pop_temp[p][0], pop_temp[p][1])
 					pop_coords[p]=node
+		#write popmap to file 
+		flat = clust.flattenPopmap(popmap)
+		temp = pd.DataFrame(popmap, columns=['IND_ID', 'POP_ID'])
+		temp.to_csv((str(params.out) + ".popmap.txt"), sep="\t")
 		
 		#plot grouped samples
 		#TODO: for --geopop maybe plot original coordinates with "snap" as centroid here??
@@ -173,24 +177,36 @@ def main():
 	#traverse graph to fill: streamdists, gendists, and incidence matrix
 	#calculate genetic distance matrix -- right now that is a JC69-corrected Hamming distance
 	#D
-	gen = None
-	pop_gen = None
 	if params.dist in ["PDIST", "TN84", "TN93", "K2P", "JC69"]:
 		gen = gendist.getGenMat(params.dist, point_coords, seqs, ploidy=params.ploidy, het=params.het, loc_agg=params.loc_agg)
 		print("Genetic distances:")
 		np.set_printoptions(precision=3)
 		print(gen, "\n")
+		
+		#write individual genetic distances to file
+		ind_genDF = pd.DataFrame(gen, columns=list(point_coords.keys()), index=list(point_coords.keys()))
+		ind_genDF.to_csv((str(params.out) + ".indGenDistMat.txt"), sep="\t", index=True)
+		del ind_genDF
+		
 		if params.pop or params.geopop or params.clusterpop:
 			print("Aggregating pairwise population genetic distances from individual distances using:",params.pop_agg)
 	else:
 		if not params.pop and not params.geopop:
 			print("ERROR: Distance metric",params.dist,"not possible without population data.")
 			sys.exit(1)
-	if params.pop or params.geopop:
+	#calculate population gendistmat
+	if params.pop or params.geopop or params.clusterpop:
 		pop_gen = gendist.getPopGenMat(params.dist, gen, popmap, point_coords, seqs, pop_agg=params.pop_agg, loc_agg=params.loc_agg, ploidy=params.ploidy, global_het=params.global_het)
 		print("Population genetic distances:")
 		np.set_printoptions(precision=3)
 		print(pop_gen, "\n")
+		
+		#write population genetic distances to file
+		#print(list(pop_coords.keys()))
+		pop_genDF = pd.DataFrame(pop_gen, columns=list(pop_coords.keys()), index=list(pop_coords.keys()))
+		pop_genDF.to_csv((str(params.out) + ".popGenDistMat.txt"), sep="\t", index=True)
+		del pop_genDF
+		
 	if params.run == "GENDIST":
 		sys.exit(0)
 
@@ -257,17 +273,23 @@ def main():
 	#calculate incidence matrix X, which takes the form:
 	#nrows = rows in column vector form of D
 	#ncols = number of collapsed branches in stream network K
-	if params.run in ["STREAMDIST", "DISTANCES", "STREAMTREE"]:
+	if params.run in ["STREAMDIST", "DISTANCES", "STREAMTREE", "IBD", "ALL"]:
 		if params.pop or params.geopop or params.clusterpop:
 			points=pop_coords
 		else:
 			points=point_coords
+		print(points)
+		print(point_coords)
 		(sdist, inc) = getStreamMats(points, K)
 		print("Stream distances:")
 		print(sdist)
+	
+		#HERE: Implement the IBD calculations and plots
 		
 	
-	if params.run in ["STREAMTREE"]:
+	if params.run in ["STREAMTREE", "ALL"]:
+		if params.pop or params.geopop or params.clusterpop:
+			gen=pop_gen
 		print("Incidence matrix:")
 		print(inc)
 		ofh=params.out+".incidenceMatrix.txt"
@@ -288,19 +310,34 @@ def main():
 	
 	#get list of all REACHIDs to extract from geoDF
 	edge_data = nx.get_edge_attributes(K,'REACH_ID')
-	reach_ids = sum(edge_data.values(), [])
-	#print(reach_ids)
+	reach_to_edge = dict()
+	i=0
+	for e in edge_data:
+		for r in edge_data[e]:
+			reach_to_edge[r] = str(i)
+		i+=1
+	del edge_data
+	
+	#save reach_to_edge table to file
+	r2eDF = pd.DataFrame(list(reach_to_edge.items()), columns=['REACH_ID','EDGE_ID'])
+	r2eDF.to_csv((str(params.out)+".reachToEdgeTable.txt"), sep="\t")
 	
 	#read in original shapefile as geoDF and subset it
 	print("Extracting attributes from original dataframe...")
 	geoDF = gpd.read_file(params.shapefile)
-	dat = list(edge_data.values())
-	mask = geoDF['REACH_ID'].isin(reach_ids)
-	maskDF = geoDF.loc[mask]
-	del geoDF
+	mask = geoDF['REACH_ID'].isin(list(reach_to_edge.keys()))
+	temp = geoDF.loc[mask]
+	del mask
+	del reach_to_edge
+	
+	#join EDGE_ID to geoDF
+	geoDF = temp.merge(r2eDF, on='REACH_ID')
+	del temp
+	del r2eDF
 	
 	#annotate 
-	maskDF.plot()
+	geoDF.plot(column="EDGE_ID", cmap = "prism")
+	plt.title("Stream network colored by EDGE_ID")
 	plt.show()
 
 
@@ -484,7 +521,7 @@ def path_edge_attributes(graph, path, attribute):
 
 #find and extract paths between points from a graph
 def pathSubgraph(graph, nodes, method):
-	k=nx.Graph()
+	k=nx.OrderedGraph()
 	for p1, p2 in itertools.combinations(nodes.values(),2):
 		try:
 			#print(p1)
