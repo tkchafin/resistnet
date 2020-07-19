@@ -13,7 +13,7 @@ class parseArgs():
 			"weight=", "out=", "method=", "plots", "plot","perm=", "phased", "median",
 			"diploid", "geopop", "geopops", "global_het", "haploid", "loc_agg=", 
 			"pop_agg=", "sdist_agg=", "clusterpop", "epsilon=", "min_samples=", "sclusterpop",
-			"network="])
+			"network=", "overwrite"])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -24,6 +24,7 @@ class parseArgs():
 		self.run = "ALL"
 		self.network = None
 		self.pop = False
+		self.overwrite = False
 		self.geopop = False
 		self.clusterpop=False
 		self.sclusterpop=False
@@ -118,6 +119,8 @@ class parseArgs():
 				self.out = arg
 			elif opt == "stream_fit":
 				self.stream_fit = True
+			elif opt == "overwrite":
+				self.overwrite=True
 			elif opt == "perm":
 				self.permutations = int(arg)
 			elif opt == "method":
@@ -210,6 +213,7 @@ and uses a least-squares method to fit distances to stream segments.")
 		-o,--out	: Output prefix [default="out"]
 		-n,--network	: Provide an already optimized network output from a previous run
 			This will be the $out.network file written by autoStreamTree
+		--overwrite	: Overwrite an input network (Only relevant with --network)
 		-h,--help	: Displays help menu
 		-r,--run	: Run which steps? Options: [all, gendist, ibd, streamdist, streamtree]
 			ALL			: Run all steps
@@ -218,7 +222,6 @@ and uses a least-squares method to fit distances to stream segments.")
 			DISTANCES	: Only compute GENDIST + STREAMDIST
 			IBD		: xxxGENDIST + STREAMDIST + Mantel test
 			STREAMTREE	: GENDIST + STREAMDIST + fit StreamTree model
-			REACHFIT	: xxxSTREAMTREE + regress reach distances x length
 			xxx = NOT YET IMPLEMENTED
 		-p,--pop		: Pool individuals based on column 2 of input file
 			NOTE: The location will be taken as the centroid among individual samples
