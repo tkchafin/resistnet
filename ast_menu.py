@@ -174,10 +174,7 @@ class parseArgs():
 				sys.exit(1)
 
 		###DIE FOR OPTIONS NOT YET IMPLEMENTED
-		if self.genmat:
-			print("Sorry: Option --genmat not yet implemented.")
-			sys.exit(0)
-		if self.run in ["IBD", "EXHAUSTIVE", "REACHFIT"]:
+		if self.run in ["EXHAUSTIVE", "REACHFIT"]:
 			print("Sorry: Option --dist",self.run," not yet implemented.")
 			sys.exit(0)
 		if self.sclusterpop:
@@ -242,7 +239,6 @@ and uses a least-squares method to fit distances to stream segments.")
 			  GSTPRIME		: Meirmans & Hedrick (2011) corrected G'st [=G''st]
 			  LINFST		: [default] Rousset's (1997) Fst [=Fst/(1-Fst)]
 			  JOST			: Jost's (2008) D
-			  LINJOST		: 1/1-D, where D=Jost's (2008) D
 			  NEI72			: Nei's (1972) standard genetic distance 
 			  NEI83			: Nei and Chesser (1983) Da
 			  EUCLID		: Euclidean distance
@@ -252,9 +248,9 @@ and uses a least-squares method to fit distances to stream segments.")
 			  --NOTE: Multiple loci for PDIST, JC69, K2P, and EUCLID distances
 		  	        will be reported using the method defined in --loc_agg
 			  --NOTE: TN84 will use empirical base frequencies
-		--genmat	: xxxSkip calculation and use the provided labeled .tsv matrix
+		--genmat	: Skip calculation and use the provided labeled .tsv matrix
 		--het		: [Boolean] Count partial differences [e.g. ind1=T, ind2=W]
-		--snp		: [Boolean] Data represent SNPs
+		--snp		: [Boolean] Data represent concatenated SNPs
 		--msat		: xxx[Boolean] Data represent msat alleles [not yet implemented]
 		--global_het	: Estimate Ht using global frequencies (default is averaged over pops) 
 	

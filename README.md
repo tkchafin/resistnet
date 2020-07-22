@@ -73,6 +73,8 @@ Points will be 'snapped' to nodes in the stream network. autoStreamTree will out
 
 ### Genetic distance models 
 
+Built-in genetic distance calculations are currently in beta, meaning they are provided conditionally and still require more extensive external testing. They appear to be by-and-large functioning as written, but I would like to have a much more comprehensive test of whether or not my implementation of each statistic produced identical (or very similar) results to those of other packages such as Arlequin. If you use autoStreamTree for your research and have the ability to directly compare your genetic distance matrix with those of other packages, please do so and feel free to let me know how they compare. Please note that I also offer the ability to directly import a genetic distance matrix that has been externally calculated, skipping this step altogether. 
+
 Currently I provide options for individual-based distances (p-distance and various substitution-model corrected distances), and population-based distances which use allele frequency data (such as Fst):
 
 ```
@@ -98,6 +100,7 @@ Currently I provide options for individual-based distances (p-distance and vario
 ```
 
 Optionally, the user can also opt to aggregate individual-based distance measures (when using a priori population assignments or the --geopop option). This can be provided using the --pop_agg argument, with any of the following options available:
+
 ```
 	Aggregation options: 
 		--pop_agg	: Define aggregator function for certain genetic distances w/ --pops:
@@ -111,7 +114,7 @@ Optionally, the user can also opt to aggregate individual-based distance measure
 			  MAX		: Use maximum distance
 ```
 
-For datasets containing multiple non-contacenated loci, note that individual-based distances (e.g. PDIST or JC69) will also need to be aggregated among loci within each pairwise calculation. Any of the above options can again be used here, provided using the --loc_agg argument.
+For datasets containing multiple non-concatenated loci, note that individual-based distances (e.g. PDIST or JC69) will also need to be aggregated among loci within each pairwise calculation. Any of the above options can again be used here, provided using the --loc_agg argument. 
 
 ### Defining populations
 There are currently three ways in which you can define populations for population-wise analysis. The first (specified using --pop) assumes that the 2nd column in the input file contains population identifiers. These can take any form (e.g., integer or string). The second (--geopop) will group any samples into populations which "snap" to the same stream node (see below). 

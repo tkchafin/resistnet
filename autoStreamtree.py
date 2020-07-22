@@ -61,13 +61,10 @@ def main():
 	points = pd.read_csv(params.geodb, sep="\t", header="infer")
 	point_coords=SortedDict()
 	point_labels=dict()
-	numLoci=len(points.columns)-4
 	snapDists=dict()
 	seqs = list()
 	verb=True
-	for loc in range(0,numLoci):
-		temp = dict()
-		seqs.append(temp)
+	first=True
 	for idx, row in points.iterrows():
 		name = None
 		data = None
@@ -90,8 +87,15 @@ def main():
 		point_coords[name] = data
 		seq_data = parseLoci(params, list(row[4:]), verbose=verb)
 		verb=False
-		for i, loc in enumerate(seq_data):
-			seqs[i][name] = loc
+		if first:
+			for i, loc in enumerate(seq_data):
+				temp = dict()
+				seqs.append(temp)
+				seqs[i][name]=loc
+			numLoci=len(seq_data)
+		else:
+			for i, loc in enumerate(seq_data):
+				seqs[i][name] = loc
 		if params.geopop:
 			if point_coords[name] not in popmap:
 				l = [name]
@@ -104,17 +108,18 @@ def main():
 				popmap[row[1]] = l
 			else:
 				popmap[row[1]].append(name)
+		first=False
 
 	print("Found",len(points.columns)-4,"loci.\n")
 	#points["node"]=point_coords
 
-	print("Read",str(len(point_coords.keys())),"individuals in this order:")
-	print(list(point_coords.keys()))
+	print("Read",str(len(point_coords.keys())),"individuals.")
+	#print(list(point_coords.keys()))
 	print()
 	
 	if params.pop or params.geopop:
-		print("Read",str(len(popmap.keys())),"populations in this order:")
-		print(list(popmap.keys()))
+		print("Read",str(len(popmap.keys())),"populations.")
+		#print(list(popmap.keys()))
 		print()
 	
 	"""
@@ -180,39 +185,114 @@ def main():
 	#traverse graph to fill: streamdists, gendists, and incidence matrix
 	#calculate genetic distance matrix -- right now that is a JC69-corrected Hamming distance
 	#D
-	gen=None
-	if params.dist in ["PDIST", "TN84", "TN93", "K2P", "JC69"]:
-		gen = gendist.getGenMat(params.dist, point_coords, seqs, ploidy=params.ploidy, het=params.het, loc_agg=params.loc_agg)
-		print("Genetic distances:")
-		np.set_printoptions(precision=3)
-		print(gen, "\n")
+	if params.run != "STREAMDIST":
+		gen=None
+		print("\nCalculating genetic distances...")
+		if not params.genmat:
+			if params.dist in ["PDIST", "TN84", "TN93", "K2P", "JC69"]:
+				pri
+				gen = gendist.getGenMat(params.dist, point_coords, seqs, ploidy=params.ploidy, het=params.het, loc_agg=params.loc_agg)
+				print("Genetic distances:")
+				np.set_printoptions(precision=3)
+				print(gen, "\n")
+				
+				#write individual genetic distances to file
+				ind_genDF = pd.DataFrame(gen, columns=list(point_coords.keys()), index=list(point_coords.keys()))
+				ind_genDF.to_csv((str(params.out) + ".indGenDistMat.txt"), sep="\t", index=True)
+				del ind_genDF
+				
+				if params.pop or params.geopop or params.clusterpop:
+					print("Aggregating pairwise population genetic distances from individual distances using:",params.pop_agg)
+			else:
+				if not params.pop and not params.geopop:
+					print("ERROR: Distance metric",params.dist,"not possible without population data.")
+					sys.exit(1)
+			#calculate population gendistmat
+			if params.pop or params.geopop or params.clusterpop:
+				pop_gen = gendist.getPopGenMat(params.dist, gen, popmap, point_coords, seqs, pop_agg=params.pop_agg, loc_agg=params.loc_agg, ploidy=params.ploidy, global_het=params.global_het)
+				print("Population genetic distances:")
+				np.set_printoptions(precision=3)
+				print(pop_gen, "\n")
+				
+				#write population genetic distances to file
+				#print(list(pop_coords.keys()))
+				pop_genDF = pd.DataFrame(pop_gen, columns=list(pop_coords.keys()), index=list(pop_coords.keys()))
+				pop_genDF.to_csv((str(params.out) + ".popGenDistMat.txt"), sep="\t", index=True)
+				del pop_genDF
+		else:
+			print("\nReading genetic distances from provided matrix:", params.genmat)
+			inmat = pd.read_csv(params.genmat, header=0, index_col=0, sep="\t")
+			if (set(inmat.columns) != set(inmat.index.values)):
+				print("Oh no! Input matrix columns and/ or rows don't appear to be labelled. Please provide an input matrix with column and row names!")
+				sys.exit(1)
+			else:
+				agg=False
+				#first check if it fits whatever the user input was (i.e. --pop)
+				if params.pop:
+					if len(inmat.columns) != len(popmap.keys()):
+						print("Found",str(len(inmat.columns)), "columns in provided matrix. This doesn't match number of populations from popmap.")
+						if (len(inmat.columns)) != len(point_coords):
+							print("Doesn't match number of individuals either! Please check your matrix format.")
+							sys.exit(1)
+						else:
+							print("Assuming input matrix has individual distances... Aggregating using the following method (--pop_agg):", str(params.pop_agg))
+							agg=True
+					else:
+						#re-order using pop orders
+						inmat = inmat.reindex(list(popmap.keys()))
+						inmat = inmat[list(popmap.keys())]
+						pop_gen = inmat.to_numpy()
+						del(inmat)
+				elif params.geopop or params.clusterpop:
+					if (len(inmat.columns)) != len(point_coords):
+						print("Found",str(len(inmat.columns)), "columns in provided matrix. This doesn't match number of individuals.")
+						print("When using --geopop or --clusterpop, the provided matrix must represent individual-level distances.")
+						sys.exit(1)
+					else:
+						#re-order using pop orders
+						inmat = inmat.reindex(list(point_coords.keys()))
+						inmat = inmat[list(point_coords.keys())]
+						gen = inmat.to_numpy()
+						agg = True
+						del(inmat)
+				else:
+					if (len(inmat.columns)) != len(point_coords):
+						print("Found",str(len(inmat.columns)), "columns in provided matrix. This doesn't match number of individuals.")
+						sys.exit(1)
+					else:
+						#re-order using pop orders
+						inmat = inmat.reindex(list(point_coords.keys()))
+						inmat = inmat[list(point_coords.keys())]
+						gen = inmat.to_numpy()
+						del(inmat)
+				#if --geopop or --clusterpop, it should be an ind matrix
+				#if so, need to aggregate according to --pop_agg
+				#print(pop_gen)
+				if agg:
+					print("Aggregating user-provided individual-level distance matrix using:",params.pop_agg)
+					pop_gen = gendist.getPopGenMat("PDIST", gen, popmap, point_coords, seqs, pop_agg=params.pop_agg, loc_agg=params.loc_agg, ploidy=params.ploidy, global_het=params.global_het)
 		
-		#write individual genetic distances to file
-		ind_genDF = pd.DataFrame(gen, columns=list(point_coords.keys()), index=list(point_coords.keys()))
-		ind_genDF.to_csv((str(params.out) + ".indGenDistMat.txt"), sep="\t", index=True)
-		del ind_genDF
-		
-		if params.pop or params.geopop or params.clusterpop:
-			print("Aggregating pairwise population genetic distances from individual distances using:",params.pop_agg)
-	else:
-		if not params.pop and not params.geopop:
-			print("ERROR: Distance metric",params.dist,"not possible without population data.")
-			sys.exit(1)
-	#calculate population gendistmat
-	if params.pop or params.geopop or params.clusterpop:
-		pop_gen = gendist.getPopGenMat(params.dist, gen, popmap, point_coords, seqs, pop_agg=params.pop_agg, loc_agg=params.loc_agg, ploidy=params.ploidy, global_het=params.global_het)
-		print("Population genetic distances:")
-		np.set_printoptions(precision=3)
-		print(pop_gen, "\n")
-		
-		#write population genetic distances to file
-		#print(list(pop_coords.keys()))
-		pop_genDF = pd.DataFrame(pop_gen, columns=list(pop_coords.keys()), index=list(pop_coords.keys()))
-		pop_genDF.to_csv((str(params.out) + ".popGenDistMat.txt"), sep="\t", index=True)
-		del pop_genDF
-		
-	if params.run == "GENDIST":
-		sys.exit(0)
+		if params.run == "GENDIST":
+			print("Genetic distances:")
+			np.set_printoptions(precision=3)
+			print(gen, "\n")
+			
+			#write individual genetic distances to file
+			ind_genDF = pd.DataFrame(gen, columns=list(point_coords.keys()), index=list(point_coords.keys()))
+			ind_genDF.to_csv((str(params.out) + ".indGenDistMat.txt"), sep="\t", index=True)
+			
+			if params.pop or params.geopop or params.clusterpop:
+				pop_gen = gendist.getPopGenMat(params.dist, gen, popmap, point_coords, seqs, pop_agg=params.pop_agg, loc_agg=params.loc_agg, ploidy=params.ploidy, global_het=params.global_het)
+				print("Population genetic distances:")
+				np.set_printoptions(precision=3)
+				print(pop_gen, "\n")
+				
+				#write population genetic distances to file
+				#print(list(pop_coords.keys()))
+				pop_genDF = pd.DataFrame(pop_gen, columns=list(pop_coords.keys()), index=list(pop_coords.keys()))
+				pop_genDF.to_csv((str(params.out) + ".popGenDistMat.txt"), sep="\t", index=True)
+				del pop_genDF
+			sys.exit(0)
 
 	#for ia,ib in itertools.combinations(range(0,len(popmap)),2):
 	#	print(popmap.keys()[ia])
@@ -288,6 +368,12 @@ def main():
 		(sdist, inc) = getStreamMats(points, K)
 		print("\nStream distances:")
 		print(sdist)
+		sDF = pd.DataFrame(sdist, columns=list(sdist.keys()), index=list(sdist.keys()))
+		sDF.to_csv((str(params.out) + ".streamDistMat.txt"), sep="\t", index=True)
+		del sDF
+		if params.run == "STREAMDIST":
+			sys.exit(0)
+		
 		
 		#if user requested testing isolation-by-distance:
 		if params.run in ['ALL', 'IBD']:

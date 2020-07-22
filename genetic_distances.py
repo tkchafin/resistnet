@@ -76,7 +76,7 @@ def getPopGenMat(dist, indmat, popmap, dat, seqs, pop_agg="ARITH", loc_agg="ARIT
 					print("ERROR: FST estimates require phased data.")
 					sys.exit(1)
 				if len(seqs1) == 0 or len(seqs2) == 0:
-					print("WARNING: Skipping locus "+str(loc)+" in comparison of populations "+str(ia)+" and "+str(ib)+": Not enough data.")
+					#print("WARNING: Skipping locus "+str(loc)+" in comparison of populations "+str(ia)+" and "+str(ib)+": Not enough data.")
 					continue
 				(n, d) = twoPopWeirCockerhamFst(seqs1, seqs2)
 				num.append(n)
