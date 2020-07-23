@@ -144,7 +144,7 @@ The reduced sub-network will be plotted for you in a file called $OUT.subGraph.p
 ![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.subGraph.png)
 
 Here, the total cumulative stream length (in km) is plotted along edges (NOTE: Any natural curvature in the river is not preserved in this plot), with sample sites as blue dots and junctions as black dots. A geographically accurate representation, coloring individual streams to designate different dissolved edges, will be provided as $out.streamsByEdgeID.pdf: 
-![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.networksByEdgeID.png)
+![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.networkByEdgeID.png)
 
 After fitting genetic distances, autoStreamTree will create several other outputs. First, a table called $out.reachToEdgeTable.txt will give a tab-delimited map of how REACH_ID attributes were dissolved into contiguous edges. Second, a tabular and graphical representation of how fitted pairwise distances compare to the raw calculates (or user-provided) pairwise distances: $out.obsVersusFittedD.txt and $out.obsVersusFittedD.pdf
 ![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.obsByFittedD.png)
