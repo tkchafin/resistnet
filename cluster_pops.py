@@ -39,11 +39,13 @@ def dbscan_cluster(coords, epsilon, min_samples, out=None):
 		i+=1
 	return(popmap)
 
-#function to convert SortedDict of coordinates to a numpy matrix 
+#function to convert SortedDict of coordinates to a data frame
 def coordsToMatrix(coords):
 	return(pd.DataFrame([[coords[k][0], coords[k][1]] for k in coords], columns=["long", "lat"]).to_numpy())
 
-
+def coordsToDataFrame(coords):
+	return(pd.DataFrame([[coords[k][0], coords[k][1]] for k in coords], columns=["long", "lat"]))
+	
 #function to find the centroid of a set of points
 #requires a SortedDict of coordinates and a SortedDict giving population IDs
 """Coords:

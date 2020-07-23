@@ -454,7 +454,11 @@ def main():
 		del r2eDF
 		
 		#plot by edge ID
-		geoDF.plot(column="EDGE_ID", cmap = "prism")
+		base = geoDF.plot(column="EDGE_ID", cmap = "prism")
+		coords = clust.coordsToDataFrame(points)
+		geo_coords = gpd.GeoDataFrame(coords, geometry=gpd.points_from_xy(coords.long, coords.lat))
+		geo_coords.plot(ax=base, marker='o', color='black', markersize=10, zorder=10)
+		
 		plt.title("Stream network colored by EDGE_ID")
 		plt.savefig((str(params.out)+".streamsByEdgeID.pdf"))
 	
@@ -472,7 +476,7 @@ def main():
 	
 		#output a final annotated stream network layer
 
-print("\nDone!\n")
+	print("\nDone!\n")
 
 #returns r2
 def r2(x, y):
