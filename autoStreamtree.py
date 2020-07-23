@@ -463,18 +463,17 @@ def main():
 		plt.savefig((str(params.out)+".streamsByEdgeID.pdf"))
 	
 		#add in fitted distances & plot
-		print("\nAdding StreamTree fitted distances to original shapefile...")
+		print("\nPlotting StreamTree fitted distances and writing new shapefile...")
 		fittedD = pd.DataFrame({'EDGE_ID':list(edges), 'fittedD':R})
 		geoDF['EDGE_ID'] = geoDF['EDGE_ID'].astype(int)
 		geoDF = geoDF.merge(fittedD, on='EDGE_ID')
 		geoDF.plot(column="fittedD", cmap = "RdYlGn_r", legend=True)
 		plt.title("Stream network colored by StreamTree fitted distances")
 		plt.savefig((str(params.out)+".streamsByFittedD.pdf"))
-		
-	
-		#plot edge length by fitted D?
 	
 		#output a final annotated stream network layer
+		geoDF.to_csv((str(params.out)+".streamTree.txt"), sep="\t")
+		geoDF.to_file((str(params.out)+".streamTree.shp"))
 
 	print("\nDone!\n")
 
