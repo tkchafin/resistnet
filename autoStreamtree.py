@@ -52,7 +52,7 @@ def main():
 	else:
 		print("Building network from shapefile:",params.shapefile)
 		print("WARNING: This can take a while with very large files! If taking too long, try clipping your shapefile to a smaller area.")
-		G=nx.OrderedGraph(nx.read_shp(params.shapefile, simplify=False).to_undirected())
+		G=nx.OrderedGraph(nx.read_shp(params.shapefile, simplify=False, strict=True).to_undirected())
 
 	#if reading populations by 2nd column
 	popmap = SortedDict()
@@ -347,8 +347,8 @@ def main():
 		else:
 			print("NOTE: Not over-writing existing network. To change this, use --overwrite")
 
-	network_plot=str(params.out) + ".subGraph.pdf"
-	plt.savefig(network_plot)
+		network_plot=str(params.out) + ".subGraph.pdf"
+		plt.savefig(network_plot)
 	
 	
 	#sys.exit()
@@ -368,7 +368,7 @@ def main():
 		(sdist, inc) = getStreamMats(points, K)
 		print("\nStream distances:")
 		print(sdist)
-		sDF = pd.DataFrame(sdist, columns=list(sdist.keys()), index=list(sdist.keys()))
+		sDF = pd.DataFrame(sdist, columns=list(points.keys()), index=list(points.keys()))
 		sDF.to_csv((str(params.out) + ".streamDistMat.txt"), sep="\t", index=True)
 		del sDF
 		if params.run == "STREAMDIST":
@@ -408,52 +408,71 @@ def main():
 		print("\nFitted least-squares distances:")
 		print(R)
 		
-		#check observed versus fitten distances:
+		#check observed versus fitted distances:
 		pred=getFittedD(points, gen, inc, R)
 		print("\nComparing observed versus predicted genetic distances:")
 		print(pred)
 		pred.to_csv((str(params.out)+".obsVersusFittedD.txt"), sep="\t")
 		sns.jointplot("observed_D", "predicted_D", data=pred, kind="reg", stat_func=r2)
 		plt.savefig((str(params.out)+".obsVersusFittedD.pdf"))
+		del pred
 		#plt.show()
 		
 	
-	#Now, annotate originate geoDF with dissolved reach IDs
-	#also, need to collect up the stream tree fitted D to each dissolved reach
-	#finally, could add residuals of fitting D vs LENGTH_KM?
-	#maybe include logDxlength, DxlogLength, logDxlogLength as well?
+		#Now, annotate originate geoDF with dissolved reach IDs
+		#also, need to collect up the stream tree fitted D to each dissolved reach
+		#finally, could add residuals of fitting D vs LENGTH_KM?
+		#maybe include logDxlength, DxlogLength, logDxlogLength as well?
+		
+		#get list of all REACHIDs to extract from geoDF
+		edge_data = nx.get_edge_attributes(K,'REACH_ID')
+		reach_to_edge = dict()
+		i=0
+		edges = list()
+		for e in edge_data:
+			for r in edge_data[e]:
+				reach_to_edge[r] = str(i)
+			edges.append(i)
+			i+=1
+		del edge_data
+		
+		#save reach_to_edge table to file
+		r2eDF = pd.DataFrame(list(reach_to_edge.items()), columns=['REACH_ID','EDGE_ID'])
+		r2eDF.to_csv((str(params.out)+".reachToEdgeTable.txt"), sep="\t")
+		
+		#read in original shapefile as geoDF and subset it
+		print("\nExtracting attributes from original dataframe...")
+		geoDF = gpd.read_file(params.shapefile)
+		mask = geoDF['REACH_ID'].isin(list(reach_to_edge.keys()))
+		temp = geoDF.loc[mask]
+		del mask
+		del reach_to_edge
+		
+		#join EDGE_ID to geoDF
+		geoDF = temp.merge(r2eDF, on='REACH_ID')
+		del temp
+		del r2eDF
+		
+		#plot by edge ID
+		geoDF.plot(column="EDGE_ID", cmap = "prism")
+		plt.title("Stream network colored by EDGE_ID")
+		plt.savefig((str(params.out)+".streamsByEdgeID.pdf"))
 	
-	#get list of all REACHIDs to extract from geoDF
-	edge_data = nx.get_edge_attributes(K,'REACH_ID')
-	reach_to_edge = dict()
-	i=0
-	for e in edge_data:
-		for r in edge_data[e]:
-			reach_to_edge[r] = str(i)
-		i+=1
-	del edge_data
+		#add in fitted distances & plot
+		print("\nAdding StreamTree fitted distances to original shapefile...")
+		fittedD = pd.DataFrame({'EDGE_ID':list(edges), 'fittedD':R})
+		geoDF['EDGE_ID'] = geoDF['EDGE_ID'].astype(int)
+		geoDF = geoDF.merge(fittedD, on='EDGE_ID')
+		geoDF.plot(column="fittedD", cmap = "RdYlGn_r", legend=True)
+		plt.title("Stream network colored by StreamTree fitted distances")
+		plt.savefig((str(params.out)+".streamsByFittedD.pdf"))
+		
 	
-	#save reach_to_edge table to file
-	r2eDF = pd.DataFrame(list(reach_to_edge.items()), columns=['REACH_ID','EDGE_ID'])
-	r2eDF.to_csv((str(params.out)+".reachToEdgeTable.txt"), sep="\t")
+		#plot edge length by fitted D?
 	
-	#read in original shapefile as geoDF and subset it
-	print("\nExtracting attributes from original dataframe...")
-	geoDF = gpd.read_file(params.shapefile)
-	mask = geoDF['REACH_ID'].isin(list(reach_to_edge.keys()))
-	temp = geoDF.loc[mask]
-	del mask
-	del reach_to_edge
-	
-	#join EDGE_ID to geoDF
-	geoDF = temp.merge(r2eDF, on='REACH_ID')
-	del temp
-	del r2eDF
-	
-	#annotate 
-	geoDF.plot(column="EDGE_ID", cmap = "prism")
-	plt.title("Stream network colored by EDGE_ID")
-	plt.savefig((str(params.out)+".streamsByEdgeID.pdf"))
+		#output a final annotated stream network layer
+
+print("\nDone!\n")
 
 #returns r2
 def r2(x, y):
