@@ -168,3 +168,33 @@ If for some reason you cannot use the HydroRIVERS dataset, you will need to do s
 
 The default $out.streamdByFittedD plot may not be exactly what you wanted. To prevent cluttering the help menu of the main program too much, we've provided a separate script for loading up autoStreamTree outputs to re-make the plot, which has some added options for customization: scripts/plotStreamTree.py
 
+'''
+$ python3 ./scripts/plotStreamTree -h
+plotStreamTree.py
+
+Author: Tyler K Chafin, University of Arkansas
+Contact: tkchafin@uark.edu
+Description: Script for re-plotting StreamTree results after running autoStreamTree
+
+		-p,--prefix	: Prefix for autoStreamTree output
+		-m,--min	: Minimum genetic distance 
+		-M,--max	: Maximum genetic distance
+		-c,--cmap	: Colormap (any valit matplotlib cmap value)
+			see: https://matplotlib.org/3.1.1/gallery/color/colormap_reference.html
+		-o,--out	: Output prefix (if not overwriting original)
+		-h,--help	: Displays this help menu)
+'''
+
+For example, to re-plot values with a distance ceiling of 0.2 and a viridis color scale:
+'''
+python3 ./scripts/plotStreamTree.py -p out2 -m 0.0 -M 0.2 -c "viridis"
+'''
+
+### Clustering populations using any distance matrix
+
+For example, if you wanted to cluster individuals using their stream distances, I've provided a script called clusterPopsDB.py which will use a DBSCAN clustering algorithm to output a tab-delimited population map given any arbitrary distance matrix:
+'''
+$ python3 ./scripts/clusterPopsDB.py -h
+'''
+
+

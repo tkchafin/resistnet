@@ -306,12 +306,12 @@ def main():
 			points=point_coords
 		#first pass grabs subgraph from master shapefile graph
 		print("\nExtracting full subgraph...")
-		ktemp=pathSubgraph(G, points, extractFullSubgraph)
+		ktemp=pathSubgraph(G, points, extractFullSubgraph, params.reachid_col, params.length_col)
 		del G
 
 		#second pass to simplify subgraph and collapse redundant nodes
 		print("\nMerging redundant paths...\n")
-		K=pathSubgraph(ktemp, points, extractMinimalSubgraph)
+		K=pathSubgraph(ktemp, points, extractMinimalSubgraph, params.reachid_col, params.length_col)
 		del ktemp
 		
 		#grab real coordinates as node positions for plotting
@@ -331,7 +331,7 @@ def main():
 		nx.draw_networkx(K, pos, with_labels=False, node_color=color_map, node_size=50)
 		
 		#get LENGTH_KM attributes for labelling edges
-		edge_labels = nx.get_edge_attributes(K,'LENGTH_KM')
+		edge_labels = nx.get_edge_attributes(K,params.length_col)
 		for e in edge_labels:
 			edge_labels[e] = "{:.2f}".format(edge_labels[e])
 		
@@ -365,7 +365,7 @@ def main():
 			points=point_coords
 
 		#calculate stream distances and incidence matrix
-		(sdist, inc) = getStreamMats(points, K)
+		(sdist, inc) = getStreamMats(points, K, params.length_col)
 		print("\nStream distances:")
 		print(sdist)
 		sDF = pd.DataFrame(sdist, columns=list(points.keys()), index=list(points.keys()))
@@ -425,7 +425,7 @@ def main():
 		#maybe include logDxlength, DxlogLength, logDxlogLength as well?
 		
 		#get list of all REACHIDs to extract from geoDF
-		edge_data = nx.get_edge_attributes(K,'REACH_ID')
+		edge_data = nx.get_edge_attributes(K,params.reachid_col)
 		reach_to_edge = dict()
 		i=0
 		edges = list()
@@ -437,19 +437,19 @@ def main():
 		del edge_data
 		
 		#save reach_to_edge table to file
-		r2eDF = pd.DataFrame(list(reach_to_edge.items()), columns=['REACH_ID','EDGE_ID'])
+		r2eDF = pd.DataFrame(list(reach_to_edge.items()), columns=[params.reachid_col,'EDGE_ID'])
 		r2eDF.to_csv((str(params.out)+".reachToEdgeTable.txt"), sep="\t")
 		
 		#read in original shapefile as geoDF and subset it
 		print("\nExtracting attributes from original dataframe...")
 		geoDF = gpd.read_file(params.shapefile)
-		mask = geoDF['REACH_ID'].isin(list(reach_to_edge.keys()))
+		mask = geoDF[params.reachid_col].isin(list(reach_to_edge.keys()))
 		temp = geoDF.loc[mask]
 		del mask
 		del reach_to_edge
 		
 		#join EDGE_ID to geoDF
-		geoDF = temp.merge(r2eDF, on='REACH_ID')
+		geoDF = temp.merge(r2eDF, on=params.reachid_col)
 		del temp
 		del r2eDF
 		
@@ -654,12 +654,17 @@ def vectorizeMat(mat):
 	return(vec)
 
 #computes pairwise stream distances and 0/1 incidence matrix for StreamTree calculations
-def getStreamMats(points, graph):
+def getStreamMats(points, graph, len_col):
 	#make matrix
 	dist = np.zeros((len(points),len(points)))
 	inc = np.zeros((nCr(len(points),2),len(graph.edges())),dtype=int)
 	#establish as nan
 	dist[:] = np.nan
+
+	#function to calculate weights for Dijkstra's shortest path algorithm
+	#i just invert the distance, so the shortest distance segments are favored
+	def dijkstra_weight(attributes):
+		return(attributes[len_col]*-1)
 
 	#for each combination, get shortest path and sum the lengths
 	index=0
@@ -667,7 +672,7 @@ def getStreamMats(points, graph):
 	for ia, ib in itertools.combinations(range(0,len(points)),2):
 		path = nx.bidirectional_dijkstra(graph, points.values()[ia], points.values()[ib], weight=dijkstra_weight)
 		if path:
-			dist[ia,ib] = float(sum(path_edge_attributes(graph, path[1], "LENGTH_KM")))
+			dist[ia,ib] = float(sum(path_edge_attributes(graph, path[1], len_col)))
 			dist[ib,ia] = dist[ia,ib]
 		#incidence matrix
 		#for each edge in graph, assign 0 if not in path; 1 if in path
@@ -703,17 +708,23 @@ def path_edge_attributes(graph, path, attribute):
 	return [graph[u][v][attribute] for (u,v) in zip(path,path[1:])]
 
 #find and extract paths between points from a graph
-def pathSubgraph(graph, nodes, method):
+def pathSubgraph(graph, nodes, method, id_col, len_col):
 	k=nx.OrderedGraph()
 	for p1, p2 in itertools.combinations(nodes.values(),2):
 		try:
 			#print(p1)
 			#print(p2)
+			
+			#function to calculate weights for Dijkstra's shortest path algorithm
+			#i just invert the distance, so the shortest distance segments are favored
+			def dijkstra_weight(attributes):
+				return(attributes[len_col]*-1)
+			
 			#find shortest path between the two points
 			path=nx.bidirectional_dijkstra(graph, p1, p2, weight=dijkstra_weight)
 			#print("path:",path)
 			#traverse the nodes in the path to build a minimal set of edges
-			method(k, graph, nodes.values(), path[1])
+			method(k, graph, nodes.values(), id_col ,len_col, path[1])
 			#calculate stream distance
 			#stream_dist = sum(path_edge_attributes(graph, path[1], "LENGTH_KM")) #total length of all edges in path
 			#calculate corrected genetic distance
@@ -731,7 +742,7 @@ def pathSubgraph(graph, nodes, method):
 	return(k)
 
 #extracts full subgraph from nodes
-def extractFullSubgraph(subgraph, graph, nodelist, path):
+def extractFullSubgraph(subgraph, graph, nodelist, id_col, len_col, path):
 	for first, second in zip(path, path[1:]):
 		if first not in subgraph:
 			subgraph.add_node(first)
@@ -744,8 +755,8 @@ def extractFullSubgraph(subgraph, graph, nodelist, path):
 
 #extracts a simplified subgraph from paths
 #only keeping terminal and junction nodes
-def extractMinimalSubgraph(subgraph, graph, nodelist, path):
-	curr_edge = {"REACH_ID":list(), "LENGTH_KM":0.0}
+def extractMinimalSubgraph(subgraph, graph, nodelist, id_col, len_col, path):
+	curr_edge = {id_col:list(), len_col:0.0}
 	curr_start=None
 	#print("Path:",path)
 	#print("nodelist:",nodelist)
@@ -760,8 +771,8 @@ def extractMinimalSubgraph(subgraph, graph, nodelist, path):
 				subgraph.add_node(first)
 		#add path attributes to current edge
 		dat=graph.get_edge_data(first, second)
-		curr_edge["REACH_ID"].extend([dat["REACH_ID"]] if not isinstance(dat["REACH_ID"], list) else dat["REACH_ID"])
-		curr_edge["LENGTH_KM"]=float(curr_edge["LENGTH_KM"])+float(dat["LENGTH_KM"])
+		curr_edge[id_col].extend([dat[id_col]] if not isinstance(dat[id_col], list) else dat[id_col])
+		curr_edge[len_col]=float(curr_edge[len_col])+float(dat[len_col])
 		
 		#if second node is a STOP node (=in nodelist or is a junction):
 		if second in nodelist or len(graph[second])>2:
@@ -770,17 +781,12 @@ def extractMinimalSubgraph(subgraph, graph, nodelist, path):
 			#link current attribute data
 			subgraph.add_edge(curr_start, second, **curr_edge)
 			#empty edge attributes and set current second to curr_start
-			curr_edge = {"REACH_ID":list(), "LENGTH_KM":0}
+			curr_edge = {id_col:list(), len_col:0}
 			curr_start = second
 		else:
 			#otherwise continue building current edge
 			continue
 
-
-#function to calculate weights for Dijkstra's shortest path algorithm
-#i just invert the distance, so the shortest distance segments are favored
-def dijkstra_weight(attributes):
-	return(attributes["LENGTH_KM"]*-1)
 
 #Input: Tuple of [x,y] coordinates
 #output: Closest node to those coordinates

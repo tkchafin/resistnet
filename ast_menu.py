@@ -13,7 +13,7 @@ class parseArgs():
 			"weight=", "out=", "method=", "plots", "plot","perm=", "phased", "median",
 			"diploid", "geopop", "geopops", "global_het", "haploid", "loc_agg=", 
 			"pop_agg=", "sdist_agg=", "clusterpop", "epsilon=", "min_samples=", "sclusterpop",
-			"network=", "overwrite"])
+			"network=", "overwrite", "reachid_col=", "length_col="])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -47,6 +47,9 @@ class parseArgs():
 		self.loc_agg = "ARITH"
 		self.pop_agg = "ARITH"
 		self.sdist_agg="ARITH"
+		
+		self.reachid_col = "REACH_ID"
+		self.length_col = "LENGTH_KM"
 		
 		#dbscan Options
 		self.min_samples=1
@@ -83,6 +86,10 @@ class parseArgs():
 					self.display_help("Invalid option", arg.upper(),"for option <-d/--dist>")
 			elif opt == "het":
 				self.het = True
+			elif opt == "reachid_col":
+				self.reachid_col = arg
+			elif opt == "length_col":
+				self.length_col = arg
 			elif opt == "genmat":
 				self.genmat = arg
 			elif opt == "snp" or opt == "snps":
@@ -224,6 +231,8 @@ and uses a least-squares method to fit distances to stream segments.")
 			NOTE: The location will be taken as the centroid among individual samples
 		-g,--geopop		: Pool individuals having identical coordinates
 		-c,--clusterpop	: Use DBSCAN algorithm to automatically cluster populations
+		--reachid_col	: Attribute name representing primary key in shapefile [default="REACH_ID"]
+		--length_col	: Attribute name giving length in kilometers [default="LENGTH_KM"]
 
 	Genetic distance options:
 		-d,--dist	: Use which metric of distance? Options are:
