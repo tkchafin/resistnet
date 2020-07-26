@@ -165,7 +165,7 @@ def main():
 		#write popmap to file 
 		flat = clust.flattenPopmap(popmap)
 		temp = pd.DataFrame(list(flat.items()), columns=['IND_ID', 'POP_ID'])
-		temp.to_csv((str(params.out) + ".popmap.txt"), sep="\t")
+		temp.to_csv((str(params.out) + ".popmap.txt"), sep="\t", index=False)
 		del flat
 		del temp
 		
@@ -178,7 +178,7 @@ def main():
 	clust.plotHistogram(list(snapDists.values()), params.out)
 	dtemp = pd.DataFrame(list(snapDists.items()), columns=['name', 'km'])
 	dtout = str(params.out) + ".snapDistances.txt"
-	dtemp.to_csv(dtout, sep="\t")
+	dtemp.to_csv(dtout, sep="\t", index=False)
 	del dtemp
 	del dtout
 	del snapDists
@@ -308,7 +308,7 @@ def main():
 		
 		#output points to table
 		p = getPointTable(points)
-		p.to_csv((str(params.out)+".pointCoords.txt"), sep="\t")
+		p.to_csv((str(params.out)+".pointCoords.txt"), sep="\t", index=False)
 		del p
 		
 		#first pass grabs subgraph from master shapefile graph
@@ -419,7 +419,7 @@ def main():
 		pred=getFittedD(points, gen, inc, R)
 		print("\nComparing observed versus predicted genetic distances:")
 		print(pred)
-		pred.to_csv((str(params.out)+".obsVersusFittedD.txt"), sep="\t")
+		pred.to_csv((str(params.out)+".obsVersusFittedD.txt"), sep="\t", index=False)
 		sns.jointplot("observed_D", "predicted_D", data=pred, kind="reg", stat_func=r2)
 		plt.savefig((str(params.out)+".obsVersusFittedD.pdf"))
 		del pred
@@ -445,7 +445,7 @@ def main():
 		
 		#save reach_to_edge table to file
 		r2eDF = pd.DataFrame(list(reach_to_edge.items()), columns=[params.reachid_col,'EDGE_ID'])
-		r2eDF.to_csv((str(params.out)+".reachToEdgeTable.txt"), sep="\t")
+		r2eDF.to_csv((str(params.out)+".reachToEdgeTable.txt"), sep="\t", index=False)
 		
 		#read in original shapefile as geoDF and subset it
 		print("\nExtracting attributes from original dataframe...")
@@ -479,7 +479,7 @@ def main():
 		plt.savefig((str(params.out)+".streamsByFittedD.pdf"))
 	
 		#output a final annotated stream network layer
-		geoDF.to_csv((str(params.out)+".streamTree.txt"), sep="\t")
+		geoDF.to_csv((str(params.out)+".streamTree.txt"), sep="\t", index=False)
 		geoDF.to_file((str(params.out)+".streamTree.shp"))
 
 	print("\nDone!\n")
@@ -543,7 +543,7 @@ def testIBD(gen, geo, out, perms):
 	ibd=pd.DataFrame(rows,  columns=['test', 'method', 'perms', 'r', 'p' ,'z'])
 	print("Mantel test results:")
 	print(ibd)
-	ibd.to_csv((str(out) + ".isolationByDistance.txt"))
+	ibd.to_csv((str(out) + ".isolationByDistance.txt"), sep="\t", index=False)
 	print()
 
 	
@@ -632,7 +632,7 @@ def fitLeastSquaresDistances(D, X, iterative, out, weight=None):
 		#write original and constrained results to log file
 		ofh=out+".leastSquaresConstrained.txt"
 		df=pd.DataFrame({'LS.original':ls_old, 'LS.constrained':ls})
-		df.to_csv(ofh, sep="\t")
+		df.to_csv(ofh, sep="\t", index=False)
 		
 		return(ls)
 	else:
