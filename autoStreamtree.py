@@ -51,7 +51,7 @@ def main():
 		G=nx.OrderedGraph(nx.read_gpickle(params.network).to_undirected())
 	else:
 		print("Building network from shapefile:",params.shapefile)
-		print("WARNING: This can take a while with very large files! If taking too long, try clipping your shapefile to a smaller area.")
+		print("WARNING: This can take a while with very large files! If taking too long, try clipping your shapefile to a smaller area or removing unneeded streams")
 		G=nx.OrderedGraph(nx.read_shp(params.shapefile, simplify=False, strict=True).to_undirected())
 
 	#if reading populations by 2nd column
@@ -164,8 +164,10 @@ def main():
 					pop_coords[p]=node
 		#write popmap to file 
 		flat = clust.flattenPopmap(popmap)
-		temp = pd.DataFrame(popmap, columns=['IND_ID', 'POP_ID'])
+		temp = pd.DataFrame(list(flat.items()), columns=['IND_ID', 'POP_ID'])
 		temp.to_csv((str(params.out) + ".popmap.txt"), sep="\t")
+		del flat
+		del temp
 		
 		#plot grouped samples
 		#TODO: for --geopop maybe plot original coordinates with "snap" as centroid here??
@@ -190,7 +192,6 @@ def main():
 		print("\nCalculating genetic distances...")
 		if not params.genmat:
 			if params.dist in ["PDIST", "TN84", "TN93", "K2P", "JC69"]:
-				pri
 				gen = gendist.getGenMat(params.dist, point_coords, seqs, ploidy=params.ploidy, het=params.het, loc_agg=params.loc_agg)
 				print("Genetic distances:")
 				np.set_printoptions(precision=3)
@@ -304,6 +305,12 @@ def main():
 			points=pop_coords
 		else:
 			points=point_coords
+		
+		#output points to table
+		p = getPointTable(points)
+		p.to_csv((str(params.out)+".pointCoords.txt"), sep="\t")
+		del p
+		
 		#first pass grabs subgraph from master shapefile graph
 		print("\nExtracting full subgraph...")
 		ktemp=pathSubgraph(G, points, extractFullSubgraph, params.reachid_col, params.length_col)
@@ -385,7 +392,7 @@ def main():
 			gn=get_lower_tri(gen)
 			go=get_lower_tri(sdist)
 			sns.jointplot(gn, go, kind="reg", stat_func=r2, x="Genetic distance", y="Geographic distance (km)")
-			plt.savefig((str(params.out)+".genXgeo.pdf"))
+			plt.savefig((str(params.out)+".isolationByDistance.pdf"))
 			# sns.jointplot(gn, np.log(go), kind="reg", stat_func=r2)
 			# plt.savefig((str(params.out)+".genXlngeo.pdf"))
 			
@@ -477,6 +484,14 @@ def main():
 
 	print("\nDone!\n")
 
+#returns a pandas DataFrame from points dictionary
+def getPointTable(points):
+	temp=list()
+	for p in points:
+		temp.append([p, points[p][1], points[p][0]])
+	p = pd.DataFrame(temp, columns=['sample', 'lat', 'long'])
+	return(p)
+
 #returns r2
 def r2(x, y):
 	return (stats.pearsonr(x, y)[0] ** 2)
@@ -528,8 +543,9 @@ def testIBD(gen, geo, out, perms):
 	ibd=pd.DataFrame(rows,  columns=['test', 'method', 'perms', 'r', 'p' ,'z'])
 	print("Mantel test results:")
 	print(ibd)
-	ibd.to_csv((str(out) + ".mantelTest.txt"))
+	ibd.to_csv((str(out) + ".isolationByDistance.txt"))
 	print()
+
 	
 
 #only necessary for later

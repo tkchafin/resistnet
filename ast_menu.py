@@ -220,13 +220,12 @@ and uses a least-squares method to fit distances to stream segments.")
 		--overwrite	: Overwrite an input network (Only relevant with --network)
 		-h,--help	: Displays help menu
 		-r,--run	: Run which steps? Options: [all, gendist, ibd, streamdist, streamtree]
-			ALL			: Run all steps
+			ALL		: Run all steps
 			GENDIST		: Only calculate genetic distance matrix
 			STREAMDIST	: Only compute pairwise stream distances
 			DISTANCES	: Only compute GENDIST + STREAMDIST
 			IBD		: GENDIST + STREAMDIST + Mantel test
 			STREAMTREE	: GENDIST + STREAMDIST + fit StreamTree model
-			xxx = NOT YET IMPLEMENTED
 		-p,--pop		: Pool individuals based on column 2 of input file
 			NOTE: The location will be taken as the centroid among individual samples
 		-g,--geopop		: Pool individuals having identical coordinates
