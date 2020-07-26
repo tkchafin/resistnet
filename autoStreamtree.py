@@ -26,6 +26,7 @@ from math import radians, degrees, sin, cos, asin, acos, sqrt
 
 import genetic_distances as gendist
 import cluster_pops as clust
+import report_refs as ref
 from ast_menu import parseArgs
 
 #from skbio.stats.distance import mantel
@@ -481,6 +482,9 @@ def main():
 		#output a final annotated stream network layer
 		geoDF.to_csv((str(params.out)+".streamTree.txt"), sep="\t", index=False)
 		geoDF.to_file((str(params.out)+".streamTree.shp"))
+
+	refs = ref.fetch_references(params)
+	print(refs)
 
 	print("\nDone!\n")
 
