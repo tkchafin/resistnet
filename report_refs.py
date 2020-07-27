@@ -9,7 +9,7 @@ For weighted LS, gen distances, etc
 
 def fetch_references(params):
 	refs="\n\nIf you found this software useful for your research please cite the following (a full manuscript will come at a later date):"
-	refs = refs + "\nChafin TK, Mussman SM. 2020. autoStreamTree: Automated workflows for examining patterns of genetic differentiation in stream networks. github.com/tkchafin/autoStreamTree"
+	refs = refs + "\nChafin TK, Mussmann SM. 2020. autoStreamTree: Automated workflows for examining patterns of genetic differentiation in stream networks. github.com/tkchafin/autoStreamTree"
 	
 	if params.run == "STREAMTREE" or params.run == "ALL":
 		refs = refs + "\n\nPlease cite the StreamTree method as: \nKalinowski ST, MH Meeuwig, SR Narum, ML Taper (2008) Stream trees: a statistical method for mapping genetic differences between populations of freshwater organisms to the sections of streams that connect them. Canadian Journal of Fisheries and Aquatic Sciences (65:2752-2760)"

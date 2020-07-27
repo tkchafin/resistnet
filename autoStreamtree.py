@@ -29,17 +29,8 @@ import cluster_pops as clust
 import report_refs as ref
 from ast_menu import parseArgs
 
-#from skbio.stats.distance import mantel
-#TODO:
-#--Jost D option to use global freq rather than average across pops
-#--option to log stream distances
-#--options for how gaps, Ns, ambigs are treated in p-distance calculation
-#--add some sort of outlier detection? Maybe inspited by ABGD algorithm
 
-#TODO: Some parsing to make sure that dist calcs are compatible with data types 
-#TODO: Add msat compatibility. I might just convert them to dummy nucleotide values??
-
-#TODO: Option to either die or remove points that can't be reached from rest of network 
+#TODO: Currently assumes all points can be reached by all other points. Add option to check this first, and delete any points that are unreachable
 
 def main():
 
@@ -52,8 +43,8 @@ def main():
 		G=nx.OrderedGraph(nx.read_gpickle(params.network).to_undirected())
 	else:
 		print("Building network from shapefile:",params.shapefile)
-		print("WARNING: This can take a while with very large files! If taking too long, try clipping your shapefile to a smaller area or removing unneeded streams")
-		G=nx.OrderedGraph(nx.read_shp(params.shapefile, simplify=False, strict=True).to_undirected())
+		print("WARNING: This can take a while with very large files!")
+		G=nx.OrderedGraph(nx.read_shp(params.shapefile, simplify=True, strict=True).to_undirected())
 
 	#if reading populations by 2nd column
 	popmap = SortedDict()
@@ -315,6 +306,7 @@ def main():
 		#first pass grabs subgraph from master shapefile graph
 		print("\nExtracting full subgraph...")
 		ktemp=pathSubgraph(G, points, extractFullSubgraph, params.reachid_col, params.length_col)
+		#ktemp=extractFullSubgraph(G, points)
 		del G
 
 		#second pass to simplify subgraph and collapse redundant nodes
@@ -390,10 +382,12 @@ def main():
 			testIBD(gen, sdist, params.out, params.permutations)
 			
 			#plot geographic x genetic DISTANCES
-			gn=get_lower_tri(gen)
-			go=get_lower_tri(sdist)
-			sns.jointplot(gn, go, kind="reg", stat_func=r2, x="Genetic distance", y="Geographic distance (km)")
+			genetic_distance=get_lower_tri(gen)
+			geographic_distance=get_lower_tri(sdist)
+			sns.jointplot(genetic_distance, geographic_distance, kind="reg", stat_func=r2)
 			plt.savefig((str(params.out)+".isolationByDistance.pdf"))
+			del geographic_distance
+			del genetic_distance
 			# sns.jointplot(gn, np.log(go), kind="reg", stat_func=r2)
 			# plt.savefig((str(params.out)+".genXlngeo.pdf"))
 			
@@ -730,25 +724,23 @@ def path_edge_attributes(graph, path, attribute):
 #find and extract paths between points from a graph
 def pathSubgraph(graph, nodes, method, id_col, len_col):
 	k=nx.OrderedGraph()
-	for p1, p2 in itertools.combinations(nodes.values(),2):
+
+	#function to calculate weights for Dijkstra's shortest path algorithm
+	#i just invert the distance, so the shortest distance segments are favored
+	def dijkstra_weight(attributes):
+		return(attributes[len_col]*-1)
+
+	p1 = list(nodes.values())[0]
+	for p2 in list(nodes.values())[1:]:
+	#for p1, p2 in itertools.combinations(nodes.values(),2):
 		try:
-			#print(p1)
-			#print(p2)
-			
-			#function to calculate weights for Dijkstra's shortest path algorithm
-			#i just invert the distance, so the shortest distance segments are favored
-			def dijkstra_weight(attributes):
-				return(attributes[len_col]*-1)
-			
+
 			#find shortest path between the two points
 			path=nx.bidirectional_dijkstra(graph, p1, p2, weight=dijkstra_weight)
-			#print("path:",path)
+
 			#traverse the nodes in the path to build a minimal set of edges
 			method(k, graph, nodes.values(), id_col ,len_col, path[1])
-			#calculate stream distance
-			#stream_dist = sum(path_edge_attributes(graph, path[1], "LENGTH_KM")) #total length of all edges in path
-			#calculate corrected genetic distance
-			####later
+
 			if p1 not in k:
 				k.add_node(p1)
 			if p2 not in k:
