@@ -215,6 +215,9 @@ def main():
 		else:
 			print("\nReading genetic distances from provided matrix:", params.genmat)
 			inmat = pd.read_csv(params.genmat, header=0, index_col=0, sep="\t")
+			
+			if params.coercemat:
+				inmat[inmat < 0.0] = 0.0
 			if (set(inmat.columns) != set(inmat.index.values)):
 				print("Oh no! Input matrix columns and/ or rows don't appear to be labelled. Please provide an input matrix with column and row names!")
 				sys.exit(1)
@@ -603,8 +606,8 @@ def fitLeastSquaresDistances(D, X, iterative, out, weight=None):
 	
 	#weighted least-squares optimization
 	ls = np.matmul(np.linalg.inv(np.matmul(np.matmul(X.transpose(),W),X)), np.matmul(np.matmul(X.transpose(), W),d))
-	print("\nLeast-squared optimized distances:")
-	print(ls)
+	#print("\nLeast-squared optimized distances:")
+	#print(ls)
 	#ls_ord = np.matmul(np.linalg.inv(np.matmul(X.transpose(),X)), np.matmul(X.transpose(),d))
 	#print(ls_ord)
 	

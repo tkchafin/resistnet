@@ -7,13 +7,13 @@ class parseArgs():
 	def __init__(self):
 		#Define options
 		try:
-			options, remainder = getopt.getopt(sys.argv[1:], 'hs:i:r:pd:a:lw:o:gP:L:Scn:', \
+			options, remainder = getopt.getopt(sys.argv[1:], 'hs:i:r:pd:a:lw:o:gP:L:Scn:G:', \
 			["shp=", "help", "input=", "run=", "pop", "pops","dist=", "agg_method=",
 			"het", "genmat=", "snp", "snps", "msat", "msats", "log", "and_log", "iterative",
 			"weight=", "out=", "method=", "plots", "plot","perm=", "phased", "median",
 			"diploid", "geopop", "geopops", "global_het", "haploid", "loc_agg=", 
 			"pop_agg=", "sdist_agg=", "clusterpop", "epsilon=", "min_samples=", "sclusterpop",
-			"network=", "overwrite", "reachid_col=", "length_col="])
+			"network=", "overwrite", "reachid_col=", "length_col=", "coercemat"])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -38,6 +38,7 @@ class parseArgs():
 		self.iterative = False
 		self.weight = "CSE67"
 		self.permutations = 1000
+		self.coercemat = False
 		self.method = "PEARSON"
 		self.plots=False
 		self.out="out"
@@ -90,7 +91,7 @@ class parseArgs():
 				self.reachid_col = arg
 			elif opt == "length_col":
 				self.length_col = arg
-			elif opt == "genmat":
+			elif opt == "genmat" or opt=="G":
 				self.genmat = arg
 			elif opt == "snp" or opt == "snps":
 				self.snps = True
@@ -149,6 +150,8 @@ class parseArgs():
 				self.ploidy=1
 			elif opt=="global_het":
 				self.global_het=True
+			elif opt=="coercemat":
+				self.coercemat=True
 			elif opt=="network" or opt=="n":
 				self.network=arg
 			elif opt=="pop_agg" or opt=="P":
@@ -256,7 +259,8 @@ and uses a least-squares method to fit distances to stream segments.")
 			  --NOTE: Multiple loci for PDIST, JC69, K2P, and EUCLID distances
 		  	        will be reported using the method defined in --loc_agg
 			  --NOTE: TN84 will use empirical base frequencies
-		--genmat	: Skip calculation and use the provided labeled .tsv matrix
+		-G,--genmat	: Skip calculation and use the provided labeled .tsv matrix
+		--coercemat	: [Boolean] Coerce negative values in input matrix to zero
 		--het		: [Boolean] Count partial differences [e.g. ind1=T, ind2=W]
 		--snp		: [Boolean] Data represent concatenated SNPs
 		--msat		: xxx[Boolean] Data represent msat alleles [not yet implemented]
