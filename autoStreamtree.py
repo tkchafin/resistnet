@@ -46,134 +46,10 @@ def main():
 		print("WARNING: This can take a while with very large files!")
 		G=nx.OrderedGraph(nx.read_shp(params.shapefile, simplify=True, strict=True).to_undirected())
 
-	#if reading populations by 2nd column
-	popmap = SortedDict()
 			
 	#parse dataset
 	points = pd.read_csv(params.geodb, sep="\t", header="infer")
-	point_coords=SortedDict()
-	point_labels=dict()
-	snapDists=dict()
-	seqs = list()
-	verb=True
-	first=True
-	for idx, row in points.iterrows():
-		name = None
-		data = None
-		if params.run == "GENDIST":
-			name = row[0]
-			data = tuple([row[3], row[2]])
-		else:
-			if not params.pop and not params.clusterpop:
-				#print(tuple([row[3], row[2]]))
-				#--geopop and individual-level snap coordinates to nodes here
-				node = snapToNode(G, tuple([row[3], row[2]]))
-				snapDists[row[0]] = great_circle(node[0], node[1], row[3], row[2])
-			else:
-				#if pop or clusterpop, extract centroid later
-				node = tuple([row[3], row[2]])
-			#print(node)
-			data = node
-			name = row[0]
-			#point_labels[node]=str(row[0])
-		point_coords[name] = data
-		seq_data = parseLoci(params, list(row[4:]), verbose=verb)
-		verb=False
-		if first:
-			for i, loc in enumerate(seq_data):
-				temp = dict()
-				seqs.append(temp)
-				seqs[i][name]=loc
-			numLoci=len(seq_data)
-		else:
-			for i, loc in enumerate(seq_data):
-				seqs[i][name] = loc
-		if params.geopop:
-			if point_coords[name] not in popmap:
-				l = [name]
-				popmap[point_coords[name]] = l
-			else:
-				popmap[point_coords[name]].append(row[0])
-		elif params.pop:
-			if row[1] not in popmap:
-				l = [name]
-				popmap[row[1]] = l
-			else:
-				popmap[row[1]].append(name)
-		first=False
-
-	print("Found",len(points.columns)-4,"loci.\n")
-	#points["node"]=point_coords
-
-	print("Read",str(len(point_coords.keys())),"individuals.")
-	#print(list(point_coords.keys()))
-	print()
-	
-	if params.pop or params.geopop:
-		print("Read",str(len(popmap.keys())),"populations.")
-		#print(list(popmap.keys()))
-		print()
-	
-	"""
-	For population-level analyses, generate population maps and centroids here 
-	according to user-input options: --pop, --geopop, --clusterpop
-	"""
-	#get population centroid
-	if params.pop or params.geopop or params.clusterpop:
-		if params.clusterpop:
-			#create population clusters using DBSCAN
-			print("Running DBSCAN clustering with min_samples=",params.min_samples,"and epsilon=",params.epsilon)
-			popmap=clust.dbscan_cluster(point_coords, params.epsilon, params.min_samples)
-			num_clusters=len(popmap.keys())
-			print("Found",str(num_clusters),"clusters!")
-			print(popmap)
-			print("\n")
-
-			#calculate centroids for clusters
-			pop_temp=clust.getClusterCentroid(point_coords, popmap, params.out)
-			
-			#now, snap pop_coords to nodes
-			pop_coords = SortedDict()
-			for p in pop_temp:
-				node = snapToNode(G, pop_temp[p])
-				snapDists[p] = great_circle(node[0], node[1], pop_temp[p][0], pop_temp[p][1])
-				pop_coords[p]=node
-		elif params.pop or params.geopop:
-			#popmap generated earlier when parsing input file!
-			#still need to calculate centroids:
-			print("Calculating population centroids...")
-			pop_temp=clust.getClusterCentroid(point_coords, popmap, params.out)
-			#note in the case of --geopop the centroid is the joint snapped-to location
-			
-			#now, snap pop_coords to nodes
-			pop_coords = SortedDict()
-			if params.geopop:
-				pop_coords = pop_temp
-			else:
-				for p in pop_temp:
-					node = snapToNode(G, pop_temp[p])
-					snapDists[p] = great_circle(node[0], node[1], pop_temp[p][0], pop_temp[p][1])
-					pop_coords[p]=node
-		#write popmap to file 
-		flat = clust.flattenPopmap(popmap)
-		temp = pd.DataFrame(list(flat.items()), columns=['IND_ID', 'POP_ID'])
-		temp.to_csv((str(params.out) + ".popmap.txt"), sep="\t", index=False)
-		del flat
-		del temp
-		
-		#plot grouped samples
-		#TODO: for --geopop maybe plot original coordinates with "snap" as centroid here??
-		clust.plotClusteredPoints(point_coords, popmap, params.out, pop_coords)
-
-		
-	#plot histogram of snap distances
-	clust.plotHistogram(list(snapDists.values()), params.out)
-	dtemp = pd.DataFrame(list(snapDists.items()), columns=['name', 'km'])
-	dtout = str(params.out) + ".snapDistances.txt"
-	dtemp.to_csv(dtout, sep="\t", index=False)
-	del dtemp
-	del dtout
-	del snapDists
+	(point_coords, pop_coords, popmap, seqs) = processSamples(params, points, G)
 		
 		
 	#traverse graph to fill: streamdists, gendists, and incidence matrix
@@ -183,111 +59,15 @@ def main():
 		gen=None
 		print("\nCalculating genetic distances...")
 		if not params.genmat:
-			if params.dist in ["PDIST", "TN84", "TN93", "K2P", "JC69"]:
-				gen = gendist.getGenMat(params.dist, point_coords, seqs, ploidy=params.ploidy, het=params.het, loc_agg=params.loc_agg)
-				print("Genetic distances:")
-				np.set_printoptions(precision=3)
-				print(gen, "\n")
-				
-				#write individual genetic distances to file
-				ind_genDF = pd.DataFrame(gen, columns=list(point_coords.keys()), index=list(point_coords.keys()))
-				ind_genDF.to_csv((str(params.out) + ".indGenDistMat.txt"), sep="\t", index=True)
-				del ind_genDF
-				
-				if params.pop or params.geopop or params.clusterpop:
-					print("Aggregating pairwise population genetic distances from individual distances using:",params.pop_agg)
-			else:
-				if not params.pop and not params.geopop:
-					print("ERROR: Distance metric",params.dist,"not possible without population data.")
-					sys.exit(1)
-			#calculate population gendistmat
-			if params.pop or params.geopop or params.clusterpop:
-				pop_gen = gendist.getPopGenMat(params.dist, gen, popmap, point_coords, seqs, pop_agg=params.pop_agg, loc_agg=params.loc_agg, ploidy=params.ploidy, global_het=params.global_het)
-				print("Population genetic distances:")
-				np.set_printoptions(precision=3)
-				print(pop_gen, "\n")
-				
-				#write population genetic distances to file
-				#print(list(pop_coords.keys()))
-				pop_genDF = pd.DataFrame(pop_gen, columns=list(pop_coords.keys()), index=list(pop_coords.keys()))
-				pop_genDF.to_csv((str(params.out) + ".popGenDistMat.txt"), sep="\t", index=True)
-				del pop_genDF
+			(gen, pop_gen) = getPopGenMats(params, point_coords, seqs)
 		else:
 			print("\nReading genetic distances from provided matrix:", params.genmat)
 			inmat = pd.read_csv(params.genmat, header=0, index_col=0, sep="\t")
+			(gen, pop_gen) = parseInputGenMat(params, inmat, point_coords, popmap)
 			
-			if params.coercemat:
-				inmat[inmat < 0.0] = 0.0
-			if (set(inmat.columns) != set(inmat.index.values)):
-				print("Oh no! Input matrix columns and/ or rows don't appear to be labelled. Please provide an input matrix with column and row names!")
-				sys.exit(1)
-			else:
-				agg=False
-				#first check if it fits whatever the user input was (i.e. --pop)
-				if params.pop:
-					if len(inmat.columns) != len(popmap.keys()):
-						print("Found",str(len(inmat.columns)), "columns in provided matrix. This doesn't match number of populations from popmap.")
-						if (len(inmat.columns)) != len(point_coords):
-							print("Doesn't match number of individuals either! Please check your matrix format.")
-							sys.exit(1)
-						else:
-							print("Assuming input matrix has individual distances... Aggregating using the following method (--pop_agg):", str(params.pop_agg))
-							agg=True
-					else:
-						#re-order using pop orders
-						inmat = inmat.reindex(list(popmap.keys()))
-						inmat = inmat[list(popmap.keys())]
-						pop_gen = inmat.to_numpy()
-						del(inmat)
-				elif params.geopop or params.clusterpop:
-					if (len(inmat.columns)) != len(point_coords):
-						print("Found",str(len(inmat.columns)), "columns in provided matrix. This doesn't match number of individuals.")
-						print("When using --geopop or --clusterpop, the provided matrix must represent individual-level distances.")
-						sys.exit(1)
-					else:
-						#re-order using pop orders
-						inmat = inmat.reindex(list(point_coords.keys()))
-						inmat = inmat[list(point_coords.keys())]
-						gen = inmat.to_numpy()
-						agg = True
-						del(inmat)
-				else:
-					if (len(inmat.columns)) != len(point_coords):
-						print("Found",str(len(inmat.columns)), "columns in provided matrix. This doesn't match number of individuals.")
-						sys.exit(1)
-					else:
-						#re-order using pop orders
-						inmat = inmat.reindex(list(point_coords.keys()))
-						inmat = inmat[list(point_coords.keys())]
-						gen = inmat.to_numpy()
-						del(inmat)
-				#if --geopop or --clusterpop, it should be an ind matrix
-				#if so, need to aggregate according to --pop_agg
-				#print(pop_gen)
-				if agg:
-					print("Aggregating user-provided individual-level distance matrix using:",params.pop_agg)
-					pop_gen = gendist.getPopGenMat("PDIST", gen, popmap, point_coords, seqs, pop_agg=params.pop_agg, loc_agg=params.loc_agg, ploidy=params.ploidy, global_het=params.global_het)
+		reportPopGenMats(params, gen, pop_gen, point_coords, pop_coords)
 		
 		if params.run == "GENDIST":
-			print("Genetic distances:")
-			np.set_printoptions(precision=3)
-			print(gen, "\n")
-			
-			#write individual genetic distances to file
-			ind_genDF = pd.DataFrame(gen, columns=list(point_coords.keys()), index=list(point_coords.keys()))
-			ind_genDF.to_csv((str(params.out) + ".indGenDistMat.txt"), sep="\t", index=True)
-			
-			if params.pop or params.geopop or params.clusterpop:
-				pop_gen = gendist.getPopGenMat(params.dist, gen, popmap, point_coords, seqs, pop_agg=params.pop_agg, loc_agg=params.loc_agg, ploidy=params.ploidy, global_het=params.global_het)
-				print("Population genetic distances:")
-				np.set_printoptions(precision=3)
-				print(pop_gen, "\n")
-				
-				#write population genetic distances to file
-				#print(list(pop_coords.keys()))
-				pop_genDF = pd.DataFrame(pop_gen, columns=list(pop_coords.keys()), index=list(pop_coords.keys()))
-				pop_genDF.to_csv((str(params.out) + ".popGenDistMat.txt"), sep="\t", index=True)
-				del pop_genDF
 			sys.exit(0)
 
 	#for ia,ib in itertools.combinations(range(0,len(popmap)),2):
@@ -296,65 +76,8 @@ def main():
 
 	#EXTRACT SUBGRAPH
 	if params.run != "GENDIST":
-		if params.pop or params.geopop or params.clusterpop:
-			points=pop_coords
-		else:
-			points=point_coords
-		
-		#output points to table
-		p = getPointTable(points)
-		p.to_csv((str(params.out)+".pointCoords.txt"), sep="\t", index=False)
-		del p
-		
-		#first pass grabs subgraph from master shapefile graph
-		print("\nExtracting full subgraph...")
-		ktemp=pathSubgraph(G, points, extractFullSubgraph, params.reachid_col, params.length_col)
-		#ktemp=extractFullSubgraph(G, points)
-		del G
+		K = parseSubgraphFromPoints(params, point_coords, pop_coords, G)
 
-		#second pass to simplify subgraph and collapse redundant nodes
-		print("\nMerging redundant paths...\n")
-		K=pathSubgraph(ktemp, points, extractMinimalSubgraph, params.reachid_col, params.length_col)
-		del ktemp
-		
-		#grab real coordinates as node positions for plotting
-		pos=dict()
-		for n in K.nodes:
-			pos[n] = n
-		#print(pos)
-		
-		#make a color map to color sample points and junctions differently 
-		color_map = []
-		for node in K:
-			if node in point_coords.values():
-				color_map.append("blue")
-			else:
-				color_map.append("black")
-		#draw networkx 
-		nx.draw_networkx(K, pos, with_labels=False, node_color=color_map, node_size=50)
-		
-		#get LENGTH_KM attributes for labelling edges
-		edge_labels = nx.get_edge_attributes(K,params.length_col)
-		for e in edge_labels:
-			edge_labels[e] = "{:.2f}".format(edge_labels[e])
-		
-		nx.draw_networkx_edge_labels(K, pos, edge_labels=edge_labels, font_size=6)
-		
-		#save minimized network to file (unless we already read from one)
-		if not params.network:
-			net_out=str(params.out) + ".network"
-			nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
-		elif params.overwrite:
-			net_out=str(params.out) + ".network"
-			nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
-		else:
-			print("NOTE: Not over-writing existing network. To change this, use --overwrite")
-
-		network_plot=str(params.out) + ".subGraph.pdf"
-		plt.savefig(network_plot)
-	
-	
-	#sys.exit()
 	
 	#calculate pairwise observed stream distances and indence matrix
 	#calculate incidence matrix X, which takes the form:
@@ -393,7 +116,6 @@ def main():
 			del genetic_distance
 			# sns.jointplot(gn, np.log(go), kind="reg", stat_func=r2)
 			# plt.savefig((str(params.out)+".genXlngeo.pdf"))
-			
 			
 	
 	if params.run in ["STREAMTREE", "ALL"]:
@@ -484,6 +206,297 @@ def main():
 	print(refs)
 
 	print("\nDone!\n")
+
+#get subgraph from inputs
+def parseSubgraphFromPoints(params, point_coords, pop_coords, G):
+	if params.pop or params.geopop or params.clusterpop:
+		points=pop_coords
+	else:
+		points=point_coords
+	
+	#output points to table
+	p = getPointTable(points)
+	p.to_csv((str(params.out)+".pointCoords.txt"), sep="\t", index=False)
+	del p
+	
+	#first pass grabs subgraph from master shapefile graph
+	print("\nExtracting full subgraph...")
+	ktemp=pathSubgraph(G, points, extractFullSubgraph, params.reachid_col, params.length_col)
+	#ktemp=extractFullSubgraph(G, points)
+	del G
+
+	#second pass to simplify subgraph and collapse redundant nodes
+	print("\nMerging redundant paths...\n")
+	K=pathSubgraph(ktemp, points, extractMinimalSubgraph, params.reachid_col, params.length_col)
+	del ktemp
+	
+	#grab real coordinates as node positions for plotting
+	pos=dict()
+	for n in K.nodes:
+		pos[n] = n
+	#print(pos)
+	
+	#make a color map to color sample points and junctions differently 
+	color_map = []
+	for node in K:
+		if node in points.values():
+			color_map.append("blue")
+		else:
+			color_map.append("black")
+	#draw networkx 
+	nx.draw_networkx(K, pos, with_labels=False, node_color=color_map, node_size=50)
+	
+	#get LENGTH_KM attributes for labelling edges
+	edge_labels = nx.get_edge_attributes(K,params.length_col)
+	for e in edge_labels:
+		edge_labels[e] = "{:.2f}".format(edge_labels[e])
+	
+	nx.draw_networkx_edge_labels(K, pos, edge_labels=edge_labels, font_size=6)
+	
+	#save minimized network to file (unless we already read from one)
+	if not params.network:
+		net_out=str(params.out) + ".network"
+		nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
+	elif params.overwrite:
+		net_out=str(params.out) + ".network"
+		nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
+	else:
+		print("NOTE: Not over-writing existing network. To change this, use --overwrite")
+
+	network_plot=str(params.out) + ".subGraph.pdf"
+	plt.savefig(network_plot)
+	
+	return(K)
+
+#print and write genmats to file
+def reportPopGenMats(params, gen, pop_gen, point_coords, pop_coords):
+	if gen is not None:
+		print("Genetic distances:")
+		np.set_printoptions(precision=3)
+		print(gen, "\n")
+		
+		#write individual genetic distances to file
+		ind_genDF = pd.DataFrame(gen, columns=list(point_coords.keys()), index=list(point_coords.keys()))
+		ind_genDF.to_csv((str(params.out) + ".indGenDistMat.txt"), sep="\t", index=True)
+	
+	if pop_gen is not None:
+		print("Population genetic distances:")
+		np.set_printoptions(precision=3)
+		print(pop_gen, "\n")
+		
+		#write population genetic distances to file
+		#print(list(pop_coords.keys()))
+		pop_genDF = pd.DataFrame(pop_gen, columns=list(pop_coords.keys()), index=list(pop_coords.keys()))
+		pop_genDF.to_csv((str(params.out) + ".popGenDistMat.txt"), sep="\t", index=True)
+		del pop_genDF
+
+#parses an input genetic distance matrix 
+def parseInputGenMat(params, inmat, point_coords, popmap):
+	gen = None
+	pop_gen = None
+	if params.coercemat:
+		inmat[inmat < 0.0] = 0.0
+	if (set(inmat.columns) != set(inmat.index.values)):
+		print("Oh no! Input matrix columns and/ or rows don't appear to be labelled. Please provide an input matrix with column and row names!")
+		sys.exit(1)
+	else:
+		agg=False
+		#first check if it fits whatever the user input was (i.e. --pop)
+		if params.pop:
+			if len(inmat.columns) != len(popmap.keys()):
+				print("Found",str(len(inmat.columns)), "columns in provided matrix. This doesn't match number of populations from popmap.")
+				if (len(inmat.columns)) != len(point_coords):
+					print("Doesn't match number of individuals either! Please check your matrix format.")
+					sys.exit(1)
+				else:
+					print("Assuming input matrix has individual distances... Aggregating using the following method (--pop_agg):", str(params.pop_agg))
+					agg=True
+			else:
+				#re-order using pop orders
+				inmat = inmat.reindex(list(popmap.keys()))
+				inmat = inmat[list(popmap.keys())]
+				pop_gen = inmat.to_numpy()
+				del(inmat)
+		elif params.geopop or params.clusterpop:
+			if (len(inmat.columns)) != len(point_coords):
+				print("Found",str(len(inmat.columns)), "columns in provided matrix. This doesn't match number of individuals.")
+				print("When using --geopop or --clusterpop, the provided matrix must represent individual-level distances.")
+				sys.exit(1)
+			else:
+				#re-order using pop orders
+				inmat = inmat.reindex(list(point_coords.keys()))
+				inmat = inmat[list(point_coords.keys())]
+				gen = inmat.to_numpy()
+				agg = True
+				del(inmat)
+		else:
+			if (len(inmat.columns)) != len(point_coords):
+				print("Found",str(len(inmat.columns)), "columns in provided matrix. This doesn't match number of individuals.")
+				sys.exit(1)
+			else:
+				#re-order using pop orders
+				inmat = inmat.reindex(list(point_coords.keys()))
+				inmat = inmat[list(point_coords.keys())]
+				gen = inmat.to_numpy()
+				del(inmat)
+		#if --geopop or --clusterpop, it should be an ind matrix
+		#if so, need to aggregate according to --pop_agg
+		#print(pop_gen)
+		if agg:
+			print("Aggregating user-provided individual-level distance matrix using:",params.pop_agg)
+			pop_gen = gendist.getPopGenMat("PDIST", gen, popmap, point_coords, seqs, pop_agg=params.pop_agg, loc_agg=params.loc_agg, ploidy=params.ploidy, global_het=params.global_het)
+			
+	return (gen, pop_gen)
+
+
+
+#snaps points to graph, calculates coordinates, processes populations if used
+#really just in its own function to declutter __main__
+def processSamples(params, points, G):
+	popmap = SortedDict()
+	point_coords=SortedDict()
+	pop_coords=SortedDict()
+	snapDists=dict()
+	seqs = list()
+	verb=True
+	first=True
+	for idx, row in points.iterrows():
+		name = None
+		data = None
+		if params.run == "GENDIST":
+			name = row[0]
+			data = tuple([row[3], row[2]])
+		else:
+			if not params.pop and not params.clusterpop:
+				#print(tuple([row[3], row[2]]))
+				#--geopop and individual-level snap coordinates to nodes here
+				node = snapToNode(G, tuple([row[3], row[2]]))
+				snapDists[row[0]] = great_circle(node[0], node[1], row[3], row[2])
+			else:
+				#if pop or clusterpop, extract centroid later
+				node = tuple([row[3], row[2]])
+			#print(node)
+			data = node
+			name = row[0]
+			#point_labels[node]=str(row[0])
+		point_coords[name] = data
+		seq_data = parseLoci(params, list(row[4:]), verbose=verb)
+		verb=False
+		if first:
+			for i, loc in enumerate(seq_data):
+				temp = dict()
+				seqs.append(temp)
+				seqs[i][name]=loc
+			numLoci=len(seq_data)
+		else:
+			for i, loc in enumerate(seq_data):
+				seqs[i][name] = loc
+		if params.geopop:
+			if point_coords[name] not in popmap:
+				l = [name]
+				popmap[point_coords[name]] = l
+			else:
+				popmap[point_coords[name]].append(row[0])
+		elif params.pop:
+			if row[1] not in popmap:
+				l = [name]
+				popmap[row[1]] = l
+			else:
+				popmap[row[1]].append(name)
+		first=False
+
+	print("Found",len(points.columns)-4,"loci.\n")
+	#points["node"]=point_coords
+
+	print("Read",str(len(point_coords.keys())),"individuals.")
+	#print(list(point_coords.keys()))
+	print()
+	
+	if params.pop or params.geopop:
+		print("Read",str(len(popmap.keys())),"populations.")
+		#print(list(popmap.keys()))
+		print()
+	
+	"""
+	For population-level analyses, generate population maps and centroids here 
+	according to user-input options: --pop, --geopop, --clusterpop
+	"""
+	#get population centroid
+	if params.pop or params.geopop or params.clusterpop:
+		if params.clusterpop:
+			#create population clusters using DBSCAN
+			print("Running DBSCAN clustering with min_samples=",params.min_samples,"and epsilon=",params.epsilon)
+			popmap=clust.dbscan_cluster(point_coords, params.epsilon, params.min_samples)
+			num_clusters=len(popmap.keys())
+			print("Found",str(num_clusters),"clusters!")
+			print(popmap)
+			print("\n")
+
+			#calculate centroids for clusters
+			pop_temp=clust.getClusterCentroid(point_coords, popmap, params.out)
+			
+			#now, snap pop_coords to nodes
+			for p in pop_temp:
+				node = snapToNode(G, pop_temp[p])
+				snapDists[p] = great_circle(node[0], node[1], pop_temp[p][0], pop_temp[p][1])
+				pop_coords[p]=node
+		elif params.pop or params.geopop:
+			#popmap generated earlier when parsing input file!
+			#still need to calculate centroids:
+			print("Calculating population centroids...")
+			pop_temp=clust.getClusterCentroid(point_coords, popmap, params.out)
+			#note in the case of --geopop the centroid is the joint snapped-to location
+			
+			#now, snap pop_coords to nodes
+			pop_coords = SortedDict()
+			if params.geopop:
+				pop_coords = pop_temp
+			else:
+				for p in pop_temp:
+					node = snapToNode(G, pop_temp[p])
+					snapDists[p] = great_circle(node[0], node[1], pop_temp[p][0], pop_temp[p][1])
+					pop_coords[p]=node
+		#write popmap to file 
+		flat = clust.flattenPopmap(popmap)
+		temp = pd.DataFrame(list(flat.items()), columns=['IND_ID', 'POP_ID'])
+		temp.to_csv((str(params.out) + ".popmap.txt"), sep="\t", index=False)
+		del flat
+		del temp
+		
+		#plot grouped samples
+		#TODO: for --geopop maybe plot original coordinates with "snap" as centroid here??
+		clust.plotClusteredPoints(point_coords, popmap, params.out, pop_coords)
+	
+	#plot histogram of snap distances
+	clust.plotHistogram(list(snapDists.values()), params.out)
+	dtemp = pd.DataFrame(list(snapDists.items()), columns=['name', 'km'])
+	dtout = str(params.out) + ".snapDistances.txt"
+	dtemp.to_csv(dtout, sep="\t", index=False)
+	del dtemp
+	del dtout
+	del snapDists
+	
+	#return everything
+	return(point_coords, pop_coords, popmap, seqs)
+
+#returns population genetic distance matrices
+def getPopGenMats(params, point_coords, seqs):
+	gen = None
+	pop_gen = None
+	if params.dist in ["PDIST", "TN84", "TN93", "K2P", "JC69"]:
+		gen = gendist.getGenMat(params.dist, point_coords, seqs, ploidy=params.ploidy, het=params.het, loc_agg=params.loc_agg)
+		
+		if params.pop or params.geopop or params.clusterpop:
+			print("Aggregating pairwise population genetic distances from individual distances using:",params.pop_agg)
+	else:
+		if not params.pop and not params.geopop:
+			print("ERROR: Distance metric",params.dist,"not possible without population data.")
+			sys.exit(1)
+	#calculate population gendistmat
+	if params.pop or params.geopop or params.clusterpop:
+		pop_gen = gendist.getPopGenMat(params.dist, gen, popmap, point_coords, seqs, pop_agg=params.pop_agg, loc_agg=params.loc_agg, ploidy=params.ploidy, global_het=params.global_het)
+	
+	return(gen, pop_gen)
 
 #returns a pandas DataFrame from points dictionary
 def getPointTable(points):

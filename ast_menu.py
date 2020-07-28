@@ -75,7 +75,7 @@ class parseArgs():
 				self.geodb = arg
 			elif opt == 'r' or opt == 'run':
 				self.run = arg.upper()
-				if self.run not in ["ALL", "GENDIST", "IBD", "STREAMDIST", "STREAMTREE", "DISTANCES", "EXHAUSTIVE", "REACHFIT"]:
+				if self.run not in ["ALL", "GENDIST", "IBD", "STREAMDIST", "STREAMTREE", "DISTANCES", "REACHFIT"]:
 					self.display_help("Invalid option", arg.upper(),"for option <-r/--run>")
 			elif opt == 'p' or opt == 'pop' or opt == "pops":
 				self.pop = True
@@ -107,8 +107,6 @@ class parseArgs():
 				self.iterative = True
 			elif opt=="clusterpop" or opt=="c":
 				self.clusterpop=True
-			elif opt=="sclusterpop" or opt=="S":
-				self.sclusterpop=True
 			elif opt=="epsilon":
 				self.epsilon = float(arg)
 			elif opt=="min_samples":
@@ -184,12 +182,8 @@ class parseArgs():
 				sys.exit(1)
 
 		###DIE FOR OPTIONS NOT YET IMPLEMENTED
-		if self.run in ["EXHAUSTIVE", "REACHFIT"]:
-			print("Sorry: Option --dist",self.run," not yet implemented.")
-			sys.exit(0)
-		if self.sclusterpop:
-			print("Sorry: Option --sclusterpop not yet implemented.")
-			sys.exit(0)
+		if self.run == "FITLOCI" and self.genmat:
+			self.display_help("Run type FITLOCI not compatible with input distance matrix.")
 
 
 
