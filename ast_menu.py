@@ -75,7 +75,7 @@ class parseArgs():
 				self.geodb = arg
 			elif opt == 'r' or opt == 'run':
 				self.run = arg.upper()
-				if self.run not in ["ALL", "GENDIST", "IBD", "STREAMDIST", "STREAMTREE", "DISTANCES", "REACHFIT"]:
+				if self.run not in ["ALL", "GENDIST", "IBD", "STREAMDIST", "STREAMTREE", "DISTANCES", "RUNLOCI"]:
 					self.display_help("Invalid option", arg.upper(),"for option <-r/--run>")
 			elif opt == 'p' or opt == 'pop' or opt == "pops":
 				self.pop = True
@@ -182,8 +182,8 @@ class parseArgs():
 				sys.exit(1)
 
 		###DIE FOR OPTIONS NOT YET IMPLEMENTED
-		if self.run == "FITLOCI" and self.genmat:
-			self.display_help("Run type FITLOCI not compatible with input distance matrix.")
+		if self.run == "RUNLOCI" and self.genmat:
+			self.display_help("Run type RUNLOCI not compatible with input distance matrix.")
 
 
 

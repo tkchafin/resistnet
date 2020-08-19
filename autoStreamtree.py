@@ -55,11 +55,11 @@ def main():
 	#traverse graph to fill: streamdists, gendists, and incidence matrix
 	#calculate genetic distance matrix -- right now that is a JC69-corrected Hamming distance
 	#D
-	if params.run != "STREAMDIST":
+	if params.run != "STREAMDIST" and params.run != "RUNLOCI":
 		gen=None
 		print("\nCalculating genetic distances...")
 		if not params.genmat:
-			(gen, pop_gen) = getPopGenMats(params, point_coords, seqs)
+			(gen, pop_gen) = getPopGenMats(params, point_coords, popmap, seqs)
 		else:
 			print("\nReading genetic distances from provided matrix:", params.genmat)
 			inmat = pd.read_csv(params.genmat, header=0, index_col=0, sep="\t")
@@ -69,6 +69,18 @@ def main():
 		
 		if params.run == "GENDIST":
 			sys.exit(0)
+	
+	if params.run == "RUNLOCI":
+		genlist=list()
+		popgenlist=list()
+		for i in seqs:
+			(gen, pop_gen) = getPopGenMats(params, point_coords, popmap, [i])
+			genlist.append(gen)
+			popgenlist.append(pop_gen)
+		#print(seqs)
+		#print(len(seqs[0][0]))
+		#for i in len(seqs[0]):
+		sys.exit()
 
 	#for ia,ib in itertools.combinations(range(0,len(popmap)),2):
 	#	print(popmap.keys()[ia])
@@ -83,7 +95,7 @@ def main():
 	#calculate incidence matrix X, which takes the form:
 	#nrows = rows in column vector form of D
 	#ncols = number of collapsed branches in stream network K
-	if params.run in ["STREAMDIST", "DISTANCES", "STREAMTREE", "IBD", "ALL"]:
+	if params.run in ["STREAMDIST", "DISTANCES", "STREAMTREE", "IBD", "ALL", "RUNLOCI"]:
 		if params.pop or params.geopop or params.clusterpop:
 			points=pop_coords
 			gen=pop_gen
@@ -381,6 +393,7 @@ def processSamples(params, points, G):
 			#point_labels[node]=str(row[0])
 		point_coords[name] = data
 		seq_data = parseLoci(params, list(row[4:]), verbose=verb)
+		#print(seq_data)
 		verb=False
 		if first:
 			for i, loc in enumerate(seq_data):
@@ -404,8 +417,9 @@ def processSamples(params, points, G):
 			else:
 				popmap[row[1]].append(name)
 		first=False
+	#print(seqs)
 
-	print("Found",len(points.columns)-4,"loci.\n")
+	print("Found",numLoci,"loci.\n")
 	#points["node"]=point_coords
 
 	print("Read",str(len(point_coords.keys())),"individuals.")
@@ -480,7 +494,7 @@ def processSamples(params, points, G):
 	return(point_coords, pop_coords, popmap, seqs)
 
 #returns population genetic distance matrices
-def getPopGenMats(params, point_coords, seqs):
+def getPopGenMats(params, point_coords, popmap, seqs):
 	gen = None
 	pop_gen = None
 	if params.dist in ["PDIST", "TN84", "TN93", "K2P", "JC69"]:
@@ -573,7 +587,8 @@ def parseLoci(opts, data, verbose=False):
 		elif "/" not in data[0] and len(data) == 1:
 			if verbose:
 				print("Data appears to consist of unphased concatenated SNPs...")
-			return([gendist.phaseSnp(x.replace(" ","").lower()) for x in data[0]])
+			#print([gendist.phaseSnp(x.replace(" ","").lower()) for x in list(data[0])])
+			return([gendist.phaseSnp(x.replace(" ","").lower()) for x in list(data[0])])
 		elif "/" in data[0] and len(data) > 1:
 			if verbose:
 				print("Data appears to consist of phased un-concatenated SNPs...")
