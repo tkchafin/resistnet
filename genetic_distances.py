@@ -39,8 +39,8 @@ def getPopGenMat(dist, indmat, popmap, dat, seqs, pop_agg="ARITH", loc_agg="ARIT
 				else:
 					genmat[ia,ib] = genmat[ib,ia] = agg.aggregateDist(loc_agg, results)
 			elif len(results) < 1:
-				print("ERROR: population",popmap.values()[ia],"or",popmap.values()[ib],"lacks any data")
-				sys.exit(1)
+				#print("ERROR: population",popmap.values()[ia],"or",popmap.values()[ib],"lacks any data")
+				raise ValueError
 			else:
 				genmat[ia,ib] = genmat[ib,ia] = results[0]
 		elif dist == "GST" or dist == "GSTPRIME":
@@ -82,8 +82,8 @@ def getPopGenMat(dist, indmat, popmap, dat, seqs, pop_agg="ARITH", loc_agg="ARIT
 				num.append(n)
 				denom.append(d)
 			if len(num) <= 0 or len(denom) <= 0:
-				print("ERROR (twoPopWeirCockerhamFst): No data for pops "+ia+" and "+ib+".")
-				sys.exit(1)
+				#print("ERROR (twoPopWeirCockerhamFst): No data for pops "+ia+" and "+ib+".")
+				raise ValueError
 			theta = np.sum(num) / np.sum(denom)
 			if dist == "FST":
 				genmat[ia,ib] = genmat[ib,ia] = theta
@@ -96,7 +96,7 @@ def getPopGenMat(dist, indmat, popmap, dat, seqs, pop_agg="ARITH", loc_agg="ARIT
 				seqs1 = getAlleles([seqs[loc][x] for x in popmap.values()[ia]])
 				seqs2 = getAlleles([seqs[loc][x] for x in popmap.values()[ib]])
 				if not cleanList(set(seqs1), ["n", "N", "-", "?"]) or not cleanList(set(seqs2), ["n", "N", "-", "?"]):
-					print("WARNING: Skipping locus "+str(loc)+" in comparison of populations "+str(ia)+" and "+str(ib)+": Not enough data.")
+					#print("WARNING: Skipping locus "+str(loc)+" in comparison of populations "+str(ia)+" and "+str(ib)+": Not enough data.")
 					continue
 				loci += 1.0
 				results.append(twoPopNeiDa(seqs1, seqs2))
@@ -108,7 +108,7 @@ def getPopGenMat(dist, indmat, popmap, dat, seqs, pop_agg="ARITH", loc_agg="ARIT
 				seqs1 = getAlleles([seqs[loc][x] for x in popmap.values()[ia]])
 				seqs2 = getAlleles([seqs[loc][x] for x in popmap.values()[ib]])
 				if not cleanList(set(seqs1), ["n", "N", "-", "?"]) or not cleanList(set(seqs2), ["n", "N", "-", "?"]):
-					print("WARNING: Skipping locus "+str(loc)+" in comparison of populations "+str(ia)+" and "+str(ib)+": Not enough data.")
+					#print("WARNING: Skipping locus "+str(loc)+" in comparison of populations "+str(ia)+" and "+str(ib)+": Not enough data.")
 					continue
 				results.append(twoPopEuclidDist(seqs1, seqs2))
 			euclid = np.sum(results)
@@ -120,7 +120,7 @@ def getPopGenMat(dist, indmat, popmap, dat, seqs, pop_agg="ARITH", loc_agg="ARIT
 				seqs1 = getAlleles([seqs[loc][x] for x in popmap.values()[ia]])
 				seqs2 = getAlleles([seqs[loc][x] for x in popmap.values()[ib]])
 				if not cleanList(set(seqs1), ["n", "N", "-", "?"]) or not cleanList(set(seqs2), ["n", "N", "-", "?"]):
-					print("WARNING: Skipping locus "+str(loc)+" in comparison of populations "+str(ia)+" and "+str(ib)+": Not enough data.")
+					#print("WARNING: Skipping locus "+str(loc)+" in comparison of populations "+str(ia)+" and "+str(ib)+": Not enough data.")
 					continue
 				(n, d) = twoPopChordDist(seqs1, seqs2)
 				num.append(n)

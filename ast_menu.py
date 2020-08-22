@@ -13,13 +13,14 @@ class parseArgs():
 			"weight=", "out=", "method=", "plots", "plot","perm=", "phased", "median",
 			"diploid", "geopop", "geopops", "global_het", "haploid", "loc_agg=", 
 			"pop_agg=", "sdist_agg=", "clusterpop", "epsilon=", "min_samples=", "sclusterpop",
-			"network=", "overwrite", "reachid_col=", "length_col=", "coercemat"])
+			"network=", "overwrite", "reachid_col=", "length_col=", "coercemat", "locmatdir="])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
 		#Default values for params
 		#Input params
 		self.shapefile = None
+		self.locmatdir = None
 		self.geodb = None
 		self.run = "ALL"
 		self.network = None
@@ -87,6 +88,8 @@ class parseArgs():
 					self.display_help("Invalid option", arg.upper(),"for option <-d/--dist>")
 			elif opt == "het":
 				self.het = True
+			elif opt == "locmatdir":
+				self.locmatdir = arg
 			elif opt == "reachid_col":
 				self.reachid_col = arg
 			elif opt == "length_col":
@@ -181,11 +184,6 @@ class parseArgs():
 				print("ERROR: Distance metric",self.dist,"not possible without --pop or --geopop data.")
 				sys.exit(1)
 
-		###DIE FOR OPTIONS NOT YET IMPLEMENTED
-		if self.run == "RUNLOCI" and self.genmat:
-			self.display_help("Run type RUNLOCI not compatible with input distance matrix.")
-
-
 
 	def display_help(self, message=None):
 		if message is not None:
@@ -255,6 +253,7 @@ and uses a least-squares method to fit distances to stream segments.")
 			  --NOTE: TN84 will use empirical base frequencies
 		-G,--genmat	: Skip calculation and use the provided labeled .tsv matrix
 		--coercemat	: [Boolean] Coerce negative values in input matrix to zero
+		--locmatdir	: Directory of per-locus distance matrices
 		--het		: [Boolean] Count partial differences [e.g. ind1=T, ind2=W]
 		--snp		: [Boolean] Data represent concatenated SNPs
 		--msat		: xxx[Boolean] Data represent msat alleles [not yet implemented]

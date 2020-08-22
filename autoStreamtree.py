@@ -14,6 +14,8 @@ import networkx as nx
 import Mantel
 import seaborn as sns
 from scipy import stats
+from os import listdir
+from os.path import isfile, join
 from sortedcontainers import SortedDict
 from sklearn.linear_model import LinearRegression
 from shapely.geometry import LineString, point, Point
@@ -28,6 +30,7 @@ import genetic_distances as gendist
 import cluster_pops as clust
 import report_refs as ref
 from ast_menu import parseArgs
+import aggregators as agg
 
 
 #TODO: Currently assumes all points can be reached by all other points. Add option to check this first, and delete any points that are unreachable
@@ -70,17 +73,48 @@ def main():
 		if params.run == "GENDIST":
 			sys.exit(0)
 	
+	#IMPORTANT NOTE: This function will silently skip any loci for which calculations aren't possible (e.g., population having no data)
 	if params.run == "RUNLOCI":
 		genlist=list()
 		popgenlist=list()
-		for i in seqs:
-			(gen, pop_gen) = getPopGenMats(params, point_coords, popmap, [i])
-			genlist.append(gen)
-			popgenlist.append(pop_gen)
-		#print(seqs)
-		#print(len(seqs[0][0]))
-		#for i in len(seqs[0]):
-		sys.exit()
+		if not params.locmatdir:
+			for i in seqs:
+				try:
+					(gen, pop_gen) = getPopGenMats(params, point_coords, popmap, [i])
+					genlist.append(gen)
+					popgenlist.append(pop_gen)
+				except Exception: 
+					pass
+		else:
+			locmats = [f for f in listdir(params.locmatdir) if isfile(join(params.locmatdir, f))]
+			locmats = sorted(locmats, key = lambda x: int(x.split(".")[-1]))
+			print("\nReading per-locus genetic distances from provided directory:", params.locmatdir)
+
+			for locmat in locmats:
+				inmat = pd.read_csv(join(params.locmatdir, locmat), header=0, index_col=0, sep="\t")
+				#print(inmat)
+				(gen, pop_gen) = parseInputGenMat(params, inmat, point_coords, popmap)
+				genlist.append(gen)
+				popgenlist.append(pop_gen)
+		
+		#get "observed" gen dist matrix, either as a provided matrix
+		if not params.genmat:
+			print("\nCalculating average of locus-wise genetic distance matrices...")
+			if genlist[0] is not None: 
+				gen = np.mean(genlist, axis=0)
+			else:
+				gen = genlist[0]
+			if popgenlist[0] is not None:
+				popgen = np.mean(popgenlist, axis=0)
+			else:
+				popgen = popgenlist[0]
+		else:
+			print("\nReading genetic distances from provided matrix:", params.genmat)
+			inmat = pd.read_csv(params.genmat, header=0, index_col=0, sep="\t")
+			(gen, pop_gen) = parseInputGenMat(params, inmat, point_coords, popmap)
+		#print(genlist)
+		#print(popgenlist)
+		#sys.exit()
 
 	#for ia,ib in itertools.combinations(range(0,len(popmap)),2):
 	#	print(popmap.keys()[ia])
@@ -130,7 +164,7 @@ def main():
 			# plt.savefig((str(params.out)+".genXlngeo.pdf"))
 			
 	
-	if params.run in ["STREAMTREE", "ALL"]:
+	if params.run in ["STREAMTREE", "ALL", "RUNLOCI"]:
 		if params.pop or params.geopop or params.clusterpop:
 			gen=pop_gen
 		print("\nIncidence matrix:")
@@ -142,12 +176,32 @@ def main():
 		print(inc.shape)
 
 		#fit least-squares branch lengths
-		print()
-		R = fitLeastSquaresDistances(gen, inc.astype(int), params.iterative, params.out,params.weight)
-		print("\nFitted least-squares distances:")
-		print(R)
+		if params.run != "RUNLOCI":
+			print()
+			R = fitLeastSquaresDistances(gen, inc.astype(int), params.iterative, params.out,params.weight)
+			print("\nFitted least-squares distances:")
+			print(R)
+		else:
+			print()
+			if params.pop or params.geopop or params.clusterpop:
+				genlist=popgenlist
+			print("Fitting StreamTree distances on per-locus matrices...")
+			Rlist = list()
+			blockPrint()
+			for gen in genlist:
+				r = fitLeastSquaresDistances(gen, inc.astype(int), params.iterative, params.out,params.weight)
+				Rlist.append(r)
+			enablePrint()
+			
+			#print(Rlist)
+			print("\nCalculating average fitted distances across loci using:",params.loc_agg)
+			averageR = np.array([agg.aggregateDist(params.loc_agg, col) for col in zip(*Rlist)])
+			print(averageR)
+			
 		
 		#check observed versus fitted distances:
+		if params.run == "RUNLOCI":
+			R=averageR
 		pred=getFittedD(points, gen, inc, R)
 		print("\nComparing observed versus predicted genetic distances:")
 		print(pred)
@@ -157,7 +211,8 @@ def main():
 		del pred
 		#plt.show()
 		
-	
+		#sys.exit()
+		
 		#Now, annotate originate geoDF with dissolved reach IDs
 		#also, need to collect up the stream tree fitted D to each dissolved reach
 		#finally, could add residuals of fitting D vs LENGTH_KM?
@@ -203,7 +258,16 @@ def main():
 	
 		#add in fitted distances & plot
 		print("\nPlotting StreamTree fitted distances and writing new shapefile...")
-		fittedD = pd.DataFrame({'EDGE_ID':list(edges), 'fittedD':R})
+		
+		if params.run == "RUNLOCI":
+			fittedD = pd.DataFrame({'EDGE_ID':list(edges), 'fittedD':R})
+			i=1
+			for locfit in Rlist:
+				name="locD_" + str(i)
+				fittedD[name] = locfit
+				i+=1
+		else:
+			fittedD = pd.DataFrame({'EDGE_ID':list(edges), 'fittedD':R})
 		geoDF['EDGE_ID'] = geoDF['EDGE_ID'].astype(int)
 		geoDF = geoDF.merge(fittedD, on='EDGE_ID')
 		geoDF.plot(column="fittedD", cmap = "RdYlGn_r", legend=True)
@@ -302,13 +366,23 @@ def reportPopGenMats(params, gen, pop_gen, point_coords, pop_coords):
 		pop_genDF.to_csv((str(params.out) + ".popGenDistMat.txt"), sep="\t", index=True)
 		del pop_genDF
 
+# Disable
+def blockPrint():
+	sys.stdout = open(os.devnull, 'w')
+
+# Restore
+def enablePrint():
+	sys.stdout = sys.__stdout__
+
 #parses an input genetic distance matrix 
 def parseInputGenMat(params, inmat, point_coords, popmap):
 	gen = None
 	pop_gen = None
 	if params.coercemat:
 		inmat[inmat < 0.0] = 0.0
-	if (set(inmat.columns) != set(inmat.index.values)):
+	if set(list(inmat.columns.values)) != set(list(inmat.index.values)):
+		print(inmat.columns.values)
+		print(inmat.index.values)
 		print("Oh no! Input matrix columns and/ or rows don't appear to be labelled. Please provide an input matrix with column and row names!")
 		sys.exit(1)
 	else:
