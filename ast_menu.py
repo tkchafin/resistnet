@@ -277,6 +277,7 @@ and uses a least-squares method to fit distances to stream segments.")
 
 	IBD options:
 		--perm		: Number of permutations for mantel test [def=1000]
+		--and_log	: Also perform IBD steps with log geographic distances
 
 	StreamTree (see Kaliowski et al. 2008) options:
 		--iterative	: Prevent negative distances using the iterative approach

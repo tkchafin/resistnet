@@ -156,13 +156,29 @@ def main():
 			#plot geographic x genetic DISTANCES
 			genetic_distance=get_lower_tri(gen)
 			geographic_distance=get_lower_tri(sdist)
-			sns.jointplot(genetic_distance, geographic_distance, kind="reg", stat_func=r2)
+			sns.jointplot(geographic_distance, genetic_distance, kind="reg", stat_func=r2)
 			plt.savefig((str(params.out)+".isolationByDistance.pdf"))
 			del geographic_distance
 			del genetic_distance
 			# sns.jointplot(gn, np.log(go), kind="reg", stat_func=r2)
 			# plt.savefig((str(params.out)+".genXlngeo.pdf"))
 			
+			#if log request, re-do with logged geographic distances
+			if params.and_log:
+				print("\nTesting for isolation-by-distance with log geographic distances using Mantel test with",params.permutations,"permutations")
+				out=params.out+".log"
+				testIBD(gen, sdist, out, params.permutations, log=True)
+				
+				genetic_distance=get_lower_tri(gen)
+				geographic_distance=get_lower_tri(sdist)
+				geographic_distance=replaceZeroes(geographic_distance)
+				log_geo=np.log(geographic_distance)
+				sns.jointplot(log_geo, genetic_distance, kind="reg", stat_func=r2)
+				plt.savefig((str(out)+".isolationByDistance.pdf"))
+				del geographic_distance
+				del genetic_distance
+				del log_geo
+				
 	
 	if params.run in ["STREAMTREE", "ALL", "RUNLOCI"]:
 		if params.pop or params.geopop or params.clusterpop:
@@ -626,19 +642,28 @@ def get_lower_tri(mat):
 	i=np.tril_indices(n,-1)
 	return(mat[i])
 
+def replaceZeroes(data):
+  min_nonzero = np.min(data[np.nonzero(data)])
+  data[data == 0] = min_nonzero
+  return data
+
 #function computes Mantel test using various transformations
-def testIBD(gen, geo, out, perms):
+def testIBD(gen, geo, out, perms, log=False):
 	#get flattened lower triangle of each matrix
 	gen = get_lower_tri(gen)
 	geo = get_lower_tri(geo)
+	
+	if log==True:
+		geo=replaceZeroes(geo)
+		geo=np.log(geo)
 
 	#non-log pearson
-	res=list(Mantel.test(gen, geo, perms=int(perms), method='pearson'))
+	res=list(Mantel.test(geo, gen, perms=int(perms), method='pearson'))
 	rows=list()
 	rows.append(['genXgeo','pearson', str(perms), res[0], res[1], res[2]])
 
 	#non-log spearman
-	res=list(Mantel.test(gen, geo, perms=int(perms), method='spearman'))
+	res=list(Mantel.test(geo, gen, perms=int(perms), method='spearman'))
 	rows.append(['genXgeo','spearman', str(perms), res[0], res[1], res[2]])
 
 	#print(rows)
