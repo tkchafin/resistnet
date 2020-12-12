@@ -281,7 +281,11 @@ PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.6.6
 ldd ~/.pyenv/versions/3.6.6/bin/python3.6 | grep libpython
 #re-install dependencies w/ new python environment
 /Users/tyler/.pyenv/versions/3.6.6/bin/pip3 install numpy scipy networkx julia functools deap pandas
-
+#open python and set up julia PyCall
+/Users/tyler/.pyenv/versions/3.6.6/bin/python3 
+>>> import julia
+>>> julia.install()
+>>> quit()
 ```
 
 
