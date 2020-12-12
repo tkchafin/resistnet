@@ -209,10 +209,16 @@ def main():
 				Rlist.append(r)
 			enablePrint()
 			
-			#print(Rlist)
+			#aggregate locus distances (mean)
 			print("\nCalculating average fitted distances across loci using:",params.loc_agg)
 			averageR = np.array([agg.aggregateDist(params.loc_agg, col) for col in zip(*Rlist)])
 			print(averageR)
+			
+			#get standard-deviation locus distances as well
+			print("\nCalculating standard-deviation of fitted distances across loci using:",params.loc_agg)
+			sdR = np.array([agg.aggregateDist("SD", col) for col in zip(*Rlist)])
+			print(sdR)
+			
 			
 		
 		#check observed versus fitted distances:
@@ -277,6 +283,7 @@ def main():
 		
 		if params.run == "RUNLOCI":
 			fittedD = pd.DataFrame({'EDGE_ID':list(edges), 'fittedD':R})
+			sdD = pd.DataFrame({'EDGE_ID':list(edges), 'stdevD':sdR})
 			i=1
 			for locfit in Rlist:
 				name="locD_" + str(i)
@@ -286,13 +293,23 @@ def main():
 			fittedD = pd.DataFrame({'EDGE_ID':list(edges), 'fittedD':R})
 		geoDF['EDGE_ID'] = geoDF['EDGE_ID'].astype(int)
 		geoDF = geoDF.merge(fittedD, on='EDGE_ID')
+		if params.run == "RUNLOCI":
+			geoDF = geoDF.merge(sdD, on='EDGE_ID')
+			geoDF.plot(column="stdevD", cmap = "RdYlGn_r", legend=True)
+			plt.title("Stream network colored by standard deviation of StreamTree fitted distances")
+			plt.savefig((str(params.out)+".streamsBystdevD.pdf"))
 		geoDF.plot(column="fittedD", cmap = "RdYlGn_r", legend=True)
 		plt.title("Stream network colored by StreamTree fitted distances")
 		plt.savefig((str(params.out)+".streamsByFittedD.pdf"))
 	
 		#output a final annotated stream network layer
 		geoDF.to_csv((str(params.out)+".streamTree.txt"), sep="\t", index=False)
-		geoDF.to_file((str(params.out)+".streamTree.shp"))
+		
+		if geoDF.shape[1] > 2045:
+			print("Too many columns to write shapefile (hard limit of 2046 columns). Only writing first 2046 columns to shapefile attribute table; full output can be left-joined from $out.streamtree.txt.")
+			geoDF.to_file((str(params.out)+".streamTree.shp"))
+		else:
+			geoDF.iloc[:, : 2045].to_file((str(params.out)+".streamTree.shp"))
 
 	refs = ref.fetch_references(params)
 	print(refs)
