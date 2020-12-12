@@ -247,15 +247,27 @@ Here are some recommended readings and resources:
 ### Program description
 
 ### Installation 
+
+#### Dependencies
+
+#### Conda installation
 Conda instructions coming soon... 
+
+#### PyJulia setup
+You will need to open Julia and install the Julia [Circuitscape](https://github.com/Circuitscape/Circuitscape.jl) package:
+```
+$ julia
+julia> using Pkg; Pkg.add("Circuitscape")
+julia> Pkg.test("Circuitscape")
+```
 
 Depending on your environment, you may encounter an error along the lines of ```Your Python interpreter "/Users/tyler/miniconda3/envs/geo/bin/python3" is statically linked to libpython.  Currently, PyJulia does not fully support such Python interpreter.```
 If this happens, you will need to use a workaround to get Python and Julia properly working together. This is necessary because Circuitscape is a Julia package, and we need to call it from Python for riverscapeGA to function. 
 
 Luckily, the workaround is pretty simple. All you need to do is load Julia and add the PyCall package:
 ```
-julia
-> import Pkg; Pkg.add("PyCall")
+$ julia
+julia> import Pkg; Pkg.add("PyCall")
 ```
 Then, you will now replace the Python interpreter with the python-jl interpreter that comes packaged with PyJulia:
 ```
