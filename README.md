@@ -1,11 +1,17 @@
-# autoStreamTree
-Automated pipeline for examining patterns of genetic differentiation in stream networks from single-gene, multi-gene, or SNP datasets.
+# riverscape
+Riverscape is a collection of Python packages for examining patterns of multi-locus genetic differentiation in dendritic networks. 
+
+Currently divided into two major packages: 
+- autoStreamTree : This package calculates genetic and stream-distances by snapping sampling points to a network provided using an input shapefile and calculating a minimal sub-network, tests for isolation-by-distance, and fits genetic distances to stream segments using the Stream-tree algorithm by Kalinowski et al. 2008. 
+- autoCircuitGA : This package implements a genetic algorithm to optimize multi-variable resistance models on networks in Circuitscape. This is somewhat similar to the way in which ResistanceGA accomplishes this for raster datasets, but with some critical algorithmic differences (see below)
 
 --In progress--
 
 Contact: tkchafin@uark.edu 
 
-## Software Description
+## autoStreamTree
+
+### Software Description
 autoStreamTree is a Python software package providing various analyses aimed at analyzing patterns of genetic differentiation among aquatic stream-dwelling organisms. The intention is to take what was previously a tedious process involving multiple discrete steps and to integrate these all in one place. 
 
 Currently, autoStreamTree provides a companion library of functions for calculating various measures of genetic distances among individuals or populations, including model-corrected p-distances (e.g. Jukes-Cantor 1969, Kimura 2-parameter, Tamura-Nei 1993) as well as those based on allele frequencies (e.g. Theta-ST, linearized Fst, Jost's D -- full list of available distance models below). It also includes integrated functions for parsing an input vector shapefile of streams (see below 'Requirements for input shapefiles') for easy calculation of pairwise stream distances between sites, as well as the ordinary or weighted least-squares fitting of reach-wise genetic distances according to the "stream tree" model of Kalinowski et al. (2008). Various plotting functions are also provided for downstream analysis, including looking at patterns of isolation-by-distance. Outputs should also be directly importable into R, with additional outputs with annotated streamtree fitted distances provided for analysis in your GIS suite of choice. 
@@ -16,9 +22,9 @@ If you use this package for analysis of fitted distances using the streamtree mo
 If you find the code here useful for your research, for now please cite this repository:
 * Chafin TK. autoStreamTree: Automating workflows for examining patterns of genetic differentiation in stream networks. DOI: Coming soon.
 
-## Installation
+### Installation
 
-### Prerequisites
+#### Prerequisites
 * Python 3
 * numpy
 * scipy
@@ -33,7 +39,7 @@ If you find the code here useful for your research, for now please cite this rep
 * scikit-bio
 * scikit-learn
 
-### Installation with conda
+#### Installation with conda
 
 A full conda installation will come soon. For now, you can install manually using conda like so:
 ```
@@ -61,9 +67,9 @@ conda install scipy pandas geopandas shapely geopy sortedcontainers matplotlib n
 Next, clone this directory and you're all set!
 
 
-## Usage
+### Usage
 
-### Getting started
+#### Getting started
 
 Fill in details later... 
 
@@ -71,7 +77,7 @@ Points will be 'snapped' to nodes in the stream network. autoStreamTree will out
 
 ![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.snapDistances.png)
 
-### Genetic distance models 
+#### Genetic distance models 
 
 The currently recommended way to run autoStreamTree is to provide a labelled matrix of pairwise genetic distances, as there are many available packages for calculating these. This input matrix is provided using the --genmat argument, and should be tab-delimited with both column and row labels matching your population or individual identifiers. 
 
@@ -118,7 +124,7 @@ Optionally, the user can also opt to aggregate individual-based distance measure
 
 For datasets containing multiple non-concatenated loci, note that individual-based distances (e.g. PDIST or JC69) will also need to be aggregated among loci within each pairwise calculation. Any of the above options can again be used here, provided using the --loc_agg argument. 
 
-### Defining populations
+#### Defining populations
 There are currently three ways in which you can define populations for population-wise analysis. The first (specified using --pop) assumes that the 2nd column in the input file contains population identifiers. These can take any form (e.g., integer or string). The second (--geopop) will group any samples into populations which "snap" to the same stream node (see below). 
 
 A third option (--clusterpop) will automatically cluster geographically similar individuals using the DBSCAN algorithm in scikit-learn, using great-circle geographic distances (i.e., this is not informed by stream distances calculated as a part of some workflows). Two relevant options are provided for manipulating the DBSCAN results:
@@ -134,7 +140,7 @@ If using population labels, whether provided in the input file (--pop/--geopop) 
 
 In this example, DBSCAN was used (hence population IDs are formatted as "DB_"#). Population centroids, which are ultimately used to "snap" populations to the stream network are shown with an "x". Note that this means that the population will only be represented by a single point on the network! 
 
-### StreamTree method
+#### StreamTree method
 
 Coming soon -- some changes
 
@@ -152,7 +158,7 @@ After fitting genetic distances, autoStreamTree will create several other output
 Finally, the fitted distances per stream edge will be output both as an added column to the original shapefile attribute table ($out.streamTree.shp and $out.streamTree.txt), and also as a plot showing how distances compare across all streams: $out.streamsByFittedD.pdf
 ![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.networkByStreamTree.png)
 
-### Requirements for input shapefiles
+#### Requirements for input shapefiles
 
 I highly recommend using the existing global stream datasets provided by the [HydroLab group](https://wp.geog.mcgill.ca/hydrolab/) at McGill University, specifically the [HydroAtlas](https://www.hydrosheds.org/page/hydroatlas) or [free-flowing rivers dataset](https://wp.geog.mcgill.ca/hydrolab/free-flowing-rivers/) as these are already properly formatted for use, and the additional variables included will make downstream analysis very easy. Because of their size, I would recommend clipping them to the relevant scale first (e.g. the drainage encompassing all of your samples).
 
@@ -160,11 +166,9 @@ Note that a valid path is required between all sites in order to calculate pairw
 
 If for some reason you cannot use the HydroRIVERS dataset, you will need to do some things first before loading your shapefile into autoStreamTree. First, you will need to include two variables in the attribute table of your shapefile: 1) REACH_ID (case sensitive) must provide a unique identifier to each stream reach; and 2) LENGTH_KM should give the length of each segment. Next, because sometime large stream layers will have small gaps in between streams, you will need to span any small gaps between streams which should be contiguous, and also dissolve any lines that overlap with one another so that any given section of river is represented by a single line. I will provide a tutorial for doing this in ArcMAP later, but for now there are some scripts in our complementary package that can help with these steps using the ArcPy API: https://github.com/stevemussmann/StreamTree_arcpy. Note that this package will also help you in running the original Stream Tree package on Windows, if you want to do so. 
 
-## Example workflows 
+### Example workflows 
 
-## Accessory scripts
-
-### Re-plotting StreamTree outputs
+#### Re-plotting StreamTree outputs
 
 The default $out.streamdByFittedD plot may not be exactly what you wanted. To prevent cluttering the help menu of the main program too much, we've provided a separate script for loading up autoStreamTree outputs to re-make the plot, which has some added options for customization: scripts/plotStreamTree.py
 
@@ -190,15 +194,15 @@ For example, to re-plot values with a distance ceiling of 0.2 and a viridis colo
 python3 ./scripts/plotStreamTree.py -p out2 -m 0.0 -M 0.2 -c "viridis"
 '''
 
-### Clustering populations using any distance matrix
+#### Clustering populations using any distance matrix
 
 For example, if you wanted to cluster individuals using their stream distances, I've provided a script called clusterPopsDB.py which will use a DBSCAN clustering algorithm to output a tab-delimited population map given any arbitrary distance matrix:
 '''
 $ python3 ./scripts/clusterPopsDB.py -h
 '''
 
-## References
-### Citations for autoStreamTree methods
+### References
+#### Citations for autoStreamTree methods
 Below is a full list of citations for the various methods used in autoStreamTree. Apologies to anyone I missed - feel free to let me know if you notice any discrepancies. 
 * Beyer WM, Stein M, Smith T, Ulam S. 1974. A molecular sequence metric and evolutionary trees. Mathematical Biosciences. 19: 9-25.
 * Cavalli-Sforza LL, Edwards AWF. 1967. Phylogenetic analysis: model and estimation procedures. American Journal of Human Genetics. 19: 233-257.
@@ -224,7 +228,7 @@ Below is a full list of citations for the various methods used in autoStreamTree
 * Tamura K, Nei M. 1993. Estimation of the number of nucleotide substitutions in the control region of mitochondrial DNA in humans and chimpanzees. Molecular Biology and Evolution. 10(3):512-526.
 * Weir BS, Cockerham CC. 1984. Estimating F-statistics for the analysis of population structure. Evolution. 38: 1358-1370.
 
-### Recommended reading:
+#### Recommended reading:
 Here are some recommended readings and resources:
 * Comte L, Olden JD. 2018. Fish dispersal in flowing waters: A synthesis of movement- and genetic-based studies. Fish and Fisheries. 19(6): 1063-1077. 
 * Comte L, Olden JD. 2018. Evidence for dispersal syndromes in freshwater fishes. Proceedings Royal Society: B. 285(1871):  
@@ -236,3 +240,8 @@ Here are some recommended readings and resources:
 * Thomaz AT, Christie MR, Knowles LL. 2016. The architecture of river networks can drive the evolutionary dynamics of aquatic populations. Evolution. 70(3): 731-739.
 * Tonkin JD, Altermatt F, Finn DS, Heino J, Olden JD, Pauls SU, Lytle DA. 2017. The role of dispersal in river network metacommunities: Patterns, processes, and pathways. Freshwater Biology. 61(1): 141-163.
 * Wright S. 1965. Isolation by distance. Genetics. 28: 114-138.
+
+##autoCircuitGA
+
+##autoExtractNetwork
+ coming soon
