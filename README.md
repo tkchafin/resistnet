@@ -279,7 +279,8 @@ brew install pyenv
 #build python from scratch
 PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.6.6
 ldd ~/.pyenv/versions/3.6.6/bin/python3.6 | grep libpython
-#try calling riverscapeGA with the new python:
+#re-install dependencies w/ new python environment
+/Users/tyler/.pyenv/versions/3.6.6/bin/pip3 install numpy scipy networkx julia functools deap pandas
 
 ```
 
