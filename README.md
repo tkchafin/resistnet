@@ -271,16 +271,17 @@ julia> Pkg.build("PyCall")
 
 
 Depending on your environment, you may encounter an error along the lines of ```Your Python interpreter "/Users/tyler/miniconda3/envs/geo/bin/python3" is statically linked to libpython.  Currently, PyJulia does not fully support such Python interpreter.```
-If this happens, you will need to use a workaround to get Python and Julia properly working together. This is necessary because Circuitscape is a Julia package, and we need to call it from Python for riverscapeGA to function. 
+If this happens, you will need to use a workaround to get Python and Julia properly working together. 
 
-Luckily, the workaround is pretty simple. All you need to do is load Julia and add the PyCall package:
 ```
-$ julia
-julia> import Pkg; Pkg.add("PyCall")
+#install pyenv
+brew install pyenv
+#build python from scratch
+PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.6.6
+ldd ~/.pyenv/versions/3.6.6/bin/python3.6 | grep libpython
+#try calling riverscapeGA with the new python:
+
 ```
-Then, you will now replace the Python interpreter with the python-jl interpreter that comes packaged with PyJulia:
-```
-python-jl riverscapeGA.py <options>
-```
+
 
  coming soon
