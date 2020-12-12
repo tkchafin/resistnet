@@ -3,7 +3,9 @@ riverscape is a collection of Python programs for examining patterns of multi-lo
 
 Currently divided into two major packages: 
 - autoStreamTree : This package calculates genetic and stream-distances by snapping sampling points to a network provided using an input shapefile and calculating a minimal sub-network, tests for isolation-by-distance, and fits genetic distances to stream segments using the Stream-tree algorithm by Kalinowski et al. 2008. 
-- autoCircuitGA : This package implements a genetic algorithm to optimize multi-variable resistance models on networks in Circuitscape. This is somewhat similar to the way in which ResistanceGA accomplishes this for raster datasets, but with some critical algorithmic differences (see below)
+- riverscapeGA : This package implements a genetic algorithm to optimize multi-variable resistance models on networks in Circuitscape. This is somewhat similar to the way in which ResistanceGA accomplishes this for raster datasets, but with some critical algorithmic differences (see below)
+- streamCleaner : (Coming soon) Integrates the network extraction functions of autoStreamTree with various pre-processing steps such as joining non-contiguous segments, merging redundant paths (e.g., for a braided stream) -- Not yet added
+- riverscapeSim : (Coming soon) Performs forward-simulations on a given stream network, given environmental 'resistance' variables (and optional weights) -- Not yet added
 
 --In progress--
 
