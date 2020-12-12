@@ -243,7 +243,23 @@ Here are some recommended readings and resources:
 * Tonkin JD, Altermatt F, Finn DS, Heino J, Olden JD, Pauls SU, Lytle DA. 2017. The role of dispersal in river network metacommunities: Patterns, processes, and pathways. Freshwater Biology. 61(1): 141-163.
 * Wright S. 1965. Isolation by distance. Genetics. 28: 114-138.
 
-##autoCircuitGA
+##riverscapeGA
+### Program description
 
-##autoExtractNetwork
+### Installation 
+Conda instructions coming soon... 
+
+Depending on your environment, you may encounter an error along the lines of ```Your Python interpreter "/Users/tyler/miniconda3/envs/geo/bin/python3" is statically linked to libpython.  Currently, PyJulia does not fully support such Python interpreter.```
+If this happens, you will need to use a workaround to get Python and Julia properly working together. This is necessary because Circuitscape is a Julia package, and we need to call it from Python for riverscapeGA to function. 
+
+Luckily, the workaround is pretty simple. All you need to do is load Julia and add the PyCall package:
+```
+julia
+> import Pkg; Pkg.add("PyCall")
+```
+Then, you will now replace the Python interpreter with the python-jl interpreter that comes packaged with PyJulia:
+```
+python-jl riverscapeGA.py <options>
+```
+
  coming soon
