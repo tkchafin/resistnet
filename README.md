@@ -10,6 +10,7 @@ Contents:
 	* autoFetcher.py : Python interface for NCBI entrez API; can be used to automatically download and parse queries
 	* clusterPopsDB.py : Distance-based clustering of points using the DBSCAN algorithm
 	* fasta2phylip.py : Converting between FASTA and PHYLIP formats
+	* fasta2table.py : Converting between FASTA and autoStreamTree Table formats
 	* nremover.pl : Filtering FASTA and PHYLIP files of concatenated SNPs
 	* plotStreamTree.py : Re-making StreamTree fitted distance plot with some additional options
 	* [tkchafin/scripts](https://github.com/tkchafin/scripts) : For more useful file formatting and filtering scripts
