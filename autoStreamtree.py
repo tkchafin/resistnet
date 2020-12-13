@@ -11,7 +11,6 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 import networkx as nx
-import Mantel
 import seaborn as sns
 from scipy import stats
 from os import listdir
@@ -26,11 +25,12 @@ from geopy.distance import geodesic
 import pickle
 from math import radians, degrees, sin, cos, asin, acos, sqrt
 
-import genetic_distances as gendist
-import cluster_pops as clust
-import report_refs as ref
-from ast_menu import parseArgs
-import aggregators as agg
+import lib.genetic_distances as gendist
+import lib.cluster_pops as clust
+import lib.report_refs as ref
+from lib.ast_menu import parseArgs
+import lib.aggregators as agg
+import lib.Mantel
 
 
 #TODO: Currently assumes all points can be reached by all other points. Add option to check this first, and delete any points that are unreachable
