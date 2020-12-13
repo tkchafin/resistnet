@@ -8,27 +8,77 @@ import scipy as sp
 import numpy as np
 import pandas as pd
 import networkx as nx
-import julia as jl
 from functools import partial
+from collections import OrderedDict
 
+#julia
+from julia.api import Julia
+from julia import Base, Main
+from julia.Main import println, redirect_stdout
+
+#genetic algorithms
 from deap import base, creator, tools, algorithms
 
 #autoStreamTree packages
-import circuitscape_runner as cs
+
 from acg_menu import parseArgs
+import circuitscape_runner as cs
 
 def main():
-
+	
+	global params
 	params = parseArgs()
 	params.prefix="out3"
 	params.force="fittedD"
 	params.variables = ["tmp_dc_cmn", "aet_mm_cyr", "USE"]
+	params.seed="1321"
+	params.installCS=False
+	params.popsize=None
+	params.maxpopsize=None
+	params.cstype="pairwise"
+	params.fitmetric="aic"
+	
+	#seed random number generator
+	random.seed(params.seed)
+	
+	#establish connection to julia
+	print("Attempting to establish connection to Julia...\n")
+	global jl
+	jl = Julia()
+	
+	if params.installCS:
+		print("Installing Circuitscape.jl... May take a few minutes\n")
+		jl.eval("import Pkg; Pkg.add(\"Circuitscape\"); using Circuitscape; ")
+	else:
+		print("Loading Circuitscape in Julia...\n")
+		jl.eval("using Circuitscape; using Suppressor;")
+	Main.eval("stdout")
 	
 	#read autoStreamTree results
+	global graph
+	global distances
+	global predictors
+	global inc_matrix
+	global points
 	graph = readNetwork((str(params.prefix)+".network"))
 	(distances, predictors) = readStreamTree((str(params.prefix)+".streamtree.txt"), params.variables, params.force)
 	inc_matrix = readIncidenceMatrix((str(params.prefix)+".incidenceMatrix.txt"))
+	points = readPointCoords((str(params.prefix)+".pointCoords.txt"))
 	
+	#make sure points are snapped to the network
+	snapped=OrderedDict()
+	for point in points.keys():
+		if point not in graph.nodes():
+			node=snapToNode(graph, point)
+			print("Point not found in graph, snapping to nearest node:", point, " -- ", node)
+			snapped[str(node)]=points[point]
+		else:
+			snapped[str(point)]=points[point]
+	points = snapped
+	del snapped
+	
+	if params.cstype=="pairwise":
+		gendist = generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances)
 	# print(distances)
 	# print(predictors)
 	# print(inc_matrix)
@@ -62,7 +112,12 @@ def main():
 	initGA(toolbox, params)
 	
 	#initialize population
-	pop = toolbox.population(n=100)
+	popsize=len(params.variables)*15
+	if params.popsize:
+		popsize=params.popsize
+	if params.maxpopsize and popsize > params.maxpopsize:
+		popsize=params.maxpopsize
+	pop = toolbox.population(n=popsize)
 	
 	# Evaluate the entire population
 	fitnesses = list(map(toolbox.evaluate, pop))
@@ -80,7 +135,7 @@ def main():
 	g = 0
 
 	# Begin the evolution
-	while max(fits) < 100 and g < 1000:
+	while max(fits) < 5 and g < 5000:
 		# A new generation
 		g = g + 1
 		print("-- Generation %i --" % g)
@@ -126,6 +181,36 @@ def main():
 	best = pop[np.argmax([toolbox.evaluate(x) for x in pop])]
 	print(best)
 
+def generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances):
+	node_dict=OrderedDict()
+	node_idx=0
+	for edge in graph.edges():
+		if edge[0] not in node_dict.keys():
+			if edge[0] in points.keys():
+				node_dict[str(edge[0])] = node_idx
+				node_idx+=1
+		if edge[0] not in node_dict.keys():
+			if edge[0] in points.keys():
+				node_dict[str(edge[0])] = node_idx
+				node_idx+=1
+	gen=np.zeros(shape=(len(points), len(points)))
+	inc_row=0
+	#print(node_dict.keys())
+	#print(node_dict[tuple(list(points.keys())[0])])
+	for ia, ib in itertools.combinations(range(0,len(points)),2):
+		inc_streams=inc_matrix[inc_row,]
+		#print(distances*inc_streams)
+		d=sum(distances*inc_streams)
+		#print(d)
+		inc_row+=1
+		#print(node_dict)
+		print(ia, " -- ", list(points.keys())[ia], " -- ", node_dict[str(list(points.keys())[ia])])
+		print(ib, " -- ", list(points.keys())[ib], " -- ", node_dict[str(list(points.keys())[ib])])
+		gen[node_dict[str(list(points.keys())[ia])], node_dict[str(list(points.keys())[ib])]] = d
+	print(gen)
+	sys.exit()
+
+
 def readIncidenceMatrix(inc):
 	print("Reading incidence matrix from: ", inc)
 	df = pd.read_csv(inc, header=None, index_col=False, sep="\t")
@@ -135,6 +220,30 @@ def readNetwork(network):
 	print("Reading network from: ", network)
 	graph=nx.OrderedGraph(nx.read_gpickle(network).to_undirected())
 	return(graph)
+
+#Input: Tuple of [x,y] coordinates
+#output: Closest node to those coordinates
+def snapToNode(graph, pos):
+	#rint("closest_node call:",pos)
+	nodes = np.array(graph.nodes())
+	node_pos = np.argmin(np.sum((nodes - pos)**2, axis=1))
+	#print(nodes)
+	#print("closest to ", pos, "is",tuple(nodes[node_pos]))
+	return (tuple(nodes[node_pos]))
+
+def readPointCoords(pfile):
+	d=OrderedDict()
+	first=True
+	with open(pfile, "r") as pfh:
+		for line in pfh:
+			if first:
+				first=False
+				continue
+			stuff=line.split()
+			name=stuff[0]
+			coords=tuple([float(stuff[2]), float(stuff[1])])
+			d[coords]=name
+	return(d)
 
 def readStreamTree(streamtree, variables, force=None):
 	print("Reading autoStreamTree results from:", streamtree)
@@ -153,11 +262,15 @@ def readStreamTree(streamtree, variables, force=None):
 		#aggregate distances
 		dist = data.mean(axis=1).tolist()
 	
-	env=df[variables]
-	env -= env.min()
-	env /= env.max()
+	env=rescaleCols(df[variables], 0, 10)
 	
 	return(dist, env)
+
+def rescaleCols(df, m, M):
+	df -= df.min()
+	df /= df.max()
+	df = (df*(M-m))+m
+	return(df)
 
 #custom evaluation function
 def evaluate(individual):
@@ -165,9 +278,60 @@ def evaluate(individual):
 	fitness-=individual[1]
 	fitness+=individual[3]
 	fitness*=individual[-1]
+	
+	#vector to hold values across edges
+	
+	multi=None
+	first=True 
+	for i, variable in enumerate(predictors.columns):
+		#print(variable)
+		#print(i)
+		#print(predictors[variable])
+		
+		#Perform variable transformations (if desired)
+		#1)Scale to 0-10; 2) Perform desired transformation; 3) Re-scale to 0-10
+		#	NOTE: Get main implementation working first
+		
+		#add weighted variable data to multi
+		if individual[0::2][i] == 1:
+			if first:
+				multi = predictors[variable]*(individual[1::2][i])
+				first=False
+			else:
+				multi += predictors[variable]*(individual[1::2][i])
+	
+	#If no layers are selected, return a zero fitness
+	if first:
+		return(0.0,)
+	
+	#Generate temp file inputs for circuitscape
+	multi = rescaleCols(multi, 1, 100)
+	
+	#write circuitscape inputs
+	oname=".temp"+str(params.seed)
+	focal=True
+	if params.cstype=="edgewise":
+		focal=False
+	cs.writeCircuitScape(oname, graph, points, multi, focalPoints=focal, fromAttribute=None)
+	cs.writeIni(oname)
+	
+	#Call circuitscape from pyjulia
+	cs.evaluateIni(jl, oname)
+	
+	#parse circuitscape output
+	# if params.cstype=="edgewise":
+	# 	cs.parseEdgewise(oname, params.fitmetric, distances)
+	# else:
+	# 	cs.parsePairwise(oname, params.fitmetric, distances)
+		
+	#Main.eval("using Pkg")
+	sys.exit()
+	
 	return(fitness,)
 
 #custom mutation function
+#To decide: Should the current state inform the next state, or let it be random?
+#May depend on the "gene"?
 def mutate(individual, indpb):
 	if random.random() < indpb:
 		individual[0] = toolbox.feature_sel()
