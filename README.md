@@ -6,6 +6,13 @@ Contents:
 - RiverscapeGA.py : This package implements a genetic algorithm to optimize multi-variable resistance models on networks in Circuitscape. This is somewhat similar to the way in which ResistanceGA accomplishes this for raster datasets, but with some critical algorithmic differences (see below)
 - streamCleaner.py : (Coming soon) Integrates the network extraction functions of autoStreamTree with various pre-processing steps such as joining non-contiguous segments, merging redundant paths (e.g., for a braided stream) -- Not yet added
 - riverscapeSim.py : (Coming soon) Performs forward-simulations on a given stream network, given environmental 'resistance' variables (and optional weights) -- Not yet added
+- tools/ 
+	-- autoFetcher.py : Python interface for NCBI entrez API; can be used to automatically download and parse queries
+	-- clusterPopsDB.py : Distance-based clustering of points using the DBSCAN algorithm
+	-- fasta2phylip.py : Converting between FASTA and PHYLIP formats
+	-- nremover.pl : Filtering FASTA and PHYLIP files of concatenated SNPs
+	-- plotStreamTree.py : Re-making StreamTree fitted distance plot with some additional options
+	-- [tkchafin/scripts](https://github.com/tkchafin/scripts) : For more useful file formatting and filtering scripts
 
 --Work in progress--
 
