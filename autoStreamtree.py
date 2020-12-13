@@ -25,12 +25,12 @@ from geopy.distance import geodesic
 import pickle
 from math import radians, degrees, sin, cos, asin, acos, sqrt
 
-import lib.genetic_distances as gendist
-import lib.cluster_pops as clust
-import lib.report_refs as ref
-from lib.ast_menu import parseArgs
-import lib.aggregators as agg
-import lib.Mantel
+import riverscape.genetic_distances as gendist
+import riverscape.cluster_pops as clust
+import riverscape.report_refs as ref
+from riverscape.ast_menu import parseArgs
+import riverscape.aggregators as agg
+import riverscape.Mantel
 
 
 #TODO: Currently assumes all points can be reached by all other points. Add option to check this first, and delete any points that are unreachable
