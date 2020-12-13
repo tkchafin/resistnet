@@ -8,6 +8,7 @@ import scipy as sp
 import numpy as np
 import pandas as pd
 import networkx as nx
+import multiprocessing as mp
 from functools import partial
 from collections import OrderedDict
 from sortedcontainers import SortedDict
@@ -40,6 +41,9 @@ def main():
 	params.fitmetric="aic"
 	params.predicted=False
 	params.inmat=None
+	params.cholmod=True
+	params.GA_procs=1
+	params.CS_procs=4
 	
 	#seed random number generator
 	random.seed(params.seed)
@@ -116,7 +120,10 @@ def main():
 	toolbox = base.Toolbox()
 	
 	#register GA attributes and type variables
+	print("Initializing genetic algorithm parameters...\n")
 	initGA(toolbox, params)
+	pool = mp.Pool(processes=params.GA_procs)
+	toolbox.register("map", pool.map)
 	
 	#initialize population
 	popsize=len(params.variables)*15
@@ -124,13 +131,15 @@ def main():
 		popsize=params.popsize
 	if params.maxpopsize and popsize > params.maxpopsize:
 		popsize=params.maxpopsize
+	popsize=8
 	pop = toolbox.population(n=popsize)
 	
 	# Evaluate the entire population
+	print("Evaluating initial population...\n")
 	fitnesses = list(map(toolbox.evaluate, pop))
 	for ind, fit in zip(pop, fitnesses):
 		ind.fitness.values = fit
-	
+	sys.exit()
 	# CXPB  is the probability with which two individuals are crossed
 	# MUTPB is the probability for mutating an individual
 	cxpb, mutpb = 0.5, 0.2
@@ -142,6 +151,7 @@ def main():
 	g = 0
 
 	# Begin the evolution
+	print("Starting optimization...\n")
 	while max(fits) < 5 and g < 5000:
 		# A new generation
 		g = g + 1
@@ -187,6 +197,8 @@ def main():
 		print("  Std %s" % std)
 	best = pop[np.argmax([toolbox.evaluate(x) for x in pop])]
 	print(best)
+	
+	pool.close()
 
 def checkFormatGenMat(mat, order):
 	if os.path.isfile(mat):
@@ -361,24 +373,17 @@ def rescaleCols(df, m, M):
 
 #custom evaluation function
 def evaluate(individual):
-	fitness=sum(individual[0::2])
-	fitness-=individual[1]
-	fitness+=individual[3]
-	fitness*=individual[-1]
-	
+	print("evaluate", end="")
 	#vector to hold values across edges
-	
+	fitness=0
 	multi=None
 	first=True 
+	
+	#build multi-surface
 	for i, variable in enumerate(predictors.columns):
-		#print(variable)
-		#print(i)
-		#print(predictors[variable])
-		
 		#Perform variable transformations (if desired)
 		#1)Scale to 0-10; 2) Perform desired transformation; 3) Re-scale to 0-10
 		#	NOTE: Get main implementation working first
-		
 		#add weighted variable data to multi
 		if individual[0::2][i] == 1:
 			if first:
@@ -391,29 +396,32 @@ def evaluate(individual):
 	if first:
 		return(0.0,)
 	
-	#Generate temp file inputs for circuitscape
-	multi = rescaleCols(multi, 1, 100)
+	#Rescale multi for circuitscape
+	multi = rescaleCols(multi, 1, 10)
 	
 	#write circuitscape inputs
-	oname=".temp"+str(params.seed)
+	oname=".temp"+str(params.seed)+"_"+str(mp.Process().name)
 	focal=True
 	if params.cstype=="edgewise":
 		focal=False
 	cs.writeCircuitScape(oname, graph, points, multi, focalPoints=focal, fromAttribute=None)
-	cs.writeIni(oname)
+	cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
 	
 	#Call circuitscape from pyjulia
 	cs.evaluateIni(jl, oname)
 	
 	#parse circuitscape output
 	if params.cstype=="edgewise":
-		cs.parseEdgewise(oname, distances)
+		res = cs.parseEdgewise(oname, distances)
+		fitness = res[params.fitmetric][0]
 	else:
-		cs.parsePairwise(oname, gendist)
+		res = cs.parsePairwise(oname, gendist)
+		fitness = res[params.fitmetric][0]
 		
 	#Main.eval("using Pkg")
-	sys.exit()
-	
+	#sys.exit()
+	print(" - ", fitness)
+	#return fitness value
 	return(fitness,)
 
 #custom mutation function

@@ -6,7 +6,7 @@ import pandas as pd
 from collections import OrderedDict
 from io import StringIO 
 
-import riverscape.MLPE
+import riverscape.MLPE as mlpe_rga
 #multiple mutation types: https://stackoverflow.com/questions/47720921/deap-toolbox-to-consider-different-types-and-ranges-of-genes-in-mutation-and-cr
 
 """
@@ -21,10 +21,8 @@ def parseEdgewise(oname):
 
 def parsePairwise(oname, gendist):
 	pw=pd.read_csv((str(oname)+"_resistances.out"), header=0, index_col=0, sep=" ").to_numpy()
-	print(pw)
-	res = MLPE_R(gendist, pw, scale=True)
-	print(res)
-	sys.exit()
+	res = mlpe_rga.MLPE_R(gendist, pw, scale=True)
+	return(res)
 	
 	
 def evaluateIni(jl, oname):
@@ -75,7 +73,7 @@ def writeCircuitScape(oname, graph, points, resistance, focalPoints=False, fromA
 			pfh.write(pts_output)
 			pfh.close()
 
-def writeIni(oname):
+def writeIni(oname, cholmod=False, parallel=1):
 	with open((str(oname)+".ini"), "w") as ini:
 		ini.write("[Options for advanced mode]\n")
 		ini.write("ground_file_is_resistances = False\n")
@@ -88,8 +86,17 @@ def writeIni(oname):
 		
 		ini.write("[Calculation options]\n")
 		ini.write("low_memory_mode = False\n")
-		ini.write("solver = cg+amg\n")
+		if cholmod:
+			ini.write("solver = cholmod\n")
+		else:
+			ini.write("solver = cg+amg\n")
 		ini.write("print_timings = False\n")
+		if parallel>1:
+			ini.write("parallelize = True\n")
+			ini.write(("max_parallel ="+str(parallel)+"\n"))
+		else:
+			ini.write("parallelize = False\n")
+			ini.write("max_parallel = 0\n")
 		
 		ini.write("[Options for pairwise and one-to-all and all-to-one modes]\n")
 		ini.write("included_pairs_file = None\n")
@@ -136,6 +143,7 @@ def writeIni(oname):
 		ini.write("[Circuitscape mode]\n")
 		ini.write("data_type = network\n")
 		ini.write("scenario = pairwise\n")
+		
 		ini.close()
 
 

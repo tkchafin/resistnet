@@ -53,7 +53,12 @@ class parseArgs():
 	General options:
 		-o,--out	: Output prefix [default="out"]
 		-b,--boot	: Number of bootstraps <NOT IMPLEMENTED>
-		-f,--fit	: One of: aic, loglik, r2 [default=AIC] <NOT IMPLEMENTED>
+		-f,--fit	: Fit metric used to evaluate models <NOT IMPLEMENTED>
+				    Options:
+				    aic (default)
+				    loglik (log-likelihood)
+				    r2m (marginal R^2)
+				    deltaAIC (Change in AIC versus null model)
 		-p,--pair	: Compute fitness metrics using pairwise distances [default] 
 		-e,--edge	: Compute fitness metrics using edgewise distances <NOT IMPLEMENTED>
 		-f,--force	: Force calculation using XX distance attribute in input table (e.g., "fittedD")

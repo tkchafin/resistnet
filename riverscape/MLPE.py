@@ -38,7 +38,7 @@ def MLPE_R(X, Y, scale=True):
 	
 	r=ro.r
 	r['options'](warn=-1)
-	r['source']("resistanceGA_MLPE.R")
+	r['source']("riverscape/resistanceGA_MLPE.R")
 		
 	mlpe=ro.globalenv['MLPE']
 	with localconverter(ro.default_converter + pandas2ri.converter):
