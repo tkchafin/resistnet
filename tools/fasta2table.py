@@ -162,7 +162,7 @@ class parseArgs():
 		print ("\nfetcher.py\n")
 		print("Author: Tyler K Chafin, University of Arkansas")
 		print ("Contact: tkchafin@uark.edu")
-		print ("Description: Convert autoPHY fasta to a table and back")
+		print ("Description: Convert autoStreamTree fasta to a table and back")
 		print("""
 	Options:
 		-f	: Input fasta to convert to table
