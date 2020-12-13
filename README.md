@@ -286,6 +286,8 @@ ldd ~/.pyenv/versions/3.6.6/bin/python3.6 | grep libpython
 >>> import julia
 >>> julia.install()
 >>> quit()
+#install rpy2 on MacOS requires you point to gcc:
+env CC=/usr/local/bin/gcc /Users/tyler/.pyenv/versions/3.6.6/bin/pip3 install rpy2
 ```
 
 
