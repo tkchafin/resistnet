@@ -21,8 +21,8 @@ from deap import base, creator, tools, algorithms
 
 #autoStreamTree packages
 
-from acg_menu import parseArgs
-import circuitscape_runner as cs
+from lib.acg_menu import parseArgs
+import lib.circuitscape_runner as cs
 
 def main():
 	
