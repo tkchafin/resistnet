@@ -221,6 +221,7 @@ and uses a least-squares method to fit distances to stream segments.")
 			DISTANCES	: Only compute GENDIST + STREAMDIST
 			IBD		: GENDIST + STREAMDIST + Mantel test
 			STREAMTREE	: GENDIST + STREAMDIST + fit StreamTree model
+			RUNLOCI	: Run STREAMTREE fitting on each locus
 		-p,--pop		: Pool individuals based on column 2 of input file
 			NOTE: The location will be taken as the centroid among individual samples
 		-g,--geopop		: Pool individuals having identical coordinates

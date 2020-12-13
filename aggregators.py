@@ -25,6 +25,10 @@ def aggregateDist(method, stuff):
 		return(np.min(stuff))
 	elif method == "ADJHARM":
 		return(adjustedHarmonicMean(stuff))
+	elif method == "SD":
+		return(np.std(stuff))
+	elif method == "VAR":
+		return(np.var(stuff))
 
 #computes an harmonic mean corrected for non-positive values
 def adjustedHarmonicMean(stuff):

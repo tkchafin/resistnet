@@ -34,7 +34,7 @@ def MLPE_R(X, Y, scale=True):
 	#add x and y to data
 	ID["x"] = x
 	ID["y"] = y
-	print(ID)
+	#print(ID)
 	
 	r=ro.r
 	r['options'](warn=-1)
@@ -43,8 +43,9 @@ def MLPE_R(X, Y, scale=True):
 	mlpe=ro.globalenv['MLPE']
 	with localconverter(ro.default_converter + pandas2ri.converter):
 		mlpe_res=mlpe(ID, ZZ)
-		
-	print(mlpe_res)
+	
+	return(mlpe_res)	
+	#print(mlpe_res)
 
 def get_lower_tri(mat):
 	n=mat.shape[0]
