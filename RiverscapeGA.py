@@ -10,6 +10,7 @@ import pandas as pd
 import networkx as nx
 from functools import partial
 from collections import OrderedDict
+from sortedcontainers import SortedDict
 
 #julia
 from julia.api import Julia
@@ -21,8 +22,8 @@ from deap import base, creator, tools, algorithms
 
 #autoStreamTree packages
 
-from lib.acg_menu import parseArgs
-import lib.circuitscape_runner as cs
+from riverscape.acg_menu import parseArgs
+import riverscape.circuitscape_runner as cs
 
 def main():
 	
@@ -37,6 +38,8 @@ def main():
 	params.maxpopsize=None
 	params.cstype="pairwise"
 	params.fitmetric="aic"
+	params.predicted=False
+	params.inmat=None
 	
 	#seed random number generator
 	random.seed(params.seed)
@@ -60,28 +63,32 @@ def main():
 	global predictors
 	global inc_matrix
 	global points
+	global gendist
+	
+	#read autoStreamTree outputs
 	graph = readNetwork((str(params.prefix)+".network"))
 	(distances, predictors) = readStreamTree((str(params.prefix)+".streamtree.txt"), params.variables, params.force)
 	inc_matrix = readIncidenceMatrix((str(params.prefix)+".incidenceMatrix.txt"))
 	points = readPointCoords((str(params.prefix)+".pointCoords.txt"))
 	
 	#make sure points are snapped to the network
-	snapped=OrderedDict()
+	snapped=SortedDict()
 	for point in points.keys():
 		if point not in graph.nodes():
 			node=snapToNode(graph, point)
 			print("Point not found in graph, snapping to nearest node:", point, " -- ", node)
-			snapped[str(node)]=points[point]
+			snapped[tuple(node)]=points[point]
 		else:
-			snapped[str(point)]=points[point]
+			snapped[tuple(point)]=points[point]
 	points = snapped
 	del snapped
 	
+	#read genetic distances
 	if params.cstype=="pairwise":
-		gendist = generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances)
-	# print(distances)
-	# print(predictors)
-	# print(inc_matrix)
+		if params.predicted:
+			gendist = generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances)
+		else:
+			gendist = parseInputGenMat(graph, points, prefix=params.prefix, inmat=params.inmat)
 	
 	#Options that need to be set: 
 	#1) Do we regress pairwise distance x resistance OR edge-wise distance x resistance
@@ -181,18 +188,98 @@ def main():
 	best = pop[np.argmax([toolbox.evaluate(x) for x in pop])]
 	print(best)
 
-def generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances):
+def checkFormatGenMat(mat, order):
+	if os.path.isfile(mat):
+		#read and see if it has the correct dimensions
+		inmat = pd.read_csv(mat, header=0, index_col=0, sep="\t")
+		#if correct dimensions, check if labelled correctly
+		if len(inmat.columns) >= len(order):
+			if set(list(inmat.columns.values)) != set(list(inmat.columns.values)):
+				#print("columns and rows don't match")
+				return(None)
+			# elif set(list(inmat.columns.values)) != set(order):
+			# 	#print("Oh no! Input matrix columns and/ or rows don't appear to be labelled properly. Please provide an input matrix with column and row names!")
+			# 	return(None)
+			else:
+				#this must be the one. Reorder it and return
+				#print("Reading genetic distances from input matrix:",indmat)
+				formatted = inmat.reindex(order)
+				formatted = formatted[order]
+				#print(formatted)
+				gen = formatted.to_numpy()
+				return(gen)
+		#otherwise, skip and try the popgenmat
+		else:
+			#print("wrong number of columns")
+			return(None)
+	else:
+		return(None)
+		
+def parseInputGenMat(graph, points, prefix=None, inmat=None):
+	order = getNodeOrder(graph, points, as_list=True)
+	#if no input matrix provided, infer from autoStreamTree output
+	if not inmat:
+		#check if pop and ind mats both exist
+		indmat = str(prefix) + ".indGenDistMat.txt"
+		popmat = str(prefix) + ".popGenDistMat.txt"
+		#if indmat exists
+		ind = checkFormatGenMat(indmat, order)
+		pop = checkFormatGenMat(popmat, order)
+		#print(pop)
+		#print(order)
+		if pop is not None:
+			return(pop)
+		elif ind is not None:
+			return(ind)
+		else:
+			print("Failed to read autoStreamTree genetic distance matrix.")
+			sys.exit()
+	else:
+		#read input matrix instead
+		gen = checkFormatGenMat(inmat)
+		if gen is not None:
+			return(gen)
+		else:
+			print("Failed to read input genetic distance matrix:",inmat)
+			sys.exit()
+
+def getNodeOrder(graph, points, as_dict=False, as_index=False, as_list=True):
 	node_dict=OrderedDict()
+	point_dict=OrderedDict()
+	order=list()
 	node_idx=0
+	#print(type(list(points.keys())[0]))
 	for edge in graph.edges():
-		if edge[0] not in node_dict.keys():
-			if edge[0] in points.keys():
-				node_dict[str(edge[0])] = node_idx
+		left = edge[0]
+		right = edge[1]
+		#print(type(left))
+		#print(type(right))
+		if left not in node_dict.keys():
+			#print("not in dict")
+			if left in points.keys():
+				node_dict[left] = node_idx
+				order.append(points[left])
+				point_dict[left] = points[left]
 				node_idx+=1
-		if edge[0] not in node_dict.keys():
-			if edge[0] in points.keys():
-				node_dict[str(edge[0])] = node_idx
+		if right not in node_dict.keys():
+			if right in points.keys():
+				node_dict[right] = node_idx
+				order.append(points[right])
+				point_dict[right] = points[right]
 				node_idx+=1
+	#if as_index return ordered dict of indices
+	if as_index:
+		return(node_dict)
+	#if as_dict return ordered dict of node names
+	if as_dict:
+		return(point_dict)
+	if as_list:
+		return(order)
+	#otherwise, return list of NAMES in correct order
+	return(order)
+
+def generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances):
+	node_dict=getNodeOrder(graph, points, as_index=True)
 	gen=np.zeros(shape=(len(points), len(points)))
 	inc_row=0
 	#print(node_dict.keys())
@@ -204,11 +291,11 @@ def generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances):
 		#print(d)
 		inc_row+=1
 		#print(node_dict)
-		print(ia, " -- ", list(points.keys())[ia], " -- ", node_dict[str(list(points.keys())[ia])])
-		print(ib, " -- ", list(points.keys())[ib], " -- ", node_dict[str(list(points.keys())[ib])])
-		gen[node_dict[str(list(points.keys())[ia])], node_dict[str(list(points.keys())[ib])]] = d
-	print(gen)
-	sys.exit()
+		#print(ia, " -- ", list(points.keys())[ia], " -- ", node_dict[list(points.keys())[ia]])
+		#print(ib, " -- ", list(points.keys())[ib], " -- ", node_dict[list(points.keys())[ib]])
+		gen[node_dict[list(points.keys())[ia]], node_dict[list(points.keys())[ib]]] = d
+	#print(gen)
+	return(gen)
 
 
 def readIncidenceMatrix(inc):
@@ -232,7 +319,7 @@ def snapToNode(graph, pos):
 	return (tuple(nodes[node_pos]))
 
 def readPointCoords(pfile):
-	d=OrderedDict()
+	d=SortedDict()
 	first=True
 	with open(pfile, "r") as pfh:
 		for line in pfh:
@@ -319,10 +406,10 @@ def evaluate(individual):
 	cs.evaluateIni(jl, oname)
 	
 	#parse circuitscape output
-	# if params.cstype=="edgewise":
-	# 	cs.parseEdgewise(oname, params.fitmetric, distances)
-	# else:
-	# 	cs.parsePairwise(oname, params.fitmetric, distances)
+	if params.cstype=="edgewise":
+		cs.parseEdgewise(oname, distances)
+	else:
+		cs.parsePairwise(oname, gendist)
 		
 	#Main.eval("using Pkg")
 	sys.exit()
