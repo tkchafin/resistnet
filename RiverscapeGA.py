@@ -18,13 +18,48 @@ from julia.api import Julia
 from julia import Base, Main
 from julia.Main import println, redirect_stdout
 
+import timeit
+
 #genetic algorithms
 from deap import base, creator, tools, algorithms
 
 #autoStreamTree packages
-
 from riverscape.acg_menu import parseArgs
 import riverscape.circuitscape_runner as cs
+import riverscape.transform as trans
+
+
+"""
+Parallelization notes -- failed attempts.
+What I've tried:
+	1) Multiprocessing.pool with deap
+		Observation: Runtimes longer with more processors
+		Problems: I think there are multiple:
+			- The Julia interface may still be running them 
+				serially
+			- The overhead of sending around all of the global
+				variables might be too high to see any positive 
+				change with the small tests I've been doing
+		Verdict: Revisit this option later. Need to get everything up 
+			and runnign first
+	2) Native parallelization of pairwise comparisons in Circuitscape
+			Observation: Takes LONGER per run !??
+			Problems: I think these individual runs are so short that the overhead
+				of sending data within Julia/CS outweighs the benefits
+			Verdict: Probably not going to be a good solution.
+	3) *Meta-parallelization of ini files in Julia
+			Observation: Runtimes longer with more processors
+			Problems: May be just that my laptop is bogged down
+			Verdict: Try messing with this again later. This only parallelizes
+				the Circuitscape part, but that's better than nothing...
+	
+	Things to try: 
+		- Re-evaluate the meta-parellelization method with 
+			a longer run. Still, maybe the cost of moving things around is too much.
+		- Try having each thread initialize separately. Parse inputs, connect to 
+			Julia, etc. Might help..?
+"""
+
 
 def main():
 	
@@ -36,80 +71,25 @@ def main():
 	params.seed="1321"
 	params.installCS=False
 	params.popsize=None
-	params.maxpopsize=None
+	params.maxpopsize=20
 	params.cstype="pairwise"
 	params.fitmetric="aic"
 	params.predicted=False
 	params.inmat=None
-	params.cholmod=True
-	params.GA_procs=1
-	params.CS_procs=4
+	params.cholmod=False
+	params.GA_procs=2
+	params.CS_procs=1
+	params.deltaB=None
+	params.deltaB_perc=0.01
+	params.nfail=10
+	params.maxGens=1
+	params.tournsize=5
+	params.cxpb=0.5
+	params.mutpb=0.3
+	params.indpb=0.05
 	
 	#seed random number generator
 	random.seed(params.seed)
-	
-	#establish connection to julia
-	print("Attempting to establish connection to Julia...\n")
-	global jl
-	jl = Julia()
-	
-	if params.installCS:
-		print("Installing Circuitscape.jl... May take a few minutes\n")
-		jl.eval("import Pkg; Pkg.add(\"Circuitscape\"); using Circuitscape; ")
-	else:
-		print("Loading Circuitscape in Julia...\n")
-		jl.eval("using Circuitscape; using Suppressor;")
-	Main.eval("stdout")
-	
-	#read autoStreamTree results
-	global graph
-	global distances
-	global predictors
-	global inc_matrix
-	global points
-	global gendist
-	
-	#read autoStreamTree outputs
-	graph = readNetwork((str(params.prefix)+".network"))
-	(distances, predictors) = readStreamTree((str(params.prefix)+".streamtree.txt"), params.variables, params.force)
-	inc_matrix = readIncidenceMatrix((str(params.prefix)+".incidenceMatrix.txt"))
-	points = readPointCoords((str(params.prefix)+".pointCoords.txt"))
-	
-	#make sure points are snapped to the network
-	snapped=SortedDict()
-	for point in points.keys():
-		if point not in graph.nodes():
-			node=snapToNode(graph, point)
-			print("Point not found in graph, snapping to nearest node:", point, " -- ", node)
-			snapped[tuple(node)]=points[point]
-		else:
-			snapped[tuple(point)]=points[point]
-	points = snapped
-	del snapped
-	
-	#read genetic distances
-	if params.cstype=="pairwise":
-		if params.predicted:
-			gendist = generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances)
-		else:
-			gendist = parseInputGenMat(graph, points, prefix=params.prefix, inmat=params.inmat)
-	
-	#Options that need to be set: 
-	#1) Do we regress pairwise distance x resistance OR edge-wise distance x resistance
-	#2) Use fittedD value or aggregate locD_ values?
-	#3) Can do bootstraps by bootstrapping locus distances (from autoStreamTree)
-	#4) Fitness calculation: AIC, loglik, or R^2? 
-	
-	#NOTES:
-	#transformations - re-write code from ResistanceGA
-	#inverse transforms aren't needed, because we allow negative weighting
-	
-	#Design of the genetic algorithm: 
-	#There are multiple types of attributes occupying a 'chromosome':
-	#1) Boolean - feature selection (decides if a variable is included or not)
-	#2) Float - Provides a weight to each feature in the final additive resistence model
-	#3) Categorical - specifies what type of transformation is associated with a variable
-	#4) Float2 - A shape parameter associated with the transformation type
 	
 	#initialize a single-objective GA
 	creator.create("FitnessMax", base.Fitness, weights=(1.0,))
@@ -122,8 +102,10 @@ def main():
 	#register GA attributes and type variables
 	print("Initializing genetic algorithm parameters...\n")
 	initGA(toolbox, params)
-	pool = mp.Pool(processes=params.GA_procs)
-	toolbox.register("map", pool.map)
+	
+	#mp.set_start_method("spawn") 
+	#pool = mp.Pool(processes=params.GA_procs)
+	#toolbox.register("map", pool.map)
 	
 	#initialize population
 	popsize=len(params.variables)*15
@@ -136,13 +118,22 @@ def main():
 	
 	# Evaluate the entire population
 	print("Evaluating initial population...\n")
+	#model_files = [toolbox.evaluate(i, ind) for i, ind in enumerate(pop)]
+	#parallel version... not working right now
+	# model_files = list(map(toolbox.evaluate, pop))
+	# print(model_files)
+	# fitnesses = parallel_eval(jl, model_files, params.cstype)
+	# print(fitnesses)
+	# for ind, fit in zip(pop, fitnesses):
+	# 	ind.fitness.values = (fit,)
 	fitnesses = list(map(toolbox.evaluate, pop))
 	for ind, fit in zip(pop, fitnesses):
 		ind.fitness.values = fit
-	sys.exit()
+
+	#sys.exit()
 	# CXPB  is the probability with which two individuals are crossed
 	# MUTPB is the probability for mutating an individual
-	cxpb, mutpb = 0.5, 0.2
+	cxpb, mutpb = params.cxpb, params.mutpb
 	
 	# Extracting all the fitnesses of population
 	fits = [ind.fitness.values[0] for ind in pop]
@@ -151,8 +142,13 @@ def main():
 	g = 0
 
 	# Begin the evolution
+	#NOTE: Need to implement some sort of callback for 
+	
 	print("Starting optimization...\n")
-	while max(fits) < 5 and g < 5000:
+	stop=False
+	fails=0
+	#while max(fits) < 5 and g < 5:
+	while fails < params.nfail and g < params.maxGens:
 		# A new generation
 		g = g + 1
 		print("-- Generation %i --" % g)
@@ -195,10 +191,79 @@ def main():
 		print("  Max %s" % max(fits))
 		print("  Avg %s" % mean)
 		print("  Std %s" % std)
+		
+		#evaluate for stopping criteria
+		
+		
 	best = pop[np.argmax([toolbox.evaluate(x) for x in pop])]
 	print(best)
 	
-	pool.close()
+	#pool.close()
+
+def initialize_worker(params, seed):
+	my_number = 1
+	
+	#make new random seed, as seed+Process_number
+	random.seed(seed+my_number)
+	
+	#make "local" globals (i.e. global w.r.t each process)
+	global jl
+	global graph
+	global distances
+	global predictors
+	global inc_matrix
+	global points
+	global gendist
+	
+	#establish connection to julia
+	if my_number == 1:
+		print("Attempting to establish connection to Julia...\n")
+	global jl
+	jl = Julia()
+	
+	#if params.GA_procs>1:
+	if params.installCS:
+		if my_number == 1:
+			print("Installing Circuitscape.jl... May take a few minutes\n")
+		jl.eval("using Pkg; Pkg.add(\"Circuitscape\");")
+	if my_number == 1:
+		print("Loading Circuitscape in Julia...\n")
+	jl.eval("using Pkg; using Distributed; ")
+	jl.eval("using Circuitscape; using Suppressor;")
+	Main.eval("stdout")
+
+	#read autoStreamTree outputs
+	if my_number == 1:
+		print("Reading network from: ", network)
+	graph = readNetwork((str(params.prefix)+".network"))
+	if my_number==1:
+		print("Reading autoStreamTree results from:", streamtree)
+	(distances, predictors) = readStreamTree((str(params.prefix)+".streamtree.txt"), params.variables, params.force)
+	points = readPointCoords((str(params.prefix)+".pointCoords.txt"))
+	
+	#make sure points are snapped to the network
+	snapped=SortedDict()
+	for point in points.keys():
+		if point not in graph.nodes():
+			node=snapToNode(graph, point)
+			if my_number == 1:
+				print("Point not found in graph, snapping to nearest node:", point, " -- ", node)
+			snapped[tuple(node)]=points[point]
+		else:
+			snapped[tuple(point)]=points[point]
+	points = snapped
+	del snapped
+	
+	#read genetic distances
+	if params.cstype=="pairwise":
+		if params.predicted:
+			if my_number == 1:
+				print("Reading incidence matrix from: ", inc)
+			inc_matrix = readIncidenceMatrix((str(params.prefix)+".incidenceMatrix.txt"))
+			gendist = generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances)
+		else:
+			gendist = parseInputGenMat(graph, points, prefix=params.prefix, inmat=params.inmat)
+	
 
 def checkFormatGenMat(mat, order):
 	if os.path.isfile(mat):
@@ -311,12 +376,10 @@ def generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances):
 
 
 def readIncidenceMatrix(inc):
-	print("Reading incidence matrix from: ", inc)
 	df = pd.read_csv(inc, header=None, index_col=False, sep="\t")
 	return(df.to_numpy())
 	
 def readNetwork(network):
-	print("Reading network from: ", network)
 	graph=nx.OrderedGraph(nx.read_gpickle(network).to_undirected())
 	return(graph)
 
@@ -345,7 +408,6 @@ def readPointCoords(pfile):
 	return(d)
 
 def readStreamTree(streamtree, variables, force=None):
-	print("Reading autoStreamTree results from:", streamtree)
 	df = pd.read_csv(streamtree, header=0, index_col=False, sep="\t")
 	
 	df = df.groupby('EDGE_ID').agg('mean')
@@ -361,66 +423,148 @@ def readStreamTree(streamtree, variables, force=None):
 		#aggregate distances
 		dist = data.mean(axis=1).tolist()
 	
-	env=rescaleCols(df[variables], 0, 10)
-	
+	env=trans.rescaleCols(df[variables], 0, 10)
 	return(dist, env)
 
-def rescaleCols(df, m, M):
-	df -= df.min()
-	df /= df.max()
-	df = (df*(M-m))+m
-	return(df)
 
-#custom evaluation function
+# #parallel version; actually returns a list of filenames
+# #custom evaluation function
+# def evaluate(individual):
+# 	#vector to hold values across edges
+# 	fitness=None
+# 	multi=None
+# 	first=True 
+# 
+# 	#build multi-surface
+# 	for i, variable in enumerate(predictors.columns):
+# 		#Perform variable transformations (if desired)
+# 		#1)Scale to 0-10; 2) Perform desired transformation; 3) Re-scale to 0-10
+# 		#	NOTE: Get main implementation working first
+# 		#add weighted variable data to multi
+# 		if individual[0::2][i] == 1:
+# 			if first:
+# 				multi = predictors[variable]*(individual[1::2][i])
+# 				first=False
+# 			else:
+# 				multi += predictors[variable]*(individual[1::2][i])
+# 
+# 	#If no layers are selected, return a zero fitness
+# 	if first:
+# 		fitness = None
+# 	else:
+# 		#Rescale multi for circuitscape
+# 		multi = rescaleCols(multi, 1, 10)
+# 
+# 		#write circuitscape inputs
+# 		oname=".temp"+str(params.seed)+"_"+str(random.randint(1, 100000))
+# 		#oname=".temp"+str(params.seed)
+# 		focal=True
+# 		if params.cstype=="edgewise":
+# 			focal=False
+# 		cs.writeCircuitScape(oname, graph, points, multi, focalPoints=focal, fromAttribute=None)
+# 		cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
+# 
+# 		fitness=oname
+# 	#return fitness value
+# 	return(fitness)
+# 
+# def parallel_eval(jl, ini_list, cstype):
+# 	#Call circuitscape from pyjulia
+# 	results = cs.evaluateIniParallel(jl, ini_list)
+# 
+# 	#parse circuitscape output
+# 	fitnesses = list()
+# 	for ini in ini_list:
+# 		fitness = 0
+# 		if ini is None:
+# 			fitness = float('-inf')
+# 		else:
+# 			if cstype=="edgewise":
+# 				res = cs.parseEdgewise(ini, distances)
+# 				fitness = res[params.fitmetric][0]
+# 			else:
+# 				res = cs.parsePairwise(ini, gendist)
+# 				fitness = res[params.fitmetric][0]
+# 			#cs.cleanup(ini)
+# 		fitnesses.append(fitness)
+# 	return(fitnesses)
+
+def transform(dat, transformation, shape):
+	d=dat
+	if transformation <= 0:
+		pass
+	elif transformation == 1:
+		d=trans.ricker(dat, shape, 10)
+	elif transformation == 2:
+		d=trans.revRicker(dat, shape, 10)
+	elif transformation == 3:
+		d=trans.invRicker(dat, shape, 10)
+	elif transformation == 4:
+		d=trans.revInvRicker(dat, shape, 10)
+	elif transformation == 5:
+		d=trans.monomolecular(dat, shape, 10)
+	elif transformation == 6:
+		d=trans.revMonomolecular(dat, shape, 10)
+	elif transformation == 7:
+		d=trans.invMonomolecular(dat, shape, 10)
+	elif transformation == 8:
+		d=trans.revMonomolecular(dat, shape, 10)
+	else:
+		print("WARNING: Invalid transformation type. Returning un-transformed data.")
+	return(trans.rescaleCols(d, 0, 10))
+
+# Version for doing each individual serially
+# #custom evaluation function
 def evaluate(individual):
-	print("evaluate", end="")
 	#vector to hold values across edges
 	fitness=0
 	multi=None
 	first=True 
-	
+
 	#build multi-surface
 	for i, variable in enumerate(predictors.columns):
 		#Perform variable transformations (if desired)
 		#1)Scale to 0-10; 2) Perform desired transformation; 3) Re-scale to 0-10
 		#	NOTE: Get main implementation working first
 		#add weighted variable data to multi
-		if individual[0::2][i] == 1:
+		if individual[0::4][i] == 1:
+			#print("Before:", predictors[variable])
+			var = transform(predictors[variable], individual[2::4][i], individual[3::4][i])
+			#print("Before:", var)
 			if first:
-				multi = predictors[variable]*(individual[1::2][i])
+				#transform(data, transformation, shape) * weight
+				multi = var*(individual[1::4][i])
 				first=False
 			else:
-				multi += predictors[variable]*(individual[1::2][i])
-	
+				multi += var*(individual[1::4][i])
+
 	#If no layers are selected, return a zero fitness
 	if first:
-		return(0.0,)
-	
-	#Rescale multi for circuitscape
-	multi = rescaleCols(multi, 1, 10)
-	
-	#write circuitscape inputs
-	oname=".temp"+str(params.seed)+"_"+str(mp.Process().name)
-	focal=True
-	if params.cstype=="edgewise":
-		focal=False
-	cs.writeCircuitScape(oname, graph, points, multi, focalPoints=focal, fromAttribute=None)
-	cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
-	
-	#Call circuitscape from pyjulia
-	cs.evaluateIni(jl, oname)
-	
-	#parse circuitscape output
-	if params.cstype=="edgewise":
-		res = cs.parseEdgewise(oname, distances)
-		fitness = res[params.fitmetric][0]
+		fitness = float('-inf')
 	else:
-		res = cs.parsePairwise(oname, gendist)
-		fitness = res[params.fitmetric][0]
-		
-	#Main.eval("using Pkg")
-	#sys.exit()
-	print(" - ", fitness)
+		#Rescale multi for circuitscape
+		#print("Multi:",multi)
+		multi = trans.rescaleCols(multi, 1, 10)
+
+		#write circuitscape inputs
+		#oname=".temp"+str(params.seed)+"_"+str(mp.Process().name)
+		oname=".temp"+str(params.seed)
+		focal=True
+		if params.cstype=="edgewise":
+			focal=False
+		cs.writeCircuitScape(oname, graph, points, multi, focalPoints=focal, fromAttribute=None)
+		cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
+
+		#Call circuitscape from pyjulia
+		cs.evaluateIni(jl, oname)
+
+		#parse circuitscape output
+		if params.cstype=="edgewise":
+			res = cs.parseEdgewise(oname, distances)
+			fitness = res[params.fitmetric][0]
+		else:
+			res = cs.parsePairwise(oname, gendist)
+			fitness = res[params.fitmetric][0]
 	#return fitness value
 	return(fitness,)
 
@@ -428,25 +572,27 @@ def evaluate(individual):
 #To decide: Should the current state inform the next state, or let it be random?
 #May depend on the "gene"?
 def mutate(individual, indpb):
-	if random.random() < indpb:
-		individual[0] = toolbox.feature_sel()
-		individual[1] = toolbox.feature_weight()
-		individual[2] = toolbox.feature_sel()
-		individual[3] = toolbox.feature_weight()
-		individual[4] = toolbox.feature_sel()
-		individual[5] = toolbox.feature_weight()
+	for (i, variable) in enumerate(predictors.columns):
+		if random.random() < indpb:
+			individual[0::4][i] = toolbox.feature_sel()
+		if random.random() < indpb:
+			individual[1::4][i] = toolbox.feature_weight()
+		if random.random() < indpb:
+			individual[2::4][i] = toolbox.feature_transform()
+		if random.random() < indpb:
+			individual[3::4][i] = toolbox.feature_shape()
 	return(individual,)
 
 def initGA(toolbox, params):
 	#register attributes
 	toolbox.register("feature_sel", random.randint, 0, 1)
 	toolbox.register("feature_weight", random.uniform, -1.0, 1.0)
-	#toolbox.register("feature_transform", random.randint, 0, 1)
-	#toolbox.register("feature_scale", random.randint, 0, 1)
+	toolbox.register("feature_transform", random.randint, 0, 8)
+	toolbox.register("feature_shape", random.randint, 1, 100)
 	
 	#register type for individuals 
 	#these consist of chromosomes of i variables x j attributes (above)
-	toolbox.register("individual", tools.initCycle, creator.Individual,(toolbox.feature_sel, toolbox.feature_weight), n=len(params.variables))
+	toolbox.register("individual", tools.initCycle, creator.Individual,(toolbox.feature_sel, toolbox.feature_weight, toolbox.feature_transform, toolbox.feature_shape), n=len(params.variables))
 	#toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.feature_sel, n=len(params.variables))
 	
 	#register type for populations
@@ -460,10 +606,10 @@ def initGA(toolbox, params):
 	toolbox.register("mate", tools.cxTwoPoint)
 	
 	#register mutation function
-	toolbox.register("mutate", mutate, indpb=0.05) #NOTE: make indpb an argument
+	toolbox.register("mutate", mutate, indpb=params.indpb) #NOTE: make indpb an argument
 	
 	#register tournament function
-	toolbox.register("select", tools.selTournament, tournsize=3) #NOTE: Make tournsize an argument
+	toolbox.register("select", tools.selTournament, tournsize=5) #NOTE: Make tournsize an argument
 
 #Call main function
 if __name__ == '__main__':
