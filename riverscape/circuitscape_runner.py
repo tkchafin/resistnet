@@ -24,10 +24,24 @@ def parsePairwise(oname, gendist):
 	res = mlpe_rga.MLPE_R(gendist, pw, scale=True)
 	return(res)
 	
-	
 def evaluateIni(jl, oname):
 	ini_path = str(oname)+".ini"
 	jl.eval(str("@suppress begin\ncompute(\"" + str(ini_path)+"\")\nend"))
+
+def evaluateIniParallel(jl, ini_list):
+	index=0
+	run_list=list()
+	bad_indices=list()
+	for ini in ini_list:
+		print(ini)
+		if ini is None:
+			bad_indices.append(index)
+		else:
+			run_list.append((str(ini)+".ini"))
+		index+=1
+	#print(run_list)
+	Main.run_list = run_list
+	jl.eval(str("@suppress begin\npmap(compute, run_list, batch_size=4)\nend;"))
 
 #function to write inputs for circuitscape
 def writeCircuitScape(oname, graph, points, resistance, focalPoints=False, fromAttribute=None):
@@ -93,10 +107,10 @@ def writeIni(oname, cholmod=False, parallel=1):
 		ini.write("print_timings = False\n")
 		if parallel>1:
 			ini.write("parallelize = True\n")
-			ini.write(("max_parallel ="+str(parallel)+"\n"))
+			ini.write(("max_parallel = "+str(parallel)+"\n\n"))
 		else:
 			ini.write("parallelize = False\n")
-			ini.write("max_parallel = 0\n")
+			ini.write("max_parallel = 0\n\n")
 		
 		ini.write("[Options for pairwise and one-to-all and all-to-one modes]\n")
 		ini.write("included_pairs_file = None\n")
@@ -114,35 +128,35 @@ def writeIni(oname, cholmod=False, parallel=1):
 		ini.write("set_null_currents_to_nodata = True\n")
 		ini.write("set_null_voltages_to_nodata = True\n")
 		ini.write("compress_grids = False\n")
-		ini.write("write_cur_maps = False\n")
+		ini.write("write_cur_maps = False\n\n")
 
 		ini.write("[Short circuit regions (aka polygons)]\n")
 		ini.write("use_polygons = False\n")
-		ini.write("polygon_file = None\n")
+		ini.write("polygon_file = None\n\n")
 
 		ini.write("[Connection scheme for raster habitat data]\n")
 		ini.write("connect_four_neighbors_only = True\n")
-		ini.write("connect_using_avg_resistances = True\n")
+		ini.write("connect_using_avg_resistances = True\n\n")
 
 		ini.write("[Habitat raster or graph]\n")
 		ini.write("habitat_file = ")
 		ini.write((str(oname)+".graph_resistances.txt\n"))
-		ini.write("habitat_map_is_resistances = True\n")
+		ini.write("habitat_map_is_resistances = True\n\n")
 
 		ini.write("[Options for one-to-all and all-to-one modes]\n")
 		ini.write("use_variable_source_strengths = False\n")
-		ini.write("variable_source_file = None\n")
+		ini.write("variable_source_file = None\n\n")
 
 		ini.write("[Version]\n")
-		ini.write("version = 3.5.5\n")
+		ini.write("version = 5.7.1\n\n")
 
 		ini.write("[Mask file]\n")
 		ini.write("use_mask = False\n")
-		ini.write("mask_file = None\n")
+		ini.write("mask_file = None\n\n")
 
 		ini.write("[Circuitscape mode]\n")
 		ini.write("data_type = network\n")
-		ini.write("scenario = pairwise\n")
+		ini.write("scenario = pairwise\n\n")
 		
 		ini.close()
 
