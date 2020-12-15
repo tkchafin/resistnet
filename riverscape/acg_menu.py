@@ -14,9 +14,32 @@ class parseArgs():
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
 		#Default values for params
 		#Input params
-		self.shapefile = None
-		self.locmatdir = None
-		self.edgeid= "EDGE_ID"
+		self.prefix="out3"
+		self.force="fittedD"
+		self.variables = ["tmp_dc_cmn", "aet_mm_cyr", "USE"]
+		self.seed="1321"
+		self.installCS=False
+		self.popsize=None
+		self.maxpopsize=20
+		self.cstype="pairwise"
+		self.fitmetric="aic"
+		self.fitmetric_index=2
+		self.predicted=False
+		self.inmat=None
+		self.cholmod=False
+		self.GA_procs=3
+		self.CS_procs=1
+		self.deltaB=None
+		self.deltaB_perc=0.01
+		self.nfail=10
+		self.maxGens=5
+		self.tournsize=5
+		self.cxpb=0.5
+		self.mutpb=0.5
+		self.indpb=0.1
+		self.burnin=0
+		self.max_hof_size=100
+		self.out="output"
 
 
 		#First pass to see if help menu was called
@@ -46,12 +69,18 @@ class parseArgs():
 		print ("Contact: tkchafin@uark.edu")
 		print ("Description: Genetic algorithm to optimize resistance models on networks")
 		print("""
-	Mandatory arguments:
-		-n,--network	: Input .network file from autoStreamTree
-		-i,--input	: Input .streamtree.txt file from autoStreamTree
-
+	Input options:
+	  If using autoStreamTree outputs:
+		-p,--prefix	: Prefix for autoStreamTree outputs
+		-or-
+	  If manually specifying inputs:
+		-i,--inmat	: Genetic distance matrix
+		-n,--network	: Input graph (in pickle'd networkx format)	
+		
 	General options:
-		-o,--out	: Output prefix [default="out"]
+		-s,--seed	: Random number seed (default=taken from clock time)
+		
+		
 		-b,--boot	: Number of bootstraps <NOT IMPLEMENTED>
 		-f,--fit	: Fit metric used to evaluate models <NOT IMPLEMENTED>
 				    Options:

@@ -9,14 +9,12 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 import multiprocessing as mp
+from datetime import datetime
 from functools import partial
 from collections import OrderedDict
 from sortedcontainers import SortedDict
 
 #julia
-from julia.api import Julia
-from julia import Base, Main
-from julia.Main import println, redirect_stdout
 
 import timeit
 
@@ -24,12 +22,27 @@ import timeit
 from deap import base, creator, tools, algorithms
 
 #autoStreamTree packages
+import riverscape.hall_of_fame as hof
 from riverscape.acg_menu import parseArgs
 import riverscape.circuitscape_runner as cs
 import riverscape.transform as trans
 
 
 """
+TO-DO: 
+4) Output of "best" model(s) -- will need logging
+
+5) Final plots, tables, etc
+	- Model-averaged resistance values (wld involve re-running circuitscape for each selected model though)
+	- Compute Akaike weights
+		add: param for cumulative akaike weight threshold to choose top n models (e.g. 0.95)
+	- Compute importance of terms (using Akaike weights):
+		SWx for variable x = Sum(wk*INDk)
+			wk = akaike weight of model k
+			INDk = 0 if absent 1 if present, as a parameter in model k
+			see discussion in Giam and Olden 2015 versus Galipaud et al 2014/16
+
+
 Parallelization notes -- failed attempts.
 What I've tried:
 	1) Multiprocessing.pool with deap
@@ -52,6 +65,8 @@ What I've tried:
 			Problems: May be just that my laptop is bogged down
 			Verdict: Try messing with this again later. This only parallelizes
 				the Circuitscape part, but that's better than nothing...
+	4) Each Python sub-process has it's own Julia instance 
+			Observation: Instant segfault if the master process also has a Julia instance
 	
 	Things to try: 
 		- Re-evaluate the meta-parellelization method with 
@@ -74,22 +89,42 @@ def main():
 	params.maxpopsize=20
 	params.cstype="pairwise"
 	params.fitmetric="aic"
+	params.fitmetric_index=2
 	params.predicted=False
 	params.inmat=None
 	params.cholmod=False
-	params.GA_procs=2
+	params.GA_procs=3
 	params.CS_procs=1
 	params.deltaB=None
 	params.deltaB_perc=0.01
 	params.nfail=10
-	params.maxGens=1
+	params.maxGens=5
 	params.tournsize=5
 	params.cxpb=0.5
-	params.mutpb=0.3
-	params.indpb=0.05
+	params.mutpb=0.5
+	params.indpb=0.1
+	params.burnin=0
+	params.max_hof_size=100
 	
 	#seed random number generator
-	random.seed(params.seed)
+	#random.seed(params.seed)
+	if not params.seed:
+		params.seed=int(datetime.now())
+		random.seed(params.seed)
+	
+	pool = mp.Pool(processes=params.GA_procs)
+	
+	process_list = range(1, int(params.GA_procs)+1)
+	func = partial(initialize_worker, params)
+	results = pool.map(func, process_list)
+	
+	#load data for master process
+	global my_number 
+	my_number = 0
+	load_data(params, 0)
+	
+	#print(results)
+	#sys.exit()
 	
 	#initialize a single-objective GA
 	creator.create("FitnessMax", base.Fitness, weights=(1.0,))
@@ -104,8 +139,6 @@ def main():
 	initGA(toolbox, params)
 	
 	#mp.set_start_method("spawn") 
-	#pool = mp.Pool(processes=params.GA_procs)
-	#toolbox.register("map", pool.map)
 	
 	#initialize population
 	popsize=len(params.variables)*15
@@ -116,128 +149,181 @@ def main():
 	popsize=8
 	pop = toolbox.population(n=popsize)
 	
+	
 	# Evaluate the entire population
 	print("Evaluating initial population...\n")
-	#model_files = [toolbox.evaluate(i, ind) for i, ind in enumerate(pop)]
-	#parallel version... not working right now
-	# model_files = list(map(toolbox.evaluate, pop))
-	# print(model_files)
-	# fitnesses = parallel_eval(jl, model_files, params.cstype)
-	# print(fitnesses)
-	# for ind, fit in zip(pop, fitnesses):
-	# 	ind.fitness.values = (fit,)
-	fitnesses = list(map(toolbox.evaluate, pop))
+	
+	fitnesses = pool.map(toolbox.evaluate, [list(i) for i in pop])
+	
+	#print(fitnesses)
+	pop_list=list()
 	for ind, fit in zip(pop, fitnesses):
-		ind.fitness.values = fit
-
+		ind.fitness.values = fit[0],
+		if fit[1] is not None:
+			ind_list=list()
+			ind_list.append(fit[0])
+			print(ind)
+			ind_list.extend(list(ind))
+			ind_list.extend(fit[1])
+			pop_list.append(ind_list)
+	print(pop_list)
+	bests = hof.hallOfFame(predictors.columns, params.max_hof_size, pop_list)
+	bests.print()
+	sys.exit()
+	#print(pop[0])
+	
 	#sys.exit()
 	# CXPB  is the probability with which two individuals are crossed
 	# MUTPB is the probability for mutating an individual
 	cxpb, mutpb = params.cxpb, params.mutpb
 	
 	# Extracting all the fitnesses of population
-	fits = [ind.fitness.values[0] for ind in pop]
+	fits = [i.fitness.values[0] for i in pop]
 	
 	# Variable keeping track of the number of generations
 	g = 0
-
+	
 	# Begin the evolution
 	#NOTE: Need to implement some sort of callback for 
 	
 	print("Starting optimization...\n")
-	stop=False
 	fails=0
+	current_best=float('-inf')
 	#while max(fits) < 5 and g < 5:
-	while fails < params.nfail and g < params.maxGens:
+	while fails <= params.nfail and g <= params.maxGens:
 		# A new generation
 		g = g + 1
 		print("-- Generation %i --" % g)
-		
+	
 		# Select the next generation individuals
 		offspring = toolbox.select(pop, len(pop))
 		# Clone the selected individuals
 		offspring = list(map(toolbox.clone, offspring))
-		
+	
 		# Apply crossover and mutation on the offspring
 		for child1, child2 in zip(offspring[::2], offspring[1::2]):
 			if random.random() < cxpb:
 				toolbox.mate(child1, child2)
 				del child1.fitness.values
 				del child2.fitness.values
-		
+	
 		for mutant in offspring:
 			if random.random() < mutpb:
 				toolbox.mutate(mutant)
 				del mutant.fitness.values
-		
-		#evaluate individuals with invalid fitness
+	
 		invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-		fitnesses = map(toolbox.evaluate, invalid_ind)
+		fitnesses = pool.map(toolbox.evaluate, [list(i) for i in invalid_ind])
+		pop_list=list()
 		for ind, fit in zip(invalid_ind, fitnesses):
-			ind.fitness.values = fit
+			ind.fitness.values = fit[0],
+			ind_list=list(fit[0])
+			ind_list.extend(list(ind))
+			ind_list.extend(fit[1])
+			pop_list.append(ind_list)
+		bests.check_population(pop_list)
 		
 		#replace population with offspring
 		pop[:] = offspring
-		
+	
 		# Gather all the fitnesses in one list and print the stats
-		fits = [ind.fitness.values[0] for ind in pop]
-
+		fits = [i.fitness.values[0] for i in pop]
+	
 		length = len(pop)
 		mean = sum(fits) / length
 		sum2 = sum(x*x for x in fits)
 		std = abs(sum2 / length - mean**2)**0.5
-
+	
 		print("  Min %s" % min(fits))
 		print("  Max %s" % max(fits))
 		print("  Avg %s" % mean)
 		print("  Std %s" % std)
-		
+	
 		#evaluate for stopping criteria
-		
-		
-	best = pop[np.argmax([toolbox.evaluate(x) for x in pop])]
-	print(best)
+		if g > params.burnin:
+			threshold_1=current_best
+			threshold_2=current_best
+			if params.deltaB:
+				threshold_1=current_best+params.deltaB
+			if params.deltaB_perc:
+				threshold_2=(current_best*params.deltaB_perc)+current_best
+			if max(fits) > current_best:
+				current_best = max(fits)
+	
+			if max(fits) < threshold_1 or max(fits) < threshold_2:
+				fails += 1
+			else:
+				fails=0
+			
+			print("  nFails %s" % fails)
+	
+	best = pop[np.argmax([pool.map(toolbox.evaluate, [list(ind) for ind in pop])])]
+	print("Stopping optimization after",str(g),"generations.")
+	if g > params.maxGens:
+		print("Reason: Exceeded maxGens")
+	elif fails > params.nfail:
+		print("Reason: More than",str(fails),"generations since finding better solution.")
+	
+	#output report for best model
+	#reportBestModel(best)
+	
+	#Make some plots? 
+	#probably need to 1) Run full Circuitscape again (with edge-wise and pair-wise)
+	#so I can make edge-wise plots, regress pw distances, etc?
+	
+	#report top XX best models 
+	#reportTopModels(bests, params.bests)
 	
 	#pool.close()
 
-def initialize_worker(params, seed):
-	my_number = 1
-	
+def initialize_worker(params, proc_num):
+	global my_number 
+	my_number = proc_num
 	#make new random seed, as seed+Process_number
-	random.seed(seed+my_number)
+	local_seed = int(params.seed)+my_number
+	random.seed(local_seed)
 	
-	#make "local" globals (i.e. global w.r.t each process)
 	global jl
+	from julia.api import Julia
+	from julia import Base, Main
+	from julia.Main import println, redirect_stdout
+	
+	#establish connection to julia
+	print("Worker",proc_num,"connecting to Julia...\n")
+	jl = Julia(init_julia=False)
+	
+	#if params.GA_procs>1:
+	if params.installCS:
+		if my_number == 0:
+			print("Installing Circuitscape.jl... May take a few minutes\n")
+		jl.eval("using Pkg; Pkg.add(\"Circuitscape\");")
+	if my_number == 0:
+		print("Loading Circuitscape in Julia...\n")
+	#jl.eval("using Pkg;")
+	jl.eval("using Circuitscape; using Suppressor;")
+	#Main.eval("stdout")
+	
+	load_data(params, my_number)
+	
+	return(local_seed)
+
+def load_data(params, proc_num):
+
+	#make "local" globals (i.e. global w.r.t each process)
 	global graph
 	global distances
 	global predictors
 	global inc_matrix
 	global points
 	global gendist
+	my_number = proc_num
 	
-	#establish connection to julia
-	if my_number == 1:
-		print("Attempting to establish connection to Julia...\n")
-	global jl
-	jl = Julia()
-	
-	#if params.GA_procs>1:
-	if params.installCS:
-		if my_number == 1:
-			print("Installing Circuitscape.jl... May take a few minutes\n")
-		jl.eval("using Pkg; Pkg.add(\"Circuitscape\");")
-	if my_number == 1:
-		print("Loading Circuitscape in Julia...\n")
-	jl.eval("using Pkg; using Distributed; ")
-	jl.eval("using Circuitscape; using Suppressor;")
-	Main.eval("stdout")
-
 	#read autoStreamTree outputs
-	if my_number == 1:
-		print("Reading network from: ", network)
+	if my_number == 0:
+		print("Reading network from: ", (str(params.prefix)+".network"))
 	graph = readNetwork((str(params.prefix)+".network"))
-	if my_number==1:
-		print("Reading autoStreamTree results from:", streamtree)
+	if my_number==0:
+		print("Reading autoStreamTree results from:", (str(params.prefix)+".streamtree.txt"))
 	(distances, predictors) = readStreamTree((str(params.prefix)+".streamtree.txt"), params.variables, params.force)
 	points = readPointCoords((str(params.prefix)+".pointCoords.txt"))
 	
@@ -246,7 +332,7 @@ def initialize_worker(params, seed):
 	for point in points.keys():
 		if point not in graph.nodes():
 			node=snapToNode(graph, point)
-			if my_number == 1:
+			if my_number == 0:
 				print("Point not found in graph, snapping to nearest node:", point, " -- ", node)
 			snapped[tuple(node)]=points[point]
 		else:
@@ -257,13 +343,13 @@ def initialize_worker(params, seed):
 	#read genetic distances
 	if params.cstype=="pairwise":
 		if params.predicted:
-			if my_number == 1:
-				print("Reading incidence matrix from: ", inc)
+			if my_number == 0:
+				print("Reading incidence matrix from: ", (str(params.prefix)+".incidenceMatrix.txt"))
 			inc_matrix = readIncidenceMatrix((str(params.prefix)+".incidenceMatrix.txt"))
 			gendist = generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances)
 		else:
 			gendist = parseInputGenMat(graph, points, prefix=params.prefix, inmat=params.inmat)
-	
+
 
 def checkFormatGenMat(mat, order):
 	if os.path.isfile(mat):
@@ -516,8 +602,10 @@ def transform(dat, transformation, shape):
 # Version for doing each individual serially
 # #custom evaluation function
 def evaluate(individual):
+	#print("evaluate - Process",my_number)
 	#vector to hold values across edges
 	fitness=0
+	res=None
 	multi=None
 	first=True 
 
@@ -548,7 +636,7 @@ def evaluate(individual):
 
 		#write circuitscape inputs
 		#oname=".temp"+str(params.seed)+"_"+str(mp.Process().name)
-		oname=".temp"+str(params.seed)
+		oname=".temp.s"+str(params.out)+"_p"+str(my_number)
 		focal=True
 		if params.cstype=="edgewise":
 			focal=False
@@ -562,11 +650,14 @@ def evaluate(individual):
 		if params.cstype=="edgewise":
 			res = cs.parseEdgewise(oname, distances)
 			fitness = res[params.fitmetric][0]
+			res=list(res.iloc[0])
 		else:
 			res = cs.parsePairwise(oname, gendist)
 			fitness = res[params.fitmetric][0]
+			res=list(res.iloc[0])
 	#return fitness value
-	return(fitness,)
+	#print(fitness)
+	return(fitness,res)
 
 #custom mutation function
 #To decide: Should the current state inform the next state, or let it be random?
