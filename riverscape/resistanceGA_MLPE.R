@@ -24,8 +24,8 @@ MLPE <- function(ID, ZZ, REML=FALSE) {
 	r2<-c(MuMIn:::r.squaredGLMM(MODs$full)[[1]])
 	aic<-c(full$AICtab[[1]])
 	deltaAIC<-c(null$AICtab[[1]]-full$AICtab[[1]])
-	df<-data.frame(models, loglik, r2, aic, deltaAIC)
-	colnames(df) <- c("model", "loglik", "r2m", "aic", "deltaAIC")
+	df<-data.frame(loglik, r2, aic, deltaAIC)
+	colnames(df) <- c("loglik", "r2m", "aic", "deltaAIC")
   # return model
   return(df)
 }
