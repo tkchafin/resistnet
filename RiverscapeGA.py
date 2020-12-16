@@ -174,6 +174,8 @@ def main():
 	
 	bests.delta_aic()
 	bests.akaike_weights()
+	bests.cumulative_akaike()
+	bests.print()
 	
 	sys.exit()
 	# CXPB  is the probability with which two individuals are crossed

@@ -60,7 +60,7 @@ class hallOfFame():
 			return
 		else:
 			self.data["aic"] = self.data["aic"]*-1 #reverse the neg sign i added for maximizing
-			best=self.data["aic"].min
+			best=self.data["aic"].min()
 			self.data["delta_aic_best"] = self.data["aic"]-best
 	
 	def akaike_weights(self):
@@ -70,10 +70,16 @@ class hallOfFame():
 		#where the denominator is summed over k models
 		#delta_aic = self.data["delta_aic_best"].to_numpy()
 		#sum_k = self.data["delta_aic_best"].to_numpy()
+		#did a test agains MuMIn::Weights in R and this seems to be working
 		self.data["akaike_weight"]=((np.exp(-0.5*self.data["delta_aic_best"])) / (sum(np.exp(-0.5*self.data["delta_aic_best"]))))
 	
 	def cumulative_akaike(self, threshold=None):
-		pass
+		if "akaike_weight" not in self.data.columns:
+			self.akaike_weights()
+		self.data["acc_akaike_weight"] = self.data["akaike_weight"].cumsum()
+		if threshold: 
+			if threshold >0 and threshold < 1:
+				pass
 
 	def importance_of_terms(self):
 		pass
