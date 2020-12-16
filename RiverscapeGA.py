@@ -86,14 +86,14 @@ def main():
 	params.seed="1321"
 	params.installCS=False
 	params.popsize=None
-	params.maxpopsize=20
+	params.maxpopsize=5
 	params.cstype="pairwise"
 	params.fitmetric="aic"
 	params.fitmetric_index=2
 	params.predicted=False
 	params.inmat=None
 	params.cholmod=False
-	params.GA_procs=3
+	params.GA_procs=2
 	params.CS_procs=1
 	params.deltaB=None
 	params.deltaB_perc=0.01
@@ -141,12 +141,12 @@ def main():
 	#mp.set_start_method("spawn") 
 	
 	#initialize population
-	popsize=len(params.variables)*15
+	popsize=len(params.variables)*4*15
 	if params.popsize:
 		popsize=params.popsize
-	if params.maxpopsize and popsize > params.maxpopsize:
+	if popsize > params.maxpopsize:
 		popsize=params.maxpopsize
-	popsize=8
+	print("Establishing a population of size:",str(popsize))
 	pop = toolbox.population(n=popsize)
 	
 	
@@ -169,10 +169,13 @@ def main():
 	print(pop_list)
 	bests = hof.hallOfFame(predictors.columns, params.max_hof_size, pop_list)
 	bests.print()
-	sys.exit()
+	#sys.exit()
 	#print(pop[0])
 	
-	#sys.exit()
+	bests.delta_aic()
+	bests.akaike_weights()
+	
+	sys.exit()
 	# CXPB  is the probability with which two individuals are crossed
 	# MUTPB is the probability for mutating an individual
 	cxpb, mutpb = params.cxpb, params.mutpb
@@ -656,7 +659,7 @@ def evaluate(individual):
 			fitness = res[params.fitmetric][0]
 			res=list(res.iloc[0])
 	#return fitness value
-	#print(fitness)
+	print(fitness)
 	return(fitness,res)
 
 #custom mutation function

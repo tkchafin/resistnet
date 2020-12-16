@@ -17,25 +17,24 @@ class parseArgs():
 		self.prefix="out3"
 		self.force="fittedD"
 		self.variables = ["tmp_dc_cmn", "aet_mm_cyr", "USE"]
-		self.seed="1321"
+		self.seed=None
 		self.installCS=False
 		self.popsize=None
-		self.maxpopsize=20
+		self.maxpopsize=100
 		self.cstype="pairwise"
 		self.fitmetric="aic"
-		self.fitmetric_index=2
 		self.predicted=False
 		self.inmat=None
 		self.cholmod=False
-		self.GA_procs=3
+		self.GA_procs=1
 		self.CS_procs=1
 		self.deltaB=None
-		self.deltaB_perc=0.01
-		self.nfail=10
-		self.maxGens=5
-		self.tournsize=5
+		self.deltaB_perc=0.001
+		self.nfail=50
+		self.maxGens=500
+		self.tournsize=10
 		self.cxpb=0.5
-		self.mutpb=0.5
+		self.mutpb=0.2
 		self.indpb=0.1
 		self.burnin=0
 		self.max_hof_size=100
@@ -74,42 +73,60 @@ class parseArgs():
 		-p,--prefix	: Prefix for autoStreamTree outputs
 		-or-
 	  If manually specifying inputs:
-		-i,--inmat	: Genetic distance matrix
+		-g,--genmat	: Genetic distance matrix
 		-n,--network	: Input graph (in pickle'd networkx format)	
 		
 	General options:
 		-s,--seed	: Random number seed (default=taken from clock time)
+		-P,--procs	: Number of parallel processors for GA
+	
+	Genetic Algorithm Options:
+		-P,--maxPop	: Maximim population size [default = 100]
+		-M,--maxGen	: Maximum number of generations [default = 500]
+		-s,--size	: Manually set population size to <-p int>
+				    NOTE: By default, #params * 15
+		-m,--mutpb	: Probability of mutation per individual [default=0.2]
+		-i,--indpb	: Probability of mutation per trait [default=0.1]
+		-c,--cxpb	: Probability of being chosen for cross-over [default=0.5]
+		-t,--tourn	: Tournament size [default=10]
 		
-		
-		-b,--boot	: Number of bootstraps <NOT IMPLEMENTED>
-		-f,--fit	: Fit metric used to evaluate models <NOT IMPLEMENTED>
+	Model optimization/ fitness options:
+		-N,--nfail	: Number of generations failing to improve to stop optimization
+		-d,--delt	: Threshold absolute change in fitness [default=0.0]
+		-D,--deltP	: Threshold percentage change in fitness, as decimal [default=0.001]
+		-f,--fit	: Fitness metric used to evaluate models <NOT IMPLEMENTED>
 				    Options:
 				    aic (default)
 				    loglik (log-likelihood)
 				    r2m (marginal R^2)
-				    deltaAIC (Change in AIC versus null model)
-		-p,--pair	: Compute fitness metrics using pairwise distances [default] 
-		-e,--edge	: Compute fitness metrics using edgewise distances <NOT IMPLEMENTED>
-		-f,--force	: Force calculation using XX distance attribute in input table (e.g., "fittedD")
-		-r,--inc	: Re-create incidence matrix from .network file [default: read $out.incidenceMatrix.txt] <NOT IMPLEMENTED>
-		-g,--gen	: Read genetic distances from input matrix (Disables -e/--edge option) <NOT IMPLEMENTED>
+				    delta (Change in AIC versus null model)
+				    NOTE: Case-insensitive
+		-e,--edge	: Compute fitness metric using edgewise distances
+				    NOTE: By default, fitness is calculated by regressing
+				       genetic x resistance distances PAIRWISE among points
+		-b,--burn	: Number of generations for pre-burnin [default=0]
+	
+	Circuitscape options:
+		-C,--cprocs	: Number of processors to use *per* Circuitscape run
+		-I,--include: Comma-separated (NO SPACE) list of variables to consider
+		-X,--exclude: Comma-separated (NO SPACE) list of variables to exclude
+		--cholmod	: Turn on CHOLMOD solver (see Circuitscape docs)
+	
+	Genetic distance options:
+		-f,--force	: Use XX attribute from input table as distance metric
+		--infer		: Infer pairwise distances from input table (i.e., NOT pairwise matrix)
+		
 		-I,--include: Comma-separated list (no spaces) of explanatory attributes to include
 		-X,--exclude: Comma-separated list (no spaces) of explanatory attributes to exclude
 		-h,--help	: Displays help menu
 	
-	Parallel execution parameters:
-		-C,--Cprocs	: Number of processors for circuitscape <NOT IMPLEMENTED>
+	Output options:
+		-a,--modavg	: Compute model-averaged resistance per stream
+		-A,--awsum	: Cumulative Akaike weight for selecting top N models [default=0.95]
+		-x,--noPlots: Turn off plotting
 		
-	Aggregation options: 
-		-L,--loc_agg	: Define aggregator function for aggregating locus-wise distances
-			All of these can take the following options:
-			  ARITH		: [default] Use arithmetic mean
-			  MEDIAN	: Use median distance
-			  HARM		: Use harmonic mean
-			  ADJHARM	: Adjusted harmonic mean (see docs)
-			  GEOM		: Use geometric mean
-			  MIN		: Use minimum distance
-			  MAX		: Use maximum distance
+		
+
 
 """)
 		print()
