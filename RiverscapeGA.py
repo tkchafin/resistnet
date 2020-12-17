@@ -110,7 +110,7 @@ def main():
 	#random.seed(params.seed)
 	if not params.seed:
 		params.seed=int(datetime.now())
-		random.seed(params.seed)
+	random.seed(params.seed)
 	
 	pool = mp.Pool(processes=params.GA_procs)
 	
@@ -162,20 +162,29 @@ def main():
 		if fit[1] is not None:
 			ind_list=list()
 			ind_list.append(fit[0])
-			print(ind)
+			#print(ind)
 			ind_list.extend(list(ind))
 			ind_list.extend(fit[1])
 			pop_list.append(ind_list)
-	print(pop_list)
+	#print(pop_list)
 	bests = hof.hallOfFame(predictors.columns, params.max_hof_size, pop_list)
-	bests.print()
 	#sys.exit()
 	#print(pop[0])
 	
+	if params.fitmetric == 'aic':
+		bests.correct_aic_fitness()
 	bests.delta_aic()
 	bests.akaike_weights()
-	bests.cumulative_akaike()
-	bests.print()
+	bests.cumulative_akaike(threshold=params.awsum)
+	bests.relative_variable_importance()
+	bests.printHOF()
+	bests.printRVI()
+	bests.plot_ICprofile("test")
+	bests.plotMetricPW("test")
+	bests.plotVariableImportance("test")
+	
+	#if params.modavg:
+	modelAverageCS(pool, bests.getHOF())
 	
 	sys.exit()
 	# CXPB  is the probability with which two individuals are crossed
@@ -280,6 +289,51 @@ def main():
 	#reportTopModels(bests, params.bests)
 	
 	#pool.close()
+
+def evaluate_ma(stuff):
+	model_num = stuff[0]
+	individual = stuff[1]
+	first=True
+	for i, variable in enumerate(predictors.columns):
+		if individual[0::4][i] == 1:
+			#print("Before:", predictors[variable])
+			var = transform(predictors[variable], individual[2::4][i], individual[3::4][i])
+			#print("Before:", var)
+			if first:
+				#transform(data, transformation, shape) * weight
+				multi = var*(individual[1::4][i])
+				first=False
+			else:
+				multi += var*(individual[1::4][i])
+			multi = trans.rescaleCols(multi, 1, 10)
+
+	#write circuitscape inputs
+	#oname=".temp"+str(params.seed)+"_"+str(mp.Process().name)
+	oname=".temp.model"+str(model_num)
+	cs.writeCircuitScape(oname, graph, points, multi, focalPoints=False, fromAttribute=None)
+	cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
+
+	#Call circuitscape from pyjulia
+	cs.evaluateIni(jl, oname)
+
+	#parse circuitscape output
+	if params.cstype=="edgewise":
+		res = cs.parseEdgewise(oname, distances)
+		fitness = res[params.fitmetric][0]
+		res=list(res.iloc[0])
+	else:
+		res = cs.parsePairwise(oname, gendist)
+		fitness = res[params.fitmetric][0]
+		res=list(res.iloc[0])
+
+def modelAverageCS(pool, bests):
+	models=list()
+	mod_num=0
+	for index, row in bests.iterrows():
+		n=len(predictors.columns)*4
+		model_string = row.iloc[1:n+1]
+		print(model_string)
+	sys.exit()
 
 def initialize_worker(params, proc_num):
 	global my_number 

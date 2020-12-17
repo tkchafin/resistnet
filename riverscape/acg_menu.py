@@ -39,6 +39,8 @@ class parseArgs():
 		self.burnin=0
 		self.max_hof_size=100
 		self.out="output"
+		self.awsum=0.95
+		self.modavg=False
 
 
 		#First pass to see if help menu was called
@@ -63,7 +65,7 @@ class parseArgs():
 		if message is not None:
 			print()
 			print (message)
-		print ("\nautoCircuitGA.py\n")
+		print ("\nRiverscapeGA.py\n")
 		print("Author: Tyler K Chafin, University of Arkansas")
 		print ("Contact: tkchafin@uark.edu")
 		print ("Description: Genetic algorithm to optimize resistance models on networks")
@@ -78,7 +80,8 @@ class parseArgs():
 		
 	General options:
 		-s,--seed	: Random number seed (default=taken from clock time)
-		-P,--procs	: Number of parallel processors for GA
+		-P,--procs	: Number of parallel processors
+		-x,--noPlots: Turn off plotting
 	
 	Genetic Algorithm Options:
 		-P,--maxPop	: Maximim population size [default = 100]
@@ -90,7 +93,7 @@ class parseArgs():
 		-c,--cxpb	: Probability of being chosen for cross-over [default=0.5]
 		-t,--tourn	: Tournament size [default=10]
 		
-	Model optimization/ fitness options:
+	Model optimization/ selection options:
 		-N,--nfail	: Number of generations failing to improve to stop optimization
 		-d,--delt	: Threshold absolute change in fitness [default=0.0]
 		-D,--deltP	: Threshold percentage change in fitness, as decimal [default=0.001]
@@ -101,9 +104,6 @@ class parseArgs():
 				    r2m (marginal R^2)
 				    delta (Change in AIC versus null model)
 				    NOTE: Case-insensitive
-		-e,--edge	: Compute fitness metric using edgewise distances
-				    NOTE: By default, fitness is calculated by regressing
-				       genetic x resistance distances PAIRWISE among points
 		-b,--burn	: Number of generations for pre-burnin [default=0]
 	
 	Circuitscape options:
@@ -120,13 +120,15 @@ class parseArgs():
 		-X,--exclude: Comma-separated list (no spaces) of explanatory attributes to exclude
 		-h,--help	: Displays help menu
 	
-	Output options:
-		-a,--modavg	: Compute model-averaged resistance per stream
-		-A,--awsum	: Cumulative Akaike weight for selecting top N models [default=0.95]
-		-x,--noPlots: Turn off plotting
-		
-		
-
+	Multi-model inference options:
+		-a,--modavg	: Compute model-averaged resistance per stream segment
+			NOTE: This involves re-running Circuitscape for each model
+		--avgpw	: Output model-averaged pairwise resistance distances
+		-A,--awSum	: Cumulative Akaike weight threshold to retain top N models [default=0.95]
+		--avgall	:Plot per-stream resistance and generate full outputs for all retained models
+		--incall	: Include all models in calculation of relative variable importance
+		--rvi_thresh	: Threshold 'importance' to draw on variable importance plot [default=0.8]
+		--aic_thresh	: AIC difference from best model to draw in IC profile plot [default=2]
 
 """)
 		print()
