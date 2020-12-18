@@ -106,12 +106,6 @@ class parseArgs():
 				    NOTE: Case-insensitive
 		-b,--burn	: Number of generations for pre-burnin [default=0]
 	
-	Circuitscape options:
-		-C,--cprocs	: Number of processors to use *per* Circuitscape run
-		-I,--include: Comma-separated (NO SPACE) list of variables to consider
-		-X,--exclude: Comma-separated (NO SPACE) list of variables to exclude
-		--cholmod	: Turn on CHOLMOD solver (see Circuitscape docs)
-	
 	Genetic distance options:
 		-f,--force	: Use XX attribute from input table as distance metric
 		--infer		: Infer pairwise distances from input table (i.e., NOT pairwise matrix)

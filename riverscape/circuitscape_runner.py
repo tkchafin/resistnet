@@ -1,7 +1,5 @@
 import sys
 import os
-#from julia.api import Julia
-#from julia import Base, Main
 import pandas as pd
 from collections import OrderedDict
 from io import StringIO 
@@ -16,13 +14,42 @@ Add options to set certain nodes as 'sources'?
 figure out how to suppress the output from Julia/ circuitscape
 """
 
-def parseEdgewise(oname):
-	pass
+def parseEdgewise(oname, edge_gendist, return_resistance=True):
+	l=["from", "to", "r"]
+	output_file=str(oname)+"_resistances_3columns.out"
+	input=pd.read_csv((str(oname)+".graph_resistances.txt"), header=None, index_col=None, sep="\t", names=l)
+	output=pd.read_csv((str(oname)+"_resistances_3columns.out"), header=None, index_col=None, sep=" ", names=l)
+	output["from"] = output["from"]-1
+	output["to"] = output["to"]-1
+	merged=pd.merge(input, output, how="left", on=["from", "to"])
+	merged["gen"]=edge_gendist
+	if return_resistance==True:
+		return(merged["r_y"].to_numpy())
+	else:
+		pass
+		#some sort of spatial regression
+	
 
-def parsePairwise(oname, gendist):
+def parsePairwise(oname, gendist, return_resistance=False):
 	pw=pd.read_csv((str(oname)+"_resistances.out"), header=0, index_col=0, sep=" ").to_numpy()
-	res = mlpe_rga.MLPE_R(gendist, pw, scale=True)
-	return(res)
+	if return_resistance==True:
+		return(pw)
+	else:
+		res = mlpe_rga.MLPE_R(gendist, pw, scale=True)
+		return(res)
+
+def parsePairwiseFromAll(oname, gendist, nodes_to_points, return_resistance=False):
+	pw=pd.read_csv((str(oname)+"_resistances.out"), header=0, index_col=0, sep=" ").to_numpy()
+	indices = list(nodes_to_points.values()).sorted()
+	print(indices)
+	print(list(pandas.columns)[indices])
+	sub = pw[indices][indices]
+	print(sub)
+	if return_resistance==True:
+		return(sub)
+	else:
+		res = mlpe_rga.MLPE_R(gendist, pw, scale=True)
+		return(res)
 	
 def evaluateIni(jl, oname):
 	ini_path = str(oname)+".ini"
@@ -76,7 +103,6 @@ def writeCircuitScape(oname, graph, points, resistance, focalPoints=False, fromA
 					pts_output += str(node_idx) + ".0\n"
 					kept+=1
 				node_idx+=1
-			
 			net_output += str(node_dict[edge[0]]) + ".0\t" + str(node_dict[edge[1]]) + ".0\t" + str(float(resistance[edge_idx])) + "\n"
 			edge_idx+=1
 		#print("Number of focal points:",kept)
@@ -91,8 +117,8 @@ def writeIni(oname, cholmod=False, parallel=1):
 	with open((str(oname)+".ini"), "w") as ini:
 		ini.write("[Options for advanced mode]\n")
 		ini.write("ground_file_is_resistances = False\n")
-		ini.write("source_file = ")
-		ini.write((str(oname)+".graph_resistances.txt\n"))
+		ini.write("source_file = None\n")
+		#ini.write((str(oname)+".graph_resistances.txt\n"))
 		ini.write("remove_src_or_gnd = keepall\n")
 		ini.write("ground_file = None\n")
 		ini.write("use_unit_currents = False\n")

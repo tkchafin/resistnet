@@ -17,7 +17,7 @@ from rpy2.robjects.packages import importr
 def MLPE_R(X, Y, scale=True):
 	x = get_lower_tri(X)
 	y = get_lower_tri(Y)
-	
+
 	#make ID table
 	npop=X.shape[0]
 	ID = to_from_(npop) #nrow(matrix)
@@ -30,7 +30,7 @@ def MLPE_R(X, Y, scale=True):
 	#center and scale y
 	if scale==True:
 		y = (y-np.mean(y))/np.std(y)
-	
+	#print(y)
 	#add x and y to data
 	ID["x"] = x
 	ID["y"] = y
@@ -43,7 +43,7 @@ def MLPE_R(X, Y, scale=True):
 	mlpe=ro.globalenv['MLPE']
 	with localconverter(ro.default_converter + pandas2ri.converter):
 		mlpe_res=mlpe(ID, ZZ)
-	
+	#print(mlpe_res)
 	return(mlpe_res)	
 	#print(mlpe_res)
 

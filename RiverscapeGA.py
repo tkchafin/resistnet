@@ -42,6 +42,15 @@ TO-DO:
 			INDk = 0 if absent 1 if present, as a parameter in model k
 			see discussion in Giam and Olden 2015 versus Galipaud et al 2014/16
 
+6) Remove Julia requirement and just calculate simple resistance distance 
+
+7) circuitRunner.py: Model currents using model-averaged resistances
+
+8) tools/runBGR: Generate covariance matrices for chosen variables and run BGR model
+
+9) Only use circuitscape on model averaged resistances to simulate currents
+	--> Make that a separate script to remove the Julia requirement
+
 
 Parallelization notes -- failed attempts.
 What I've tried:
@@ -105,6 +114,7 @@ def main():
 	params.indpb=0.1
 	params.burnin=0
 	params.max_hof_size=100
+	params.julia="/usr/local/bin/julia"
 	
 	#seed random number generator
 	#random.seed(params.seed)
@@ -151,10 +161,10 @@ def main():
 	
 	
 	# Evaluate the entire population
-	print("Evaluating initial population...\n")
+	print("\nEvaluating initial population...\n")
 	
 	fitnesses = pool.map(toolbox.evaluate, [list(i) for i in pop])
-	
+
 	#print(fitnesses)
 	pop_list=list()
 	for ind, fit in zip(pop, fitnesses):
@@ -171,8 +181,8 @@ def main():
 	#sys.exit()
 	#print(pop[0])
 	
-	if params.fitmetric == 'aic':
-		bests.correct_aic_fitness()
+	# if params.fitmetric == 'aic':
+	# 	bests.correct_aic_fitness()
 	bests.delta_aic()
 	bests.akaike_weights()
 	bests.cumulative_akaike(threshold=params.awsum)
@@ -184,7 +194,7 @@ def main():
 	bests.plotVariableImportance("test")
 	
 	#if params.modavg:
-	modelAverageCS(pool, bests.getHOF())
+	modelAverageCS(pool, bests.getHOF(only_keep=False)) #set to true for production
 	
 	sys.exit()
 	# CXPB  is the probability with which two individuals are crossed
@@ -308,32 +318,52 @@ def evaluate_ma(stuff):
 			multi = trans.rescaleCols(multi, 1, 10)
 
 	#write circuitscape inputs
-	#oname=".temp"+str(params.seed)+"_"+str(mp.Process().name)
-	oname=".temp.model"+str(model_num)
+	oname="model_"+str(model_num)
+
 	cs.writeCircuitScape(oname, graph, points, multi, focalPoints=False, fromAttribute=None)
 	cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
-
+	
 	#Call circuitscape from pyjulia
 	cs.evaluateIni(jl, oname)
-
-	#parse circuitscape output
-	if params.cstype=="edgewise":
-		res = cs.parseEdgewise(oname, distances)
-		fitness = res[params.fitmetric][0]
-		res=list(res.iloc[0])
-	else:
-		res = cs.parsePairwise(oname, gendist)
-		fitness = res[params.fitmetric][0]
-		res=list(res.iloc[0])
+	return(model_num)
 
 def modelAverageCS(pool, bests):
+	#build model list and run Circuitscape on each model
 	models=list()
 	mod_num=0
+	weights=dict()
 	for index, row in bests.iterrows():
 		n=len(predictors.columns)*4
-		model_string = row.iloc[1:n+1]
-		print(model_string)
-	sys.exit()
+		model_string = row.iloc[1:n+1].to_list()
+		models.append([mod_num, model_string])
+		weights[mod_num]=row["akaike_weight"]
+		mod_num+=1
+	
+	print("Model-averaging across",mod_num,"resistance models...")
+	
+	results = pool.map(evaluate_ma, models)
+	print(results)
+	
+	edge_avg=np.zeros(shape=(len(distances)))
+	matrix_avg=np.zeros(shape=(len(points), len(points)))
+	
+	for res in results:
+		oname="model_"+str(model_num)
+		
+		weight = bests.iloc[model_num]["akaike_weight"]
+		
+		#Extract resistance for each edge
+		edge_r = cs.parseEdgewise(res, distances, return_resistance=True)
+		edge_avg += (edge_r*weight)
+		
+		#extract PW matrix from full result matrix
+		matrix_r = cs.parsePairwiseFromAll(res, gendist, nodes_to_points, return_resistance=True)
+		matrix_avg += (matrix_r*weight)
+		
+	print(edge_avg)
+	print(matrix_avg)
+	
+
 
 def initialize_worker(params, proc_num):
 	global my_number 
@@ -351,11 +381,6 @@ def initialize_worker(params, proc_num):
 	print("Worker",proc_num,"connecting to Julia...\n")
 	jl = Julia(init_julia=False)
 	
-	#if params.GA_procs>1:
-	if params.installCS:
-		if my_number == 0:
-			print("Installing Circuitscape.jl... May take a few minutes\n")
-		jl.eval("using Pkg; Pkg.add(\"Circuitscape\");")
 	if my_number == 0:
 		print("Loading Circuitscape in Julia...\n")
 	#jl.eval("using Pkg;")
@@ -398,6 +423,7 @@ def load_data(params, proc_num):
 			snapped[tuple(point)]=points[point]
 	points = snapped
 	del snapped
+	
 	
 	#read genetic distances
 	if params.cstype=="pairwise":
@@ -449,6 +475,7 @@ def parseInputGenMat(graph, points, prefix=None, inmat=None):
 		pop = checkFormatGenMat(popmat, order)
 		#print(pop)
 		#print(order)
+		#print(pop.dtype)
 		if pop is not None:
 			return(pop)
 		elif ind is not None:
@@ -465,9 +492,25 @@ def parseInputGenMat(graph, points, prefix=None, inmat=None):
 			print("Failed to read input genetic distance matrix:",inmat)
 			sys.exit()
 
+def nodes_to_points(graph, points):
+	nodes_to_points=OrderedDict()
+	seen=dict()
+	node_idx=0
+	for edge in graph.edges:
+		if edge[0] not in seen.keys():
+			if edge[0] in points.keys():
+				nodes_to_points[node_idx] = points[edge[0]]
+			node_idx+=1
+		if edge[1] not in seen.keys():
+			if edge[1] in points.keys():
+				nodes_to_points[node_idx] = points[edge[1]]
+			node_idx+=1
+	return(nodes_to_points)
+
+#TO DO: There is some redundant use of this and similar functions... 
 def getNodeOrder(graph, points, as_dict=False, as_index=False, as_list=True):
-	node_dict=OrderedDict()
-	point_dict=OrderedDict()
+	node_dict=OrderedDict() #maps node (tuple) to node_index
+	point_dict=OrderedDict() #maps points (a subset of nodes) to node_index
 	order=list()
 	node_idx=0
 	#print(type(list(points.keys())[0]))
@@ -571,7 +614,6 @@ def readStreamTree(streamtree, variables, force=None):
 	env=trans.rescaleCols(df[variables], 0, 10)
 	return(dist, env)
 
-
 # #parallel version; actually returns a list of filenames
 # #custom evaluation function
 # def evaluate(individual):
@@ -664,7 +706,7 @@ def evaluate(individual):
 	#print("evaluate - Process",my_number)
 	#vector to hold values across edges
 	fitness=0
-	res=None
+	res=0
 	multi=None
 	first=True 
 
@@ -695,13 +737,14 @@ def evaluate(individual):
 
 		#write circuitscape inputs
 		#oname=".temp"+str(params.seed)+"_"+str(mp.Process().name)
-		oname=".temp.s"+str(params.out)+"_p"+str(my_number)
+		oname=".temp_"+str(params.out)+"_p"+str(my_number)
+		#print(oname)
 		focal=True
 		if params.cstype=="edgewise":
 			focal=False
 		cs.writeCircuitScape(oname, graph, points, multi, focalPoints=focal, fromAttribute=None)
 		cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
-
+		#print("evaluate")
 		#Call circuitscape from pyjulia
 		cs.evaluateIni(jl, oname)
 
@@ -714,6 +757,7 @@ def evaluate(individual):
 			res = cs.parsePairwise(oname, gendist)
 			fitness = res[params.fitmetric][0]
 			res=list(res.iloc[0])
+
 	#return fitness value
 	print(fitness)
 	return(fitness,res)

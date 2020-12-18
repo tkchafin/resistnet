@@ -5,6 +5,9 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+import warnings
+warnings.simplefilter('ignore', category=UserWarning)
+
 class hallOfFame():
 	def __init__(self, variables, max_size, init_pop=None):
 		cols=list()
@@ -132,9 +135,12 @@ class hallOfFame():
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
 		return(self.rvi)
 	
-	def getHOF(self):
+	def getHOF(self, only_keep=False):
 		self.data = self.data.sort_values('fitness', ascending=False)
-		return(self.data)
+		if only_keep:
+			return(self.data[self.data.keep=="True"])
+		else:
+			return(self.data)
 	
 	def output(self):
 		#Make sure to remove weights/ shapes where variable isn't selected
@@ -146,6 +152,7 @@ class hallOfFame():
 		diff=int(diff)
 		#X axis - order by AIC.
 		dat=self.data.sort_values('aic', ascending=True)
+		dat = dat.round(3)
 		dat.reset_index()
 		dat["model"]=dat.index + 1
 		#y axis - AIC value
