@@ -13,6 +13,8 @@ riverscape.py is a collection of Python programs for examining patterns of multi
 	* *fasta2table.py* : Converting between FASTA and autoStreamTree Table formats
 	* *nremover.pl* : Filtering FASTA and PHYLIP files of concatenated SNPs
 	* *plotStreamTree.py* : Re-making StreamTree fitted distance plot with some additional options
+	* *modelParser.py* : Parse model outputs of RiverscapeGA.py to generate and select transformed datasets (Coming soon)
+	* *makeBGR.py* : Generates inputs for running the BGR model given a set of covariates or resistance model (Coming soon)
 	* [tkchafin/scripts](https://github.com/tkchafin/scripts) : For more useful file formatting and filtering scripts
 
 --Work in progress--
