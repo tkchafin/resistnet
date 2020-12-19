@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from sortedcontainers import SortedDict
 
-import aggregators as agg
+import riverscape.aggregators as agg
 
 def getPopGenMat(dist, indmat, popmap, dat, seqs, pop_agg="ARITH", loc_agg="ARITH", ploidy=2, global_het=False):
 	#make matrix

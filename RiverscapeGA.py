@@ -133,6 +133,8 @@ def main():
 	my_number = 0
 	load_data(params, 0)
 	
+	
+	#print(len(list(graph.edges())))
 	#print(results)
 	#sys.exit()
 	
@@ -172,7 +174,6 @@ def main():
 		if fit[1] is not None:
 			ind_list=list()
 			ind_list.append(fit[0])
-			#print(ind)
 			ind_list.extend(list(ind))
 			ind_list.extend(fit[1])
 			pop_list.append(ind_list)
@@ -327,7 +328,7 @@ def evaluate_ma(stuff):
 	cs.evaluateIni(jl, oname)
 	return(model_num)
 
-def modelAverageCS(pool, bests):
+def modelAverageCS(pool, bests, plot=False, base=""):
 	#build model list and run Circuitscape on each model
 	models=list()
 	mod_num=0
@@ -341,27 +342,41 @@ def modelAverageCS(pool, bests):
 	
 	print("Model-averaging across",mod_num,"resistance models...")
 	
-	results = pool.map(evaluate_ma, models)
-	print(results)
+	model_nums = pool.map(evaluate_ma, models)
 	
-	edge_avg=np.zeros(shape=(len(distances)))
+	edge_avg=None
 	matrix_avg=np.zeros(shape=(len(points), len(points)))
 	
-	for res in results:
-		oname="model_"+str(model_num)
+	for model_num in model_nums:
+		oname=str(base) + "Model_"+str(model_num)
 		
 		weight = bests.iloc[model_num]["akaike_weight"]
 		
 		#Extract resistance for each edge
-		edge_r = cs.parseEdgewise(res, distances, return_resistance=True)
-		edge_avg += (edge_r*weight)
+		#print(distances)
+		edge_r = cs.parseEdgewise(oname, distances, return_resistance=True)
+		#print(edge_r)
+		if edge_avg is None:
+			edge_avg=(edge_r*weight)
+		else:
+			edge_avg = np.add(edge_avg, (edge_r*weight))
 		
 		#extract PW matrix from full result matrix
-		matrix_r = cs.parsePairwiseFromAll(res, gendist, nodes_to_points, return_resistance=True)
+		matrix_r = cs.parsePairwiseFromAll(oname, gendist, node_point_dict, return_resistance=True)
 		matrix_avg += (matrix_r*weight)
+		
+		#if plots
+		if plot:
+			hof.plotEdgeModel(distances, edge_r, oname)
+			hof.plotPairwiseModel(gendist, matrix_r, oname)
 		
 	print(edge_avg)
 	print(matrix_avg)
+	
+	if plot:
+		oname=str(base) + "ModelAverage"
+		hof.plotEdgeModel(distances, edge_avg oname)
+		hof.plotPairwiseModel(gendist, matrix_avg, oname)
 	
 
 
@@ -400,6 +415,7 @@ def load_data(params, proc_num):
 	global inc_matrix
 	global points
 	global gendist
+	global node_point_dict
 	my_number = proc_num
 	
 	#read autoStreamTree outputs
@@ -424,6 +440,7 @@ def load_data(params, proc_num):
 	points = snapped
 	del snapped
 	
+	node_point_dict=nodes_to_points(graph, points)
 	
 	#read genetic distances
 	if params.cstype=="pairwise":
@@ -493,19 +510,24 @@ def parseInputGenMat(graph, points, prefix=None, inmat=None):
 			sys.exit()
 
 def nodes_to_points(graph, points):
-	nodes_to_points=OrderedDict()
+	"node to point"
+	np=OrderedDict()
 	seen=dict()
 	node_idx=0
 	for edge in graph.edges:
 		if edge[0] not in seen.keys():
 			if edge[0] in points.keys():
-				nodes_to_points[node_idx] = points[edge[0]]
+				#print("New node:",points[edge[0]], " -- Index:",node_idx)
+				np[node_idx] = points[edge[0]]
+			seen[edge[0]] = True
 			node_idx+=1
 		if edge[1] not in seen.keys():
 			if edge[1] in points.keys():
-				nodes_to_points[node_idx] = points[edge[1]]
+				#print("New node:",points[edge[1]], " -- Index:",node_idx)
+				np[node_idx] = points[edge[1]]
+			seen[edge[1]] = True
 			node_idx+=1
-	return(nodes_to_points)
+	return(np)
 
 #TO DO: There is some redundant use of this and similar functions... 
 def getNodeOrder(graph, points, as_dict=False, as_index=False, as_list=True):
@@ -609,7 +631,8 @@ def readStreamTree(streamtree, variables, force=None):
 		data = df[filter_col]
 		
 		#aggregate distances
-		dist = data.mean(axis=1).tolist()
+		dist = list(data.mean(axis=1))
+		#print(dist)
 	
 	env=trans.rescaleCols(df[variables], 0, 10)
 	return(dist, env)
@@ -706,7 +729,7 @@ def evaluate(individual):
 	#print("evaluate - Process",my_number)
 	#vector to hold values across edges
 	fitness=0
-	res=0
+	res=None
 	multi=None
 	first=True 
 
@@ -759,8 +782,7 @@ def evaluate(individual):
 			res=list(res.iloc[0])
 
 	#return fitness value
-	print(fitness)
-	return(fitness,res)
+	return(fitness, res)
 
 #custom mutation function
 #To decide: Should the current state inform the next state, or let it be random?

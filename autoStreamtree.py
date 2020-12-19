@@ -44,6 +44,7 @@ def main():
 	if params.network:
 		print("Reading network from saved file: ", params.network)
 		G=nx.OrderedGraph(nx.read_gpickle(params.network).to_undirected())
+		#print("G:",len(G.edges()))
 	else:
 		print("Building network from shapefile:",params.shapefile)
 		print("WARNING: This can take a while with very large files!")
@@ -241,15 +242,20 @@ def main():
 		#maybe include logDxlength, DxlogLength, logDxlogLength as well?
 		
 		#get list of all REACHIDs to extract from geoDF
-		edge_data = nx.get_edge_attributes(K,params.reachid_col)
+		#edge_data = nx.get_edge_attributes(K,params.reachid_col)
 		reach_to_edge = dict()
 		i=0
 		edges = list()
-		for e in edge_data:
-			for r in edge_data[e]:
+		#print("K:",len(K.edges())
+		for e in K.edges():
+			edge_data = K[e[0]][e[1]][params.reachid_col]
+			print(edge_data)
+			for r in edge_data:
 				reach_to_edge[r] = str(i)
 			edges.append(i)
 			i+=1
+		#print("edges:",edges)
+		#print(len(edges))
 		del edge_data
 		
 		#save reach_to_edge table to file

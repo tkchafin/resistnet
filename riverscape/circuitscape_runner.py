@@ -4,6 +4,9 @@ import pandas as pd
 from collections import OrderedDict
 from io import StringIO 
 
+# import seaborn as sns
+# import matplotlib.pyplot as plt
+
 import riverscape.MLPE as mlpe_rga
 #multiple mutation types: https://stackoverflow.com/questions/47720921/deap-toolbox-to-consider-different-types-and-ranges-of-genes-in-mutation-and-cr
 
@@ -23,8 +26,11 @@ def parseEdgewise(oname, edge_gendist, return_resistance=True):
 	output["to"] = output["to"]-1
 	merged=pd.merge(input, output, how="left", on=["from", "to"])
 	merged["gen"]=edge_gendist
+	#print(merged)
+	# p = sns.scatterplot(data=merged, x="r_y", y="gen", alpha=0.6)
+	# plt.show()
 	if return_resistance==True:
-		return(merged["r_y"].to_numpy())
+		return((merged["r_y"]).to_numpy())
 	else:
 		pass
 		#some sort of spatial regression
@@ -38,13 +44,14 @@ def parsePairwise(oname, gendist, return_resistance=False):
 		res = mlpe_rga.MLPE_R(gendist, pw, scale=True)
 		return(res)
 
-def parsePairwiseFromAll(oname, gendist, nodes_to_points, return_resistance=False):
-	pw=pd.read_csv((str(oname)+"_resistances.out"), header=0, index_col=0, sep=" ").to_numpy()
-	indices = list(nodes_to_points.values()).sorted()
-	print(indices)
-	print(list(pandas.columns)[indices])
-	sub = pw[indices][indices]
-	print(sub)
+def parsePairwiseFromAll(oname, gendist, node_point_dict, return_resistance=False):
+	pw=pd.read_csv((str(oname)+"_resistances.out"), header=0, index_col=0, sep=" ")
+	#print(node_point_dict)
+	indices = list(node_point_dict.keys())
+	#print(list(node_point_dict.values()))
+	#print(indices)
+	#print(list(pw.columns)[indices])
+	sub = (pw.iloc[indices,indices])
 	if return_resistance==True:
 		return(sub)
 	else:
@@ -81,7 +88,7 @@ def writeCircuitScape(oname, graph, points, resistance, focalPoints=False, fromA
 		kept=0
 		#for each edge
 		#print("Number of points:",len(points))
-		for edge in graph.edges:
+		for edge in graph.edges():
 			#get nodes on either side and index them
 			#get resistance 
 			#add all to output string
