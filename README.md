@@ -1,7 +1,11 @@
 # Riverscape_Genetics
 A collection of Python programs for examining patterns of multi-locus genetic differentiation in dendritic networks. 
 
-### Contents: 
+### Table of Contents: 
+
+### Installation
+
+### Programs: 
 - *autoStreamTree.py* : This package calculates genetic and stream-distances by snapping sampling points to a network provided using an input shapefile and calculating a minimal sub-network, tests for isolation-by-distance, and fits genetic distances to stream segments using the Stream-tree algorithm by Kalinowski et al. 2008. 
 - *RiverscapeGA.py* : This package implements a genetic algorithm to optimize multi-variable resistance models on networks in Circuitscape. This is somewhat similar to the way in which ResistanceGA accomplishes this for raster datasets, but with some critical algorithmic differences (see below)
 - *streamCleaner.py* : (Coming soon) Integrates the network extraction functions of autoStreamTree with various pre-processing steps such as joining non-contiguous segments, merging redundant paths (e.g., for a braided stream) -- Not yet added
@@ -20,6 +24,8 @@ A collection of Python programs for examining patterns of multi-locus genetic di
 --Work in progress--
 
 Contact: tkchafin@uark.edu 
+
+### Quick start
 
 ## autoStreamTree
 
@@ -302,3 +308,6 @@ env CC=/usr/local/bin/gcc /Users/tyler/.pyenv/versions/3.6.6/bin/pip3 install rp
 
 
  coming soon
+
+## Example Analysis
+
