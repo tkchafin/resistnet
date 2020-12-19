@@ -1,5 +1,5 @@
-# riverscape.py
-riverscape.py is a collection of Python programs for examining patterns of multi-locus genetic differentiation in dendritic networks. 
+# Riverscape_Genetics
+A collection of Python programs for examining patterns of multi-locus genetic differentiation in dendritic networks. 
 
 ### Contents: 
 - *autoStreamTree.py* : This package calculates genetic and stream-distances by snapping sampling points to a network provided using an input shapefile and calculating a minimal sub-network, tests for isolation-by-distance, and fits genetic distances to stream segments using the Stream-tree algorithm by Kalinowski et al. 2008. 
