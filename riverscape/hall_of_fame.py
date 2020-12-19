@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.simplefilter('ignore', category=UserWarning)
 
+import riverscape.MLPE as MLPE
+
 class hallOfFame():
 	def __init__(self, variables, max_size, init_pop=None):
 		cols=list()
@@ -77,9 +79,7 @@ class hallOfFame():
 			self.data["aic"] = self.data["aic"]*-1 #reverse the neg sign i added for maximizing
 			best=self.data["aic"].min()
 			self.data["delta_aic_best"] = self.data["aic"]-best
-	
-	def correct_aic_fitness(self):
-		self.data["fitness"] = self.data["fitness"]*-1
+
 	
 	def akaike_weights(self):
 		if self.data.shape[0] <= 0:
@@ -126,10 +126,14 @@ class hallOfFame():
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
 	
 	def cleanHOF(self):
+		ret = self.data.sort_values('fitness', ascending=False)
 		for v in self.variables:
-			data[data.v == 0][(str(v)+"_weight")] = "NaN"
-			data[data.v == 0][(str(v)+"_trans")] = "NaN"
-			data[data.v == 0][(str(v)+"_shape")] = "NaN"
+			ret[ret.v == 0][(str(v)+"_weight")] = "NaN"
+			ret[ret.v == 0][(str(v)+"_trans")] = "NaN"
+			ret[ret.v == 0][(str(v)+"_shape")] = "NaN"
+		if ret.iloc[0]["fitness"] == (ret.iloc[0]["aic"]*-1):
+			ret["fitness"] = ret["fitness"]*-1
+		return(ret)
 	
 	def getRVI(self):
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
@@ -168,12 +172,14 @@ class hallOfFame():
 		if "akaike_weight" in self.data.columns:
 			cols.append("akaike_weight")
 		dat=self.data[cols]
+		sns.set(style="ticks")
 		sns.pairplot(dat, hue="keep", kind="scatter")
 		plt.savefig((str(oname)+".pairPlot.pdf"))
 		plt.clf()
 	
 	def plotVariableImportance(self, oname="out", cutoff=0.8):
 		cutoff=float(cutoff)
+		sns.set(style="ticks")
 		sub=self.rvi.sort_values('RVI', ascending=False)
 		p=sns.barplot(data=sub, x="RVI", y="variable")
 		p.axvline(cutoff, ls="--", c="red")
@@ -182,6 +188,33 @@ class hallOfFame():
 		plt.clf()
 	
 	def writeModelSummary(self):
-		pass
-		#plot models in the format "A+B+C", etc
+		out_df = self.cleanHOF()
+		out_df.to_csv((str(oname)+".HallOfFame.tsv"), sep="\t", index=True)
+
+def plotEdgeModel(gen, res, oname):
+	sns.set(style="ticks")
+	df = pd.DataFrame(list(zip(gen, res)), columns=["Fitted Genetic Distance", "Resistance"])
+	sns.regplot(x="Resistance", y="Fitted Genetic Distance", data=df)
+	plt.title("Edge-wise Resistance x Genetic Distance")
+	plt.savefig((str(oname)+".Edgewise.pdf"))
+	plt.clf()
+
+def plotPairwiseModel(gen, mat, oname, partition=False):
+	g=MLPE.get_lower_tri(gen)
+	r=MLPE.get_lower_tri(mat)
+	
+	df = pd.DataFrame(list(zip(list(g), list(r[0]))), columns=["Genetic Distance", "Resistance Distance"])
+	
+	sns.set(style="ticks")
+	if partition:
+		npop=gen.shape[0]
+		ID = MLPE.to_from_(npop)
+		df["grp"] = ID["pop1"]
+		sns.lmplot(x="Resistance Distance", y="Genetic Distance", hue="grp", data=df)
+	else:
+		sns.lmplot(x="Resistance Distance", y="Genetic Distance", data=df)
+	plt.title("Pairwise-wise Resistance x Genetic Distance")
+	plt.savefig((str(oname)+".Pairwise.pdf"))
+	plt.clf()
+
 

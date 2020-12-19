@@ -115,12 +115,10 @@ class parseArgs():
 		-h,--help	: Displays help menu
 	
 	Multi-model inference options:
-		-a,--modavg	: Compute model-averaged resistance per stream segment
+		-a,--modavg	: Compute model-averaged resistances
 			NOTE: This involves re-running Circuitscape for each model
-		--avgpw	: Output model-averaged pairwise resistance distances
 		-A,--awSum	: Cumulative Akaike weight threshold to retain top N models [default=0.95]
-		--avgall	:Plot per-stream resistance and generate full outputs for all retained models
-		--incall	: Include all models in calculation of relative variable importance
+		--report_all: Plot per-stream resistance and generate full outputs for all retained models
 		--rvi_thresh	: Threshold 'importance' to draw on variable importance plot [default=0.8]
 		--aic_thresh	: AIC difference from best model to draw in IC profile plot [default=2]
 

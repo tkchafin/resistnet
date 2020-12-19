@@ -26,7 +26,7 @@ import riverscape.hall_of_fame as hof
 from riverscape.acg_menu import parseArgs
 import riverscape.circuitscape_runner as cs
 import riverscape.transform as trans
-
+import riverscape.stream_plots as splt
 
 """
 TO-DO: 
@@ -91,6 +91,7 @@ def main():
 	params = parseArgs()
 	params.prefix="out3"
 	params.force="fittedD"
+	params.out="test"
 	params.variables = ["tmp_dc_cmn", "aet_mm_cyr", "USE"]
 	params.seed="1321"
 	params.installCS=False
@@ -114,7 +115,7 @@ def main():
 	params.indpb=0.1
 	params.burnin=0
 	params.max_hof_size=100
-	params.julia="/usr/local/bin/julia"
+	params.modavg=True
 	
 	#seed random number generator
 	#random.seed(params.seed)
@@ -190,12 +191,16 @@ def main():
 	bests.relative_variable_importance()
 	bests.printHOF()
 	bests.printRVI()
-	bests.plot_ICprofile("test")
-	bests.plotMetricPW("test")
-	bests.plotVariableImportance("test")
+	bests.plot_ICprofile(params.out)
+	bests.plotMetricPW(params.out)
+	bests.plotVariableImportance(params.out)
 	
 	#if params.modavg:
-	modelAverageCS(pool, bests.getHOF(only_keep=False)) #set to true for production
+	if params.modavg:
+		modelAverageCS(pool, bests.getHOF(only_keep=False), base=params.out, plot=True, report_all=True) #set to true for production
+	
+	#write hall of fame to file
+	hof.writeModelSummary(params.out)
 	
 	sys.exit()
 	# CXPB  is the probability with which two individuals are crossed
@@ -319,7 +324,7 @@ def evaluate_ma(stuff):
 			multi = trans.rescaleCols(multi, 1, 10)
 
 	#write circuitscape inputs
-	oname="model_"+str(model_num)
+	oname=str(params.out)+"_Model-"+str(model_num)
 
 	cs.writeCircuitScape(oname, graph, points, multi, focalPoints=False, fromAttribute=None)
 	cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
@@ -328,7 +333,7 @@ def evaluate_ma(stuff):
 	cs.evaluateIni(jl, oname)
 	return(model_num)
 
-def modelAverageCS(pool, bests, plot=False, base=""):
+def modelAverageCS(pool, bests, plot=False, base="", report_all=False):
 	#build model list and run Circuitscape on each model
 	models=list()
 	mod_num=0
@@ -348,7 +353,7 @@ def modelAverageCS(pool, bests, plot=False, base=""):
 	matrix_avg=np.zeros(shape=(len(points), len(points)))
 	
 	for model_num in model_nums:
-		oname=str(base) + "Model_"+str(model_num)
+		oname=str(base)+"_Model-"+str(model_num)
 		
 		weight = bests.iloc[model_num]["akaike_weight"]
 		
@@ -365,20 +370,35 @@ def modelAverageCS(pool, bests, plot=False, base=""):
 		matrix_r = cs.parsePairwiseFromAll(oname, gendist, node_point_dict, return_resistance=True)
 		matrix_avg += (matrix_r*weight)
 		
-		#if plots
-		if plot:
-			hof.plotEdgeModel(distances, edge_r, oname)
-			hof.plotPairwiseModel(gendist, matrix_r, oname)
+		if report_all:
+			writeEdges(oname, edge_avg, edge_ids)
+			writeMatrix(oname, matrix_avg, list(node_point_dict.values()))
 		
-	print(edge_avg)
-	print(matrix_avg)
+		if plot:
+			edf=pd.DataFrame(list(zip(edge_ids, edge_r)), columns=["EDGE_ID", "Resistance"])
+			splt.plotEdgesToStreams(graph, edf, (str(params.prefix)+".streamTree.shp"), oname)
+			hof.plotEdgeModel(distances, edge_r, oname)
+			hof.plotPairwiseModel(gendist, np.asmatrix(matrix_r), oname)
+		
+	
+	
+	oname=str(base) + "ModelAverage"
+	writeEdges(oname, edge_avg, edge_ids)
+	writeMatrix(oname, matrix_avg, list(node_point_dict.values()))
 	
 	if plot:
-		oname=str(base) + "ModelAverage"
-		hof.plotEdgeModel(distances, edge_avg oname)
-		hof.plotPairwiseModel(gendist, matrix_avg, oname)
-	
+		edf=pd.DataFrame(list(zip(edge_ids, edge_avg)), columns=["EDGE_ID", "Resistance"])
+		splt.plotEdgesToStreams(graph, edf, (str(params.prefix)+".streamTree.shp"), oname)
+		hof.plotEdgeModel(distances, edge_avg, oname)
+		hof.plotPairwiseModel(np.asmatrix(gendist), matrix_avg, oname)
+		
+		#streamtree-style plot
 
+def writeEdges(oname, edge, ids=None):
+	pass
+
+def writeMatrix(oname, edge, ids=None):
+	pass
 
 def initialize_worker(params, proc_num):
 	global my_number 
@@ -416,6 +436,7 @@ def load_data(params, proc_num):
 	global points
 	global gendist
 	global node_point_dict
+	global edge_ids
 	my_number = proc_num
 	
 	#read autoStreamTree outputs
@@ -424,7 +445,7 @@ def load_data(params, proc_num):
 	graph = readNetwork((str(params.prefix)+".network"))
 	if my_number==0:
 		print("Reading autoStreamTree results from:", (str(params.prefix)+".streamtree.txt"))
-	(distances, predictors) = readStreamTree((str(params.prefix)+".streamtree.txt"), params.variables, params.force)
+	(distances, predictors, edge_ids) = readStreamTree((str(params.prefix)+".streamtree.txt"), params.variables, params.force)
 	points = readPointCoords((str(params.prefix)+".pointCoords.txt"))
 	
 	#make sure points are snapped to the network
@@ -619,9 +640,10 @@ def readPointCoords(pfile):
 
 def readStreamTree(streamtree, variables, force=None):
 	df = pd.read_csv(streamtree, header=0, index_col=False, sep="\t")
+	names=sorted(set(df["EDGE_ID"].tolist()))
 	
 	df = df.groupby('EDGE_ID').agg('mean')
-
+	
 	#get distances (as a list, values corresponding to nodes)
 	if force:
 		dist=df[force].tolist()
@@ -635,7 +657,7 @@ def readStreamTree(streamtree, variables, force=None):
 		#print(dist)
 	
 	env=trans.rescaleCols(df[variables], 0, 10)
-	return(dist, env)
+	return(dist, env, names)
 
 # #parallel version; actually returns a list of filenames
 # #custom evaluation function
