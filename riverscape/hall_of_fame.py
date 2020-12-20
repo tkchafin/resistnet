@@ -166,7 +166,6 @@ class hallOfFame():
 		pass
 	
 	def plot_ICprofile(self, oname="out", diff=2):
-		pass
 		diff=int(diff)
 		#X axis - order by AIC.
 		dat=self.data.sort_values('aic', ascending=True)
@@ -188,6 +187,7 @@ class hallOfFame():
 		dat=self.data[cols]
 		sns.set(style="ticks")
 		sns.pairplot(dat, hue="keep", kind="scatter")
+		plt.title("Pair plot")
 		plt.savefig((str(oname)+".pairPlot.pdf"))
 		plt.clf()
 	

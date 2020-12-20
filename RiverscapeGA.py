@@ -290,12 +290,11 @@ def modelAverageCS(pool, bests, plot=False, base="", report_all=False):
 		if report_all:
 			writeEdges(oname, edge_avg, edge_ids)
 			writeMatrix(oname, matrix_avg, list(node_point_dict.values()))
-		
-		if plot:
-			edf=pd.DataFrame(list(zip(edge_ids, edge_r)), columns=["EDGE_ID", "Resistance"])
-			splt.plotEdgesToStreams(graph, edf, (str(params.prefix)+".streamTree.shp"), oname)
-			hof.plotEdgeModel(distances, edge_r, oname)
-			hof.plotPairwiseModel(gendist, matrix_r, oname)
+			if plot:
+				edf=pd.DataFrame(list(zip(edge_ids, edge_r)), columns=["EDGE_ID", "Resistance"])
+				splt.plotEdgesToStreams(graph, edf, (str(params.prefix)+".streamTree.shp"), oname)
+				hof.plotEdgeModel(distances, edge_r, oname)
+				hof.plotPairwiseModel(gendist, matrix_r, oname)
 		
 	
 	oname=str(base) + ".Model-Average"
