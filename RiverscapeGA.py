@@ -159,17 +159,6 @@ def main():
 		# Gather all the fitnesses in one list and print the stats
 		fits = [i.fitness.values[0] for i in pop]
 	
-		length = len(pop)
-		mean = sum(fits) / length
-		sum2 = sum(x*x for x in fits)
-		std = abs(sum2 / length - mean**2)**0.5
-	
-		print("  Min %s" % min(fits))
-		print("  Max %s" % max(fits))
-		print("  Avg %s" % mean)
-		print("  Std %s" % std)
-		logger.append([g, min(fits), max(fits), mean, std])
-	
 		#evaluate for stopping criteria
 		if g > params.burnin:
 			threshold_1=current_best
@@ -186,6 +175,18 @@ def main():
 			else:
 				fails=0
 			
+			if params.fitmetric=="aic":
+				fits = fits*-1
+			length = len(pop)
+			mean = sum(fits) / length
+			sum2 = sum(x*x for x in fits)
+			std = abs(sum2 / length - mean**2)**0.5
+		
+			print("  Worst %s" % min(fits))
+			print("  Best %s" % max(fits))
+			print("  Avg %s" % mean)
+			print("  Std %s" % std)
+			logger.append([g, min(fits), max(fits), mean, std])
 			print("  nFails %s" % fails)
 	
 	#best = pop[np.argmax([pool.map(toolbox.evaluate, [list(ind) for ind in pop])])]
@@ -209,7 +210,7 @@ def main():
 		bests.plotVariableImportance(params.out)
 	
 	#write log of fitnesses
-	logDF=pd.DataFrame(logger, columns=["Generation", "Min", "Max", "Mean", "Stdev"])
+	logDF=pd.DataFrame(logger, columns=["Generation", "Worst", "Best", "Mean", "Stdev"])
 	logDF.to_csv((str(params.out)+".FitnessLog.tsv"), sep="\t", header=True, index=False)
 	del logger
 	del logDF
