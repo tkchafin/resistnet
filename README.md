@@ -20,6 +20,7 @@ A collection of Python programs for examining patterns of multi-locus genetic di
 	* *plotStreamTree.py* : Re-making StreamTree fitted distance plot with some additional options
 	* *modelParser.py* : Parse model outputs of RiverscapeGA.py to generate and select transformed datasets (Coming soon)
 	* [tkchafin/scripts](https://github.com/tkchafin/scripts) : For more useful file formatting and filtering scripts
+	* [stevemussmann/Streamtree_arcpy](https://github.com/stevemussmann/StreamTree_arcpy) : Code for generating inputs for the original StreamTree program by Kalinowski et al.
 
 --Work in progress--
 
