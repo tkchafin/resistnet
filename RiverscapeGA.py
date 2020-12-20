@@ -199,6 +199,7 @@ def main():
 	print("Starting optimization...\n")
 	fails=0
 	current_best=float('-inf')
+	logger=list()
 	#while max(fits) < 5 and g < 5:
 	while fails <= params.nfail and g < params.maxGens:
 		# A new generation
@@ -250,6 +251,7 @@ def main():
 		print("  Max %s" % max(fits))
 		print("  Avg %s" % mean)
 		print("  Std %s" % std)
+		logger.append([g, min(fits), max(fits), mean, std])
 	
 		#evaluate for stopping criteria
 		if g > params.burnin:
@@ -287,6 +289,12 @@ def main():
 	bests.plot_ICprofile(params.out)
 	bests.plotMetricPW(params.out)
 	bests.plotVariableImportance(params.out)
+	
+	#write log of fitnesses
+	logDF=pd.DataFrame(logger, columns=["Generation", "Min", "Max", "Mean", "Stdev"])
+	logDF.to_csv((str(params.out)+".FitnessLog.tsv"), sep="\t", header=True, index=False)
+	del logger
+	del logDF
 	
 	#if params.modavg:
 	if params.modavg:
