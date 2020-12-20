@@ -114,18 +114,19 @@ R
 #check julia path 
 which julia 
 
+#set up PyCall from Python
+python3
+>>> import julia
+>>> julia.install()
+>>> quit()
+
 #set up julia environment and install Circuitscape
 julia
 julia> using Pkg; Pkg.add("Circuitscape")
 julia> Pkg.test("Circuitscape")
 julia> ENV["PYTHON"] = "python3"  # whatever path you have
 julia> Pkg.build("PyCall")
-
-#From python
-python3
->>> import julia
->>> julia.install()
->>> quit()
+julia> exit()
 ```
 
 #### Using the pre-build Singularity image
