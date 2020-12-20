@@ -28,94 +28,11 @@ import riverscape.circuitscape_runner as cs
 import riverscape.transform as trans
 import riverscape.stream_plots as splt
 
-"""
-TO-DO: 
-4) Output of "best" model(s) -- will need logging
-
-5) Final plots, tables, etc
-	- Model-averaged resistance values (wld involve re-running circuitscape for each selected model though)
-	- Compute Akaike weights
-		add: param for cumulative akaike weight threshold to choose top n models (e.g. 0.95)
-	- Compute importance of terms (using Akaike weights):
-		SWx for variable x = Sum(wk*INDk)
-			wk = akaike weight of model k
-			INDk = 0 if absent 1 if present, as a parameter in model k
-			see discussion in Giam and Olden 2015 versus Galipaud et al 2014/16
-
-6) Remove Julia requirement and just calculate simple resistance distance 
-
-7) circuitRunner.py: Model currents using model-averaged resistances
-
-8) tools/runBGR: Generate covariance matrices for chosen variables and run BGR model
-
-9) Only use circuitscape on model averaged resistances to simulate currents
-	--> Make that a separate script to remove the Julia requirement
-
-
-Parallelization notes -- failed attempts.
-What I've tried:
-	1) Multiprocessing.pool with deap
-		Observation: Runtimes longer with more processors
-		Problems: I think there are multiple:
-			- The Julia interface may still be running them 
-				serially
-			- The overhead of sending around all of the global
-				variables might be too high to see any positive 
-				change with the small tests I've been doing
-		Verdict: Revisit this option later. Need to get everything up 
-			and runnign first
-	2) Native parallelization of pairwise comparisons in Circuitscape
-			Observation: Takes LONGER per run !??
-			Problems: I think these individual runs are so short that the overhead
-				of sending data within Julia/CS outweighs the benefits
-			Verdict: Probably not going to be a good solution.
-	3) *Meta-parallelization of ini files in Julia
-			Observation: Runtimes longer with more processors
-			Problems: May be just that my laptop is bogged down
-			Verdict: Try messing with this again later. This only parallelizes
-				the Circuitscape part, but that's better than nothing...
-	4) Each Python sub-process has it's own Julia instance 
-			Observation: Instant segfault if the master process also has a Julia instance
-	
-	Things to try: 
-		- Re-evaluate the meta-parellelization method with 
-			a longer run. Still, maybe the cost of moving things around is too much.
-		- Try having each thread initialize separately. Parse inputs, connect to 
-			Julia, etc. Might help..?
-"""
-
 
 def main():
 	
 	global params
 	params = parseArgs()
-	params.prefix="out3"
-	params.force="fittedD"
-	params.out="test"
-	params.variables = ["tmp_dc_cmn", "aet_mm_cyr", "USE", "LENGTH_KM", "run_mm_cyr", "DOR", "DOF", "cly_pc_cav", "cmi_ix_cyr", "slp_dg_cav", "lka_pc_cse", "ria_ha_csu"]
-	params.seed="1321"
-	params.installCS=False
-	params.popsize=None
-	params.maxpopsize=50
-	params.cstype="pairwise"
-	params.fitmetric="aic"
-	params.fitmetric_index=2
-	params.predicted=False
-	params.inmat=None
-	params.cholmod=False
-	params.GA_procs=3
-	params.CS_procs=1
-	params.deltaB=None
-	params.deltaB_perc=0.01
-	params.nfail=10
-	params.maxGens=50
-	params.tournsize=5
-	params.cxpb=0.5
-	params.mutpb=0.5
-	params.indpb=0.1
-	params.burnin=0
-	params.max_hof_size=100
-	params.modavg=True
 	
 	#seed random number generator
 	#random.seed(params.seed)
@@ -283,12 +200,13 @@ def main():
 	bests.delta_aic()
 	bests.akaike_weights()
 	bests.cumulative_akaike(threshold=params.awsum)
-	bests.relative_variable_importance()
+	bests.relative_variable_importance(params.only_keep)
 	bests.printHOF()
 	bests.printRVI()
-	bests.plot_ICprofile(params.out)
-	bests.plotMetricPW(params.out)
-	bests.plotVariableImportance(params.out)
+	if params.plot:
+		bests.plot_ICprofile(params.out)
+		bests.plotMetricPW(params.out)
+		bests.plotVariableImportance(params.out)
 	
 	#write log of fitnesses
 	logDF=pd.DataFrame(logger, columns=["Generation", "Min", "Max", "Mean", "Stdev"])
@@ -298,7 +216,7 @@ def main():
 	
 	#if params.modavg:
 	if params.modavg:
-		modelAverageCS(pool, bests.getHOF(only_keep=False), base=params.out, plot=True, report_all=True) #set to true for production
+		modelAverageCS(pool, bests.getHOF(only_keep=params.only_keep), base=params.out, plot=params.plot, report_all=params.report_all) #set to true for production
 	
 	#write hall of fame to file
 	bests.writeModelSummary(params.out)
@@ -438,9 +356,14 @@ def load_data(params, proc_num):
 	my_number = proc_num
 	
 	#read autoStreamTree outputs
-	if my_number == 0:
-		print("Reading network from: ", (str(params.prefix)+".network"))
-	graph = readNetwork((str(params.prefix)+".network"))
+	if params.network is not None:
+		if my_number == 0:
+			print("Reading network from: ", str(params.network))
+		graph = readNetwork(params.network)
+	else:
+		if my_number == 0:
+			print("Reading network from: ", (str(params.prefix)+".network"))
+		graph = readNetwork((str(params.prefix)+".network"))
 	if my_number==0:
 		print("Reading autoStreamTree results from:", (str(params.prefix)+".streamtree.txt"))
 	(distances, predictors, edge_ids) = readStreamTree((str(params.prefix)+".streamtree.txt"), params.variables, params.force)
@@ -462,14 +385,13 @@ def load_data(params, proc_num):
 	node_point_dict=nodes_to_points(graph, points)
 	
 	#read genetic distances
-	if params.cstype=="pairwise":
-		if params.predicted:
-			if my_number == 0:
-				print("Reading incidence matrix from: ", (str(params.prefix)+".incidenceMatrix.txt"))
-			inc_matrix = readIncidenceMatrix((str(params.prefix)+".incidenceMatrix.txt"))
-			gendist = generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances)
-		else:
-			gendist = parseInputGenMat(graph, points, prefix=params.prefix, inmat=params.inmat)
+	if params.predicted:
+		if my_number == 0:
+			print("Reading incidence matrix from: ", (str(params.prefix)+".incidenceMatrix.txt"))
+		inc_matrix = readIncidenceMatrix((str(params.prefix)+".incidenceMatrix.txt"))
+		gendist = generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances)
+	else:
+		gendist = parseInputGenMat(graph, points, prefix=params.prefix, inmat=params.inmat)
 
 
 def checkFormatGenMat(mat, order):
@@ -502,7 +424,7 @@ def checkFormatGenMat(mat, order):
 def parseInputGenMat(graph, points, prefix=None, inmat=None):
 	order = getNodeOrder(graph, points, as_list=True)
 	#if no input matrix provided, infer from autoStreamTree output
-	if not inmat:
+	if inmat is None:
 		#check if pop and ind mats both exist
 		indmat = str(prefix) + ".indGenDistMat.txt"
 		popmat = str(prefix) + ".popGenDistMat.txt"

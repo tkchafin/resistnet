@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 import warnings
 warnings.simplefilter('ignore', category=UserWarning)
+pd.options.mode.chained_assignment = None 
 
 import riverscape.MLPE as MLPE
 
@@ -39,6 +40,7 @@ class hallOfFame():
 			return
 		popDF = popDF.sort_values('fitness', ascending=False)
 		popDF = popDF.drop_duplicates(keep='first', ignore_index=True)
+		popDF = popDF.reset_index(drop=True)
 		space = self.max_size - self.data.shape[0]
 		
 		if space > 0:
@@ -47,6 +49,9 @@ class hallOfFame():
 			if space> popDF.shape[0]:
 				select_size=popDF.shape[0]
 			self.data = self.data.append(popDF[:select_size], ignore_index=True)
+			self.data = self.data.sort_values('fitness', ascending=False)
+			self.data = self.data.drop_duplicates(keep='first', ignore_index=True)
+			self.data = self.data.reset_index(drop=True)
 			self.min_fitness = self.data['fitness'].min()
 		else:
 			if popDF['fitness'].max() > self.min_fitness:
@@ -54,6 +59,7 @@ class hallOfFame():
 				self.data = self.data.append(subset, ignore_index=True)
 				self.data = self.data.sort_values('fitness', ascending=False)
 				self.data = self.data.drop_duplicates(keep='first', ignore_index=True)
+				self.data = self.data.reset_index(drop=True)
 				if self.data.shape[0] > self.max_size:
 					self.data = self.data[:self.max_size]
 				self.min_fitness = self.data['fitness'].min()
@@ -62,11 +68,13 @@ class hallOfFame():
 	
 	def printHOF(self, max_row=None, max_col=None):
 		self.data = self.data.sort_values('fitness', ascending=False)
+		self.data = self.data.reset_index(drop=True)
 		with pd.option_context('display.max_rows', max_row, 'display.max_columns', max_col):  # more options can be specified also
 			print(self.data)
 	
 	def printRVI(self, max_row=None, max_col=None):
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
+		self.rvi = self.rvi.reset_index(drop=True)
 		with pd.option_context('display.max_rows', max_row, 'display.max_columns', max_col):  # more options can be specified also
 			print(self.rvi)
 	
@@ -96,6 +104,7 @@ class hallOfFame():
 	def cumulative_akaike(self, threshold=1.0):
 		if self.data.shape[0] <= 0:
 			return
+		self.data = self.data.reset_index(drop=True)
 		threshold=float(threshold)
 		if "akaike_weight" not in self.data.columns:
 			self.akaike_weights()
@@ -124,23 +133,28 @@ class hallOfFame():
 			sw=(sub[v]*sub['akaike_weight']).sum()
 			self.rvi.loc[len(self.rvi), :] = [v, sw]
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
+		self.rvi = self.rvi.reset_index(drop=True)
 	
 	def cleanHOF(self):
 		ret = self.data.sort_values('fitness', ascending=False)
+		ret = ret.reset_index(drop=True)
 		for v in self.variables:
-			ret[ret.v == 0][(str(v)+"_weight")] = "NaN"
-			ret[ret.v == 0][(str(v)+"_trans")] = "NaN"
-			ret[ret.v == 0][(str(v)+"_shape")] = "NaN"
+			mask=(ret[v] == 0)
+			ret[(str(v)+"_weight")][mask] = "NaN"
+			ret[(str(v)+"_trans")][mask] = "NaN"
+			ret[(str(v)+"_shape")][mask] = "NaN"
 		if ret.iloc[0]["fitness"] == (ret.iloc[0]["aic"]*-1):
 			ret["fitness"] = ret["fitness"]*-1
 		return(ret)
 	
 	def getRVI(self):
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
+		self.rvi = self.rvi.reset_index(drop=True)
 		return(self.rvi)
 	
 	def getHOF(self, only_keep=False):
 		self.data = self.data.sort_values('fitness', ascending=False)
+		self.data = self.data.reset_index(drop=True)
 		if only_keep:
 			return(self.data[self.data.keep=="True"])
 		else:
@@ -189,12 +203,13 @@ class hallOfFame():
 	
 	def writeModelSummary(self, oname):
 		out_df = self.cleanHOF()
-		out_df.to_csv((str(oname)+".HallOfFame.tsv"), sep="\t", index=True)
+		out_df.to_csv((str(oname)+".HallOfFame.tsv"), sep="\t", index=True, na_rep="-")
 
 def plotEdgeModel(gen, res, oname):
 	sns.set(style="ticks")
 	df = pd.DataFrame(list(zip(gen, res)), columns=["Fitted Genetic Distance", "Resistance"])
-	sns.regplot(x="Resistance", y="Fitted Genetic Distance", data=df)
+	#print(df)
+	sns.lmplot(x="Resistance", y="Fitted Genetic Distance", data=df)
 	plt.title("Edge-wise Resistance x Genetic Distance")
 	plt.savefig((str(oname)+".Edgewise.pdf"))
 	plt.clf()
@@ -204,7 +219,6 @@ def plotPairwiseModel(gen, mat, oname, partition=False):
 	r=MLPE.get_lower_tri(mat)
 	#print(len(g))
 	#print(len(r))
-	
 	df = pd.DataFrame(list(zip(list(g), list(r))), columns=["Genetic Distance", "Resistance Distance"])
 	
 	sns.set(style="ticks")

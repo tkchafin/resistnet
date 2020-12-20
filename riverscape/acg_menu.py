@@ -7,16 +7,21 @@ class parseArgs():
 	def __init__(self):
 		#Define options
 		try:
-			options, remainder = getopt.getopt(sys.argv[1:], 'hs:i:r:pd:a:lw:o:gP:L:Scn:G:', \
-			["shp=", "help", "input="])
+			options, remainder = getopt.getopt(sys.argv[1:], 'hp:g:n:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:Aa:o:X', \
+			["shp=", "help", "input=", "prefix=", "genmat=", "network=",
+			"seed=", "procs=", "maxPop=", "maxpop=", "maxgen=", "maxGen=",
+			"size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=", 
+			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
+			"burn=", "force=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
+			"modAvg", "awsum=", "report_all", "noPlot", "out=", "avgall"])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
 		#Default values for params
 		#Input params
 		self.prefix="out3"
-		self.force="fittedD"
-		self.variables = ["tmp_dc_cmn", "aet_mm_cyr", "USE"]
+		self.force=None
+		self.variables = None
 		self.seed=None
 		self.installCS=False
 		self.popsize=None
@@ -25,6 +30,7 @@ class parseArgs():
 		self.fitmetric="aic"
 		self.predicted=False
 		self.inmat=None
+		self.network=None
 		self.cholmod=False
 		self.GA_procs=1
 		self.CS_procs=1
@@ -41,6 +47,10 @@ class parseArgs():
 		self.out="output"
 		self.awsum=0.95
 		self.modavg=False
+		self.report_all=False
+		self.plot=True
+		
+		self.only_keep=True
 
 
 		#First pass to see if help menu was called
@@ -53,13 +63,72 @@ class parseArgs():
 			arg = arg.strip()
 			opt = opt.replace("-","")
 			#print(opt,arg)
-			if opt == 's' or opt == 'shp':
-				self.shapefile = arg
+			if opt == 'p' or opt=='prefix':
+				self.prefix = arg
+			elif opt=='g' or opt=='genmat':
+				self.inmat = arg
+			elif opt=='n' or opt=='network':
+				self.network = arg
+			elif opt=='s' or opt=='seed':
+				self.seed=int(arg)
+			elif opt=='T' or opt=='procs':
+				self.GA_procs=int(arg)
+			elif opt=='P' or opt=='maxPop' or opt=='maxpop':
+				self.maxpopsize=int(arg)
+			elif opt=="G" or opt=="maxGen" or opt=="maxgen":
+				self.maxGens=int(arg)
+			elif opt=="s" or opt=="popsize" or opt=="size":
+				self.popsize=int(arg)
+			elif opt=="m" or opt=="mutpb":
+				self.mutpb=float(arg)
+			elif opt=="i" or opt=="indpb":
+				self.indpb=float(arg)
+			elif opt=="c" or opt=="cxpb":
+				self.cxpb=float(arg)
+			elif opt=="t" or opt=="tournsize":
+				self.tournsize=int(arg)
+			elif opt=="F" or opt=="nfail" or opt=="nFail":
+				self.nfail=int(arg)
+			elif opt=="d" or opt=="delt":
+				self.deltaB=float(arg)
+			elif opt=="D" or opt=="deltP" or opt=="deltp":
+				self.deltaB_perc=float(arg)
+			elif opt=="f" or opt=="fit" or opt=="metric" or opt=="fitness":
+				if arg.lower() not in ["aic", "r2m", "loglik", "delta"]:
+					self.diplay_help("Unrecognized fitness metric <-f, --fit>")
+				else:
+					self.fitmetric=arg.lower()
+			elif opt=="b" or opt=="burn":
+				self.burnin=int(arg)
+			elif opt=="force":
+				self.force=arg
+			elif opt=="infer":
+				self.predicted=True
+			elif opt=="cholmod":
+				self.cholmod=True
+			elif opt=="C" or opt=="Cprocs" or opt=="cprocs":
+				self.CS_procs=int(arg)
+			elif opt=="v" or opt=="vars":
+				self.variables=arg.split(",")
+			elif opt=="A" or opt=="modavg" or opt=="modAvg":
+				self.modavg=True
+			elif opt=="a" or opt=="awsum":
+				self.awsum=float(arg)
+			elif opt=="report_all":
+				self.report_all=True
+			elif opt=="X" or opt=="noPlot":
+				self.plot=False
+			elif opt=="o" or opt=="out":
+				self.out=arg
+			elif opt=="avgall":
+				self.only_keep=False
 			elif opt == 'h' or opt == 'help':
 				pass
 			else:
 				assert False, "Unhandled option %r"%opt
-
+		
+		if self.variables is None:
+			self.display_help("No variables selected.")
 
 	def display_help(self, message=None):
 		if message is not None:
@@ -80,12 +149,14 @@ class parseArgs():
 		
 	General options:
 		-s,--seed	: Random number seed (default=taken from clock time)
-		-P,--procs	: Number of parallel processors
-		-x,--noPlots: Turn off plotting
+		-T,--procs	: Number of parallel processors
+		-X,--noPlot	: Turn off plotting
+		-o,--out	: Output file prefix 
+		-h,--help	: Displays help menu
 	
 	Genetic Algorithm Options:
 		-P,--maxPop	: Maximim population size [default = 100]
-		-M,--maxGen	: Maximum number of generations [default = 500]
+		-G,--maxGen	: Maximum number of generations [default = 500]
 		-s,--size	: Manually set population size to <-p int>
 				    NOTE: By default, #params * 15
 		-m,--mutpb	: Probability of mutation per individual [default=0.2]
@@ -94,7 +165,7 @@ class parseArgs():
 		-t,--tourn	: Tournament size [default=10]
 		
 	Model optimization/ selection options:
-		-N,--nfail	: Number of generations failing to improve to stop optimization
+		-F,--nfail	: Number of generations failing to improve to stop optimization
 		-d,--delt	: Threshold absolute change in fitness [default=0.0]
 		-D,--deltP	: Threshold percentage change in fitness, as decimal [default=0.001]
 		-f,--fit	: Fitness metric used to evaluate models <NOT IMPLEMENTED>
@@ -106,21 +177,22 @@ class parseArgs():
 				    NOTE: Case-insensitive
 		-b,--burn	: Number of generations for pre-burnin [default=0]
 	
+	Circuitscape options:
+		--cholmod	: Turn on CHOLMOD solver
+		-C,--cprocs	: Processors per Circuitscape process [default=1]
+				NOTE: Total simultaneous processes= <-T> * <-C>
+	
 	Genetic distance options:
-		-f,--force	: Use XX attribute from input table as distance metric
-		--infer		: Infer pairwise distances from input table (i.e., NOT pairwise matrix)
-		
-		-I,--include: Comma-separated list (no spaces) of explanatory attributes to include
-		-X,--exclude: Comma-separated list (no spaces) of explanatory attributes to exclude
-		-h,--help	: Displays help menu
+		--force	: Use XX attribute from input table as distance metric (e.g. 'fittedD')
+				NOTE: By default, the average of "locD_" columns will be taken
+		--infer		: Infer pairwise distances from input table (i.e., NOT input matrix)
+		-v,--vars: Comma-separated list (no spaces) of explanatory attributes to include
 	
 	Multi-model inference options:
-		-a,--modavg	: Compute model-averaged resistances
+		-A,--modavg	: Compute model-averaged resistances
 			NOTE: This involves re-running Circuitscape for each model
-		-A,--awSum	: Cumulative Akaike weight threshold to retain top N models [default=0.95]
+		-a,--awsum	: Cumulative Akaike weight threshold to retain top N models [default=0.95]
 		--report_all: Plot per-stream resistance and generate full outputs for all retained models
-		--rvi_thresh	: Threshold 'importance' to draw on variable importance plot [default=0.8]
-		--aic_thresh	: AIC difference from best model to draw in IC profile plot [default=2]
 
 """)
 		print()
