@@ -13,7 +13,7 @@ class parseArgs():
 			"size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=", 
 			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
 			"burn=", "force=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
-			"modAvg", "awsum=", "report_all", "noPlot", "out=", "avgall"])
+			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all"])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")

@@ -29,6 +29,7 @@ class hallOfFame():
 		self.max_size=int(max_size)
 		self.min_fitness=float('-inf')
 		self.rvi=pd.DataFrame(columns=['variable', 'RVI'])
+		self.zero_threshold=0.0000000000000001
 		
 		if init_pop is not None:
 			self.check_population(init_pop)
@@ -100,6 +101,7 @@ class hallOfFame():
 		#sum_k = self.data["delta_aic_best"].to_numpy()
 		#did a test agains MuMIn::Weights in R and this seems to be working
 		self.data["akaike_weight"]=((np.exp(-0.5*self.data["delta_aic_best"])) / (sum(np.exp(-0.5*self.data["delta_aic_best"]))))
+		self.data["akaike_weight"].mask(self.data["akaike_weight"] < self.zero_threshold, 0.0, inplace=True)
 	
 	def cumulative_akaike(self, threshold=1.0):
 		if self.data.shape[0] <= 0:
@@ -203,7 +205,7 @@ class hallOfFame():
 	
 	def writeModelSummary(self, oname):
 		out_df = self.cleanHOF()
-		out_df.to_csv((str(oname)+".HallOfFame.tsv"), sep="\t", index=True, na_rep="-")
+		out_df.to_csv((str(oname)+".HallOfFame.tsv"), sep="\t", index=False, na_rep="-")
 
 def plotEdgeModel(gen, res, oname):
 	sns.set(style="ticks")

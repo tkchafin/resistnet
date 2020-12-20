@@ -176,14 +176,19 @@ def main():
 				fails=0
 			
 			if params.fitmetric=="aic":
-				fits = fits*-1
+				fits = [element * -1.0 for element in fits]
+				worst = max(fits)
+				best=min(fits)
+			else:
+				worst=min(fits)
+				best=max(fits)
 			length = len(pop)
 			mean = sum(fits) / length
 			sum2 = sum(x*x for x in fits)
 			std = abs(sum2 / length - mean**2)**0.5
 		
-			print("  Worst %s" % min(fits))
-			print("  Best %s" % max(fits))
+			print("  Worst %s" % worst)
+			print("  Best %s" % best)
 			print("  Avg %s" % mean)
 			print("  Std %s" % std)
 			logger.append([g, min(fits), max(fits), mean, std])
