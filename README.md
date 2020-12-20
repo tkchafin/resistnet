@@ -1,5 +1,5 @@
-# Riverscape_Genetics
-A collection of Python programs for examining patterns of multi-locus genetic differentiation in dendritic networks. 
+# Riverscape Genetics
+A collection of software tools for examining patterns of genetic differentiation in riverscapes 
 
 ### Table of Contents: 
 
