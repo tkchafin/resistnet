@@ -5,6 +5,132 @@ A collection of Python programs for examining patterns of multi-locus genetic di
 
 ### Installation
 
+Because of the number of dependencies, I recommend setting up a freshly built Python environment, and using a Python virtual environment (to prevent any conflicts). For this we will use [pyenv](https://github.com/pyenv/pyenv), a tool made for managing multiple Python versions. 
+
+You can also install all of these dependencies using [conda](https://www.anaconda.com/products/individual), however the PyJulia interface needed to run RiverscapeGA won't work out of the box. 
+
+These installation instructions should work in Linux (or Windows Linux subsystem) or Mac, although Mac users can substitute homebrew commands where suggested. Note that these instructions are also comprehensive, including steps such as compiling and installing R from source -- many users will likely already have R installed on their system, and thus can skip some steps. 
+
+#### Installation using a Python virtual environment
+
+First, clone the repository (if on Mac, you can also use [homebrew](https://brew.sh/):
+```
+#cloning the repository
+git clone https://github.com/pyenv/pyenv.git ~/.pyenv
+#Homebrew users can install like so:
+#brew install pyenv
+```
+
+Next, configure the environment:
+
+```
+echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
+echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
+echo -e 'if command -v pyenv 1>/dev/null 2>&1; then\n eval "$(pyenv init -)"\nfi' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Verify the installation (this should output a list of available python versions):
+```
+pyenv install --list
+```
+
+Next, build python and install dependencies
+
+```
+#build python from scratch
+PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.6.6
+ldd ~/.pyenv/versions/3.6.6/bin/python3.6 | grep libpython
+
+#check that the right python is in your path:
+which python3 
+which pip3
+#output should be something like /home/USER/.pyenv/*/python3; if not, either add the correct path to .bashrc or use absolute path in the python3 and pip3 calls below
+
+#upgrade pip and make sure venv is installed 
+pip3 install --upgrade pip3
+```
+
+After Python finishes building, we can set up our python virtual environment:
+ 
+```
+#cd to the directory you want to build your virtual environment in. Here I will just use the home directory 
+cd ~
+
+#make a directory to store python virtual environments in:
+mkdir python_venv
+cd python_venv
+
+#set up a virtual environment called 'riverscape':
+python3 -m venv riverscape
+
+#activate the riverscape venv so we can install packaged into it:
+source ./riverscape/bin/activate
+```
+
+If you do not have the [R](https://www.r-project.org/) and [Julia](https://julialang.org/) programming languages installed on you systems, you can install them directly into your Python virtual environment like so:
+
+```
+cd ~/python_venv/riverscape
+#go to https://julialang.org/downloads/ and use 'copy link' to get a download link for the correct pre-comiled binary for your system
+wget https://julialang-s3.julialang.org/bin/linux/x64/1.0/julia-1.0.5-linux-x86_64.tar.gz
+tar -xvzf julia-1.0.5-linux-x86_64.tar.gz]
+rm julia-1.0.5-linux-x86_64.tar.gz
+ln -s ~/python_venv/riverscape/julia-1.0.5/bin/julia ~/python_venv/riverscape/bin/.
+
+#follow a similar set up for R, selecting a binary or source from https://cran.r-project.org/ depending on your system
+#here, I will be compiling it from source 
+wget https://cran.r-project.org/src/base/R-4/R-4.0.3.tar.gz
+tar -xvzf R-4.0.3.tar.gz
+cd R-4.0.3
+./configure --prefix=/home/tkchafin/python_venv/riverscape/bin
+make
+make install
+```
+
+Finally, install the required Python dependencies:
+
+```
+#install dependencies
+pip3 install --upgrade pip3
+pip3 install numpy scipy networkx seaborn matplotlib pandas deap sortedcontainers julia geopy geopandas shapely scikit-learn rpy2
+
+#installing rpy2 (Python-R interface) on Mac required that I provide a path to gcc compiler:
+#which gcc 
+#this will output the path you need to set to 'CC' below
+#env CC=/usr/bin/gcc pip3 install rpy2
+```
+Next, we need to setup the R and Julia environments that RiverscapeGA 
+```
+#check R path is the right on
+which R
+#should be: ~/python_venv/riverscape/bin/R
+R
+#install R packages
+> install.packages("MuMIn")
+> install.packages("Matrix")
+> install.packages("lme4")
+
+#check julia path 
+which julia 
+
+#set up julia environment and install Circuitscape
+julia
+julia> using Pkg; Pkg.add("Circuitscape")
+julia> Pkg.test("Circuitscape")
+julia> ENV["PYTHON"] = "python3"  # whatever path you have
+julia> Pkg.build("PyCall")
+
+#From python
+python3
+>>> import julia
+>>> julia.install()
+>>> quit()
+```
+
+#### Using the pre-build Singularity image
+Coming soon...
+
 ### Programs: 
 - *autoStreamTree.py* : This package calculates genetic and stream-distances by snapping sampling points to a network provided using an input shapefile and calculating a minimal sub-network, tests for isolation-by-distance, and fits genetic distances to stream segments using the Stream-tree algorithm by Kalinowski et al. 2008. 
 - *RiverscapeGA.py* : This package implements a genetic algorithm to optimize multi-variable resistance models on networks in Circuitscape. This is somewhat similar to the way in which ResistanceGA accomplishes this for raster datasets, but with some critical algorithmic differences (see below)
