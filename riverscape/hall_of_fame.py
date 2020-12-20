@@ -187,7 +187,7 @@ class hallOfFame():
 		plt.savefig((str(oname)+".varImportance.pdf"))
 		plt.clf()
 	
-	def writeModelSummary(self):
+	def writeModelSummary(self, oname):
 		out_df = self.cleanHOF()
 		out_df.to_csv((str(oname)+".HallOfFame.tsv"), sep="\t", index=True)
 
@@ -202,8 +202,10 @@ def plotEdgeModel(gen, res, oname):
 def plotPairwiseModel(gen, mat, oname, partition=False):
 	g=MLPE.get_lower_tri(gen)
 	r=MLPE.get_lower_tri(mat)
+	#print(len(g))
+	#print(len(r))
 	
-	df = pd.DataFrame(list(zip(list(g), list(r[0]))), columns=["Genetic Distance", "Resistance Distance"])
+	df = pd.DataFrame(list(zip(list(g), list(r))), columns=["Genetic Distance", "Resistance Distance"])
 	
 	sns.set(style="ticks")
 	if partition:

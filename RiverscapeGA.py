@@ -92,23 +92,23 @@ def main():
 	params.prefix="out3"
 	params.force="fittedD"
 	params.out="test"
-	params.variables = ["tmp_dc_cmn", "aet_mm_cyr", "USE"]
+	params.variables = ["tmp_dc_cmn", "aet_mm_cyr", "USE", "LENGTH_KM", "run_mm_cyr", "DOR", "DOF", "cly_pc_cav", "cmi_ix_cyr", "slp_dg_cav", "lka_pc_cse", "ria_ha_csu"]
 	params.seed="1321"
 	params.installCS=False
 	params.popsize=None
-	params.maxpopsize=5
+	params.maxpopsize=50
 	params.cstype="pairwise"
 	params.fitmetric="aic"
 	params.fitmetric_index=2
 	params.predicted=False
 	params.inmat=None
 	params.cholmod=False
-	params.GA_procs=2
+	params.GA_procs=3
 	params.CS_procs=1
 	params.deltaB=None
 	params.deltaB_perc=0.01
 	params.nfail=10
-	params.maxGens=5
+	params.maxGens=50
 	params.tournsize=5
 	params.cxpb=0.5
 	params.mutpb=0.5
@@ -183,26 +183,6 @@ def main():
 	#sys.exit()
 	#print(pop[0])
 	
-	# if params.fitmetric == 'aic':
-	# 	bests.correct_aic_fitness()
-	bests.delta_aic()
-	bests.akaike_weights()
-	bests.cumulative_akaike(threshold=params.awsum)
-	bests.relative_variable_importance()
-	bests.printHOF()
-	bests.printRVI()
-	bests.plot_ICprofile(params.out)
-	bests.plotMetricPW(params.out)
-	bests.plotVariableImportance(params.out)
-	
-	#if params.modavg:
-	if params.modavg:
-		modelAverageCS(pool, bests.getHOF(only_keep=False), base=params.out, plot=True, report_all=True) #set to true for production
-	
-	#write hall of fame to file
-	hof.writeModelSummary(params.out)
-	
-	sys.exit()
 	# CXPB  is the probability with which two individuals are crossed
 	# MUTPB is the probability for mutating an individual
 	cxpb, mutpb = params.cxpb, params.mutpb
@@ -220,7 +200,7 @@ def main():
 	fails=0
 	current_best=float('-inf')
 	#while max(fits) < 5 and g < 5:
-	while fails <= params.nfail and g <= params.maxGens:
+	while fails <= params.nfail and g < params.maxGens:
 		# A new generation
 		g = g + 1
 		print("-- Generation %i --" % g)
@@ -247,10 +227,12 @@ def main():
 		pop_list=list()
 		for ind, fit in zip(invalid_ind, fitnesses):
 			ind.fitness.values = fit[0],
-			ind_list=list(fit[0])
-			ind_list.extend(list(ind))
-			ind_list.extend(fit[1])
-			pop_list.append(ind_list)
+			if fit[1] is not None:
+				ind_list=list()
+				ind_list.append(fit[0])
+				ind_list.extend(list(ind))
+				ind_list.extend(fit[1])
+				pop_list.append(ind_list)
 		bests.check_population(pop_list)
 		
 		#replace population with offspring
@@ -287,24 +269,33 @@ def main():
 			
 			print("  nFails %s" % fails)
 	
-	best = pop[np.argmax([pool.map(toolbox.evaluate, [list(ind) for ind in pop])])]
+	#best = pop[np.argmax([pool.map(toolbox.evaluate, [list(ind) for ind in pop])])]
 	print("Stopping optimization after",str(g),"generations.")
-	if g > params.maxGens:
+	if g >= params.maxGens:
 		print("Reason: Exceeded maxGens")
 	elif fails > params.nfail:
 		print("Reason: More than",str(fails),"generations since finding better solution.")
 	
-	#output report for best model
-	#reportBestModel(best)
+	# if params.fitmetric == 'aic':
+	# 	bests.correct_aic_fitness()
+	bests.delta_aic()
+	bests.akaike_weights()
+	bests.cumulative_akaike(threshold=params.awsum)
+	bests.relative_variable_importance()
+	bests.printHOF()
+	bests.printRVI()
+	bests.plot_ICprofile(params.out)
+	bests.plotMetricPW(params.out)
+	bests.plotVariableImportance(params.out)
 	
-	#Make some plots? 
-	#probably need to 1) Run full Circuitscape again (with edge-wise and pair-wise)
-	#so I can make edge-wise plots, regress pw distances, etc?
+	#if params.modavg:
+	if params.modavg:
+		modelAverageCS(pool, bests.getHOF(only_keep=False), base=params.out, plot=True, report_all=True) #set to true for production
 	
-	#report top XX best models 
-	#reportTopModels(bests, params.bests)
+	#write hall of fame to file
+	bests.writeModelSummary(params.out)
 	
-	#pool.close()
+	pool.close()
 
 def evaluate_ma(stuff):
 	model_num = stuff[0]
@@ -378,11 +369,10 @@ def modelAverageCS(pool, bests, plot=False, base="", report_all=False):
 			edf=pd.DataFrame(list(zip(edge_ids, edge_r)), columns=["EDGE_ID", "Resistance"])
 			splt.plotEdgesToStreams(graph, edf, (str(params.prefix)+".streamTree.shp"), oname)
 			hof.plotEdgeModel(distances, edge_r, oname)
-			hof.plotPairwiseModel(gendist, np.asmatrix(matrix_r), oname)
+			hof.plotPairwiseModel(gendist, matrix_r, oname)
 		
 	
-	
-	oname=str(base) + "ModelAverage"
+	oname=str(base) + ".Model-Average"
 	writeEdges(oname, edge_avg, edge_ids)
 	writeMatrix(oname, matrix_avg, list(node_point_dict.values()))
 	
@@ -390,7 +380,7 @@ def modelAverageCS(pool, bests, plot=False, base="", report_all=False):
 		edf=pd.DataFrame(list(zip(edge_ids, edge_avg)), columns=["EDGE_ID", "Resistance"])
 		splt.plotEdgesToStreams(graph, edf, (str(params.prefix)+".streamTree.shp"), oname)
 		hof.plotEdgeModel(distances, edge_avg, oname)
-		hof.plotPairwiseModel(np.asmatrix(gendist), matrix_avg, oname)
+		hof.plotPairwiseModel(gendist, matrix_avg, oname)
 		
 		#streamtree-style plot
 

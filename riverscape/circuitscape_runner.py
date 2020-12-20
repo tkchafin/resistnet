@@ -51,11 +51,11 @@ def parsePairwiseFromAll(oname, gendist, node_point_dict, return_resistance=Fals
 	#print(list(node_point_dict.values()))
 	#print(indices)
 	#print(list(pw.columns)[indices])
-	sub = (pw.iloc[indices,indices])
+	sub = (pw.iloc[indices,indices]).to_numpy()
 	if return_resistance==True:
 		return(sub)
 	else:
-		res = mlpe_rga.MLPE_R(gendist, pw, scale=True)
+		res = mlpe_rga.MLPE_R(gendist, sub, scale=True)
 		return(res)
 	
 def evaluateIni(jl, oname):
