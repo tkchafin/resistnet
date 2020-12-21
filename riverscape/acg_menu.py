@@ -7,7 +7,7 @@ class parseArgs():
 	def __init__(self):
 		#Define options
 		try:
-			options, remainder = getopt.getopt(sys.argv[1:], 'hp:g:n:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:Aa:o:X', \
+			options, remainder = getopt.getopt(sys.argv[1:], 'hp:g:n:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:Aa:o:Xj:', \
 			["shp=", "help", "input=", "prefix=", "genmat=", "network=",
 			"seed=", "procs=", "maxPop=", "maxpop=", "maxgen=", "maxGen=",
 			"size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=", 
@@ -123,6 +123,8 @@ class parseArgs():
 				self.out=arg
 			elif opt=="avgall":
 				self.only_keep=False
+			elif opt=="julia" or opt=="j":
+				self.julia = arg
 			elif opt == 'h' or opt == 'help':
 				pass
 			else:
