@@ -39,7 +39,8 @@ Next, build python and install dependencies
 
 ```
 #build python from scratch
-PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.6.6
+export PYTHON_CONFIGURE_OPTS="--enable-shared" 
+pyenv install 3.6.6
 ldd ~/.pyenv/versions/3.6.6/bin/python3.6 | grep libpython
 
 #check that the right python is in your path:
