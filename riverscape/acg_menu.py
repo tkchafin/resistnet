@@ -13,7 +13,7 @@ class parseArgs():
 			"size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=", 
 			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
 			"burn=", "force=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
-			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all", "julia="])
+			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all", "julia=", "no_compiled_modules"])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -52,6 +52,7 @@ class parseArgs():
 		
 		self.only_keep=True
 		self.julia="julia"
+		self.compiled_modules=True
 
 
 		#First pass to see if help menu was called
@@ -125,6 +126,8 @@ class parseArgs():
 				self.only_keep=False
 			elif opt=="julia" or opt=="j":
 				self.julia = arg
+			elif opt=="no_compiled_modules":
+				self.compiled_modules=False
 			elif opt == 'h' or opt == 'help':
 				pass
 			else:

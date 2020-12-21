@@ -335,7 +335,7 @@ def initialize_worker(params, proc_num):
 	
 	#establish connection to julia
 	print("Worker",proc_num,"connecting to Julia...\n")
-	jl = Julia(init_julia=False, julia=params.julia)
+	jl = Julia(init_julia=False, julia=params.julia, compiled_modules=params.compiled_modules)
 	
 	if my_number == 0:
 		print("Loading Circuitscape in Julia...\n")
