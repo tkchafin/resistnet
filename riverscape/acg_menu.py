@@ -134,18 +134,32 @@ class parseArgs():
 		if message is not None:
 			print()
 			print (message)
-		print ("\nRiverscapeGA.py\n")
-		print("Author: Tyler K Chafin, University of Arkansas")
-		print ("Contact: tkchafin@uark.edu")
-		print ("Description: Genetic algorithm to optimize resistance models on networks")
+		print ("""\n
+
+
+    o--o                                                    o-o     O  
+    |   |  o                                               o       / \ 
+    O-Oo      o   o  o-o  o-o  o-o   o-o   oo   o-o   o-o  |  -o  o---o
+    |  \   |   \ /   |-'  |     \   |     | |   |  |  |-'  o   |  |   |
+    o   o  |    o    o-o  o    o-o   o-o  o-o-  O-o   o-o   o-o   o   o
+                                                |                   
+                                                o                   
+ 
+""")
+		print("    Author: Tyler K Chafin, University of Arkansas")
+		print ("    Contact: tkchafin@uark.edu")
+		print ("    Description: Genetic algorithm to optimize resistance models on networks")
 		print("""
 	Input options:
 	  If using autoStreamTree outputs:
 		-p,--prefix	: Prefix for autoStreamTree outputs
-		-or-
+		
+	-or-
+	
 	  If manually specifying inputs:
 		-g,--genmat	: Genetic distance matrix
 		-n,--network	: Input graph (in pickle'd networkx format)	
+		<add the rest later>
 		
 	General options:
 		-s,--seed	: Random number seed (default=taken from clock time)
@@ -180,19 +194,19 @@ class parseArgs():
 	Circuitscape options:
 		--cholmod	: Turn on CHOLMOD solver
 		-C,--cprocs	: Processors per Circuitscape process [default=1]
-				NOTE: Total simultaneous processes= <-T> * <-C>
+				    NOTE: Total simultaneous processes= <-T> * <-C>
 	
 	Genetic distance options:
-		--force	: Use XX attribute from input table as distance metric (e.g. 'fittedD')
-				NOTE: By default, the average of "locD_" columns will be taken
+		--force		: Use XX attribute from input table as distance metric (e.g. 'fittedD')
+				    NOTE: By default, the average of "locD_" columns will be taken
 		--infer		: Infer pairwise distances from input table (i.e., NOT input matrix)
-		-v,--vars: Comma-separated list (no spaces) of explanatory attributes to include
+		-v,--vars	: Comma-separated list (no spaces) of explanatory attributes to include
 	
 	Multi-model inference options:
 		-A,--modavg	: Compute model-averaged resistances
-			NOTE: This involves re-running Circuitscape for each model
+				    NOTE: This involves re-running Circuitscape for each model
 		-a,--awsum	: Cumulative Akaike weight threshold to retain top N models [default=0.95]
-		--report_all: Plot per-stream resistance and generate full outputs for all retained models
+		--report_all	: Plot per-stream resistance and generate full outputs for all retained models
 
 """)
 		print()
