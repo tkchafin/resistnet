@@ -1,5 +1,5 @@
 import sys
-import os
+import os, glob
 import itertools
 import math
 import random
@@ -226,6 +226,11 @@ def main():
 	
 	#write hall of fame to file
 	bests.writeModelSummary(params.out)
+	
+	#clean up temp files
+	oname=".temp_"+str(params.out)+"*"
+	for filename in glob.glob(oname):
+		os.remove(filename)
 	
 	pool.close()
 
