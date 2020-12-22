@@ -10,9 +10,31 @@ A collection of software tools for examining patterns of genetic differentiation
 2. [Summary of Programs](#programs)
 3. [autoStreamTree - Fitting distances to stream networks](#ast)
     1. [Program Description](#ast_desc)
+        1. [StreamTree Background](#ast_background)
     2. [Usage](#usage)
         1. [Options and Help Menu](#ast_help)
-	2. [Input Shapefiles](#ast_input)
+        2. [Input File](#ast_table)
+        3. [Shapefile format](#ast_input)
+        4. [StreamTree Options](#stree)
+        5. [Genetic Distance Methods](#gen)
+        6. [Defining Populations](#pops)
+    3. [Example Workflows](#ast_workflow)
+        1. [Single-marker dataset](#ast_example1)
+        2. [Large SNP datasets](#ast_example2)
+        3. [Microsatellites](#ast_example3)
+    4. [Runtimes and Benchmarking](#ast_benchmark)
+    5. [References](#ast_refs)
+4. [RiverscapeGA - Optimizing riverscape resistance models](#rscape)
+    1. [Program Description](#rscape_desc)
+        1. [Genetic Algorithms](#rscape_background)
+        2. [Resistance Models](#rscape_background2)
+    2. [Usage](#rscape_usage)
+        1. [Options and Help Menu](#rscape_help)
+        2. [Input Files](#rscape_inputs)
+        3. [Genetic Algorithm Options](#rscape_ga) 
+        4. [Model Selection/ Optimization](#rscape_model)
+        5. [Circuitscape Options](#rscape_cs)
+        6. [Model-averaging and multi-model importance](#rscape_modavg)
 
 
 ### Installation <a name="installation"></a>
@@ -222,11 +244,6 @@ Coming soon... I will at some point generate a Singularity image for the package
 	* [tkchafin/scripts](https://github.com/tkchafin/scripts) : For more useful file formatting and filtering scripts
 	* [stevemussmann/Streamtree_arcpy](https://github.com/stevemussmann/StreamTree_arcpy) : Code for generating inputs for the original StreamTree program by Kalinowski et al.
 
---Work in progress--
-
-Contact: tkchafin@uark.edu 
-
-
 ## autoStreamTree <a name="ast"></a>
 
 ### Software Description <a name="ast_desc"></a>
@@ -259,7 +276,9 @@ Note that a valid path is required between all sites in order to calculate pairw
 
 If for some reason you cannot use the HydroRIVERS dataset, you will need to do some things first before loading your shapefile into autoStreamTree. First, you will need to include two variables in the attribute table of your shapefile: 1) REACH_ID (case sensitive) must provide a unique identifier to each stream reach; and 2) LENGTH_KM should give the length of each segment. Next, because sometime large stream layers will have small gaps in between streams, you will need to span any small gaps between streams which should be contiguous, and also dissolve any lines that overlap with one another so that any given section of river is represented by a single line. I will provide a tutorial for doing this in ArcMAP later, but for now there are some scripts in our complementary package that can help with these steps using the ArcPy API: https://github.com/stevemussmann/StreamTree_arcpy. Note that this package will also help you in running the original Stream Tree package on Windows, if you want to do so. 
 
-#### StreamTree method
+#### Input file format <a name="ast_table"></a>
+
+#### StreamTree method <a name="stree"></a>
 
 Coming soon -- some changes
 
@@ -277,7 +296,7 @@ After fitting genetic distances, autoStreamTree will create several other output
 Finally, the fitted distances per stream edge will be output both as an added column to the original shapefile attribute table ($out.streamTree.shp and $out.streamTree.txt), and also as a plot showing how distances compare across all streams: $out.streamsByFittedD.pdf
 ![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.networkByStreamTree.png)
 
-#### Genetic distance models 
+#### Genetic distance models <a name="gen"></a>
 
 The currently recommended way to run autoStreamTree is to provide a labelled matrix of pairwise genetic distances, as there are many available packages for calculating these. This input matrix is provided using the --genmat argument, and should be tab-delimited with both column and row labels matching your population or individual identifiers. 
 
@@ -324,7 +343,7 @@ Optionally, the user can also opt to aggregate individual-based distance measure
 
 For datasets containing multiple non-concatenated loci, note that individual-based distances (e.g. PDIST or JC69) will also need to be aggregated among loci within each pairwise calculation. Any of the above options can again be used here, provided using the --loc_agg argument. 
 
-#### Defining populations
+#### Defining populations <a name="pops"></a>
 There are currently three ways in which you can define populations for population-wise analysis. The first (specified using --pop) assumes that the 2nd column in the input file contains population identifiers. These can take any form (e.g., integer or string). The second (--geopop) will group any samples into populations which "snap" to the same stream node (see below). 
 
 A third option (--clusterpop) will automatically cluster geographically similar individuals using the DBSCAN algorithm in scikit-learn, using great-circle geographic distances (i.e., this is not informed by stream distances calculated as a part of some workflows). Two relevant options are provided for manipulating the DBSCAN results:
@@ -341,9 +360,79 @@ If using population labels, whether provided in the input file (--pop/--geopop) 
 In this example, DBSCAN was used (hence population IDs are formatted as "DB_"#). Population centroids, which are ultimately used to "snap" populations to the stream network are shown with an "x". Note that this means that the population will only be represented by a single point on the network! 
 
 
-### Example workflows 
+### Example workflows <a name="ast_workflow"></a>
 
-#### Re-plotting StreamTree outputs
+#### Fitting single-marker distances <a name="ast_example1"></a>
+
+#### Working with large SNP datasets <a name="ast_example2"></a>
+
+#### Microsatellites <a name="ast_example3"></a>
+
+### Runtimes and benchmarking <a name="ast_benchmark"></a>
+
+### References <a name="ast_refs"></a>
+#### Citations for autoStreamTree methods 
+Below is a full list of citations for the various methods used in autoStreamTree. Apologies to anyone I missed - feel free to let me know if you notice any discrepancies. 
+* Beyer WM, Stein M, Smith T, Ulam S. 1974. A molecular sequence metric and evolutionary trees. Mathematical Biosciences. 19: 9-25.
+* Cavalli-Sforza LL, Edwards AWF. 1967. Phylogenetic analysis: model and estimation procedures. American Journal of Human Genetics. 19: 233-257.
+* Ester M, Kriegel HP, Sander J, Xu X. 1996. A density-based algorithm for discovering  clusters in large spatial databases with noise. IN: Simoudis E, Han J, Fayyad UM. (eds.). Proceedings of the Second International Conference on Knowledge Discovery and Data Mining (KDD-96). AAAI Press. pp. 226–231.
+* Felsenstein J. 2004. Inferring Phylogenies: Chapter 11. Sunderland: Sinauer.
+* Fitch WM, Margloiash E. 1967. Construction of phylogenetic trees. Science. 155: 279-84.
+* Hagberg A, Swart P, S Chult D. 2008. Exploring network structure, dynamics, and function using NetworkX. Los Alamos National Lab.(LANL), Los Alamos, NM
+* Hedrick PW. 2005. A standardized genetic differentiation measure. Evolution. 59: 1633–1638
+* Jordahl K. 2014. GeoPandas: Python tools for geographic data. URL: https://github.com/geopandas/geopandas.
+* Jost L. 2008. Gst and its relatives do not measure differentiation. Molecular Ecology. 17: 4015-4026.
+* Jukes TH, Cantor CR. 1969. Evolution of protein molecules. New York: Academic Press.
+* Kalinowski ST, MH Meeuwig, SR Narum, ML Taper (2008) Stream trees: a statistical method for mapping genetic differences between populations of freshwater organisms to the sections of streams that connect them. Canadian Journal of Fisheries and Aquatic Sciences (65:2752-2760)
+* Kimura M. 1980. A simple method for estimating evolutionary rates of base substitutions through comparative studies of nucleotide sequences. Journal of Molecular Evolution. 16(2): 111-120.
+* Mantel N. 1967. The detection of disease clustering and a generalized regression approach. Cancer Research 27(2): 209-220.
+* Meirmans PG, Hedrick PW. 2011. Assessing population structure: Fst and related measures. Molecular Ecology Resources. 11: 5-18.
+* Nei M. 1972. Genetic distance between populations. American Naturalist. 106: 283-292.
+* Nei M. 1987. Molecular Evolutionary Genetics. Columbia University Press, New York
+* Nei M, Chesser RK. 1983. Estimation of fixation indices and gene diversities. Annals of Human Genetics 47(3): 253-259.
+* Pedregosa F, Varoquaux G, Gramfort A, Michel V, Thirion B, Grisel O, Blondel M, Prettenhofer P, Weiss R, Dubourg V, Vanderplas J. 2011. Scikit-learn: Machine learning in Python. The Journal of machine Learning research. 1(12):2825-30
+* Rossmann LA. DFLOW User's Manual. U.S. Environmental Protection Agency.[For description of zero-adjusted harmonic mean]
+* Rousset F. 1997. Genetic differentiation and estimation of gene flow from F-statistics under isolation by distance. Genetics. 145: 1219-28.
+* Tajima F, Nei M. 1984. Estimation of evolutionary distance between nucleotide sequences. Molecular Biology and Evolution 1:269-285
+* Tamura K, Nei M. 1993. Estimation of the number of nucleotide substitutions in the control region of mitochondrial DNA in humans and chimpanzees. Molecular Biology and Evolution. 10(3):512-526.
+* Weir BS, Cockerham CC. 1984. Estimating F-statistics for the analysis of population structure. Evolution. 38: 1358-1370.
+
+#### Other reading
+Here are some recommended readings and resources:
+* Comte L, Olden JD. 2018. Fish dispersal in flowing waters: A synthesis of movement- and genetic-based studies. Fish and Fisheries. 19(6): 1063-1077. 
+* Comte L, Olden JD. 2018. Evidence for dispersal syndromes in freshwater fishes. Proceedings Royal Society: B. 285(1871):  
+* Grill, G., Lehner, B., Thieme, M. et al. 2019. Mapping the world’s free-flowing rivers. Nature. 569:215–221.
+* Linke S, Lehner B, Ouellet Dallaire C. et al. 2019. Global hydro-environmental sub-basin and river reach characteristics at high spatial resolution. Sci Data 6, 283
+* Meffe GK, Vrijenhoek RC. 1988. Conservation genetics in the management of desert fishes. Conservation Biology. 2(2):157-69.
+* Meirmans PG. 2012. The trouble with isolation by distance. Molecular Ecology 21(12): 2839-46.
+* Sere M, Thevenon S, Belem AMG, De Meeus T. 2017. Comparison of different genetic distances to test isolation by distance between populations. 2017. 119(2):55-63.
+* Thomaz AT, Christie MR, Knowles LL. 2016. The architecture of river networks can drive the evolutionary dynamics of aquatic populations. Evolution. 70(3): 731-739.
+* Tonkin JD, Altermatt F, Finn DS, Heino J, Olden JD, Pauls SU, Lytle DA. 2017. The role of dispersal in river network metacommunities: Patterns, processes, and pathways. Freshwater Biology. 61(1): 141-163.
+* Wright S. 1965. Isolation by distance. Genetics. 28: 114-138.
+
+## riverscapeGA <a name="rscape"></a>
+### Program description <a name="rscape_desc"></a>
+
+
+### Usage <a name="rscape_usage"></a>
+
+#### Options and Help Menu <a name="rscape_help"></a>
+
+#### Input files <a name="rscape_input"></a>
+
+#### Genetic Algorithm options <a name="rscape_ga"></a>
+
+#### Model Selection/ Optimization <a name="rscape_model"></a>
+
+#### Circuitscape <a name="rscape_cs"></a>
+
+#### Model-averaging and multi-model importance <a name="rscape_modavg"></a>
+
+## Example Analysis
+
+## Scripts and Tools
+
+#### Re-plotting StreamTree outputs 
 
 The default $out.streamdByFittedD plot may not be exactly what you wanted. To prevent cluttering the help menu of the main program too much, we've provided a separate script for loading up autoStreamTree outputs to re-make the plot, which has some added options for customization: scripts/plotStreamTree.py
 
@@ -375,96 +464,3 @@ For example, if you wanted to cluster individuals using their stream distances, 
 '''
 $ python3 ./scripts/clusterPopsDB.py -h
 '''
-
-### References
-#### Citations for autoStreamTree methods
-Below is a full list of citations for the various methods used in autoStreamTree. Apologies to anyone I missed - feel free to let me know if you notice any discrepancies. 
-* Beyer WM, Stein M, Smith T, Ulam S. 1974. A molecular sequence metric and evolutionary trees. Mathematical Biosciences. 19: 9-25.
-* Cavalli-Sforza LL, Edwards AWF. 1967. Phylogenetic analysis: model and estimation procedures. American Journal of Human Genetics. 19: 233-257.
-* Ester M, Kriegel HP, Sander J, Xu X. 1996. A density-based algorithm for discovering  clusters in large spatial databases with noise. IN: Simoudis E, Han J, Fayyad UM. (eds.). Proceedings of the Second International Conference on Knowledge Discovery and Data Mining (KDD-96). AAAI Press. pp. 226–231.
-* Felsenstein J. 2004. Inferring Phylogenies: Chapter 11. Sunderland: Sinauer.
-* Fitch WM, Margloiash E. 1967. Construction of phylogenetic trees. Science. 155: 279-84.
-* Hagberg A, Swart P, S Chult D. 2008. Exploring network structure, dynamics, and function using NetworkX. Los Alamos National Lab.(LANL), Los Alamos, NM
-* Hedrick PW. 2005. A standardized genetic differentiation measure. Evolution. 59: 1633–1638
-* Jordahl K. 2014. GeoPandas: Python tools for geographic data. URL: https://github.com/geopandas/geopandas.
-* Jost L. 2008. Gst and its relatives do not measure differentiation. Molecular Ecology. 17: 4015-4026.
-* Jukes TH, Cantor CR. 1969. Evolution of protein molecules. New York: Academic Press.
-* Kalinowski ST, MH Meeuwig, SR Narum, ML Taper (2008) Stream trees: a statistical method for mapping genetic differences between populations of freshwater organisms to the sections of streams that connect them. Canadian Journal of Fisheries and Aquatic Sciences (65:2752-2760)
-* Kimura M. 1980. A simple method for estimating evolutionary rates of base substitutions through comparative studies of nucleotide sequences. Journal of Molecular Evolution. 16(2): 111-120.
-* Mantel N. 1967. The detection of disease clustering and a generalized regression approach. Cancer Research 27(2): 209-220.
-* Meirmans PG, Hedrick PW. 2011. Assessing population structure: Fst and related measures. Molecular Ecology Resources. 11: 5-18.
-* Nei M. 1972. Genetic distance between populations. American Naturalist. 106: 283-292.
-* Nei M. 1987. Molecular Evolutionary Genetics. Columbia University Press, New York
-* Nei M, Chesser RK. 1983. Estimation of fixation indices and gene diversities. Annals of Human Genetics 47(3): 253-259.
-* Pedregosa F, Varoquaux G, Gramfort A, Michel V, Thirion B, Grisel O, Blondel M, Prettenhofer P, Weiss R, Dubourg V, Vanderplas J. 2011. Scikit-learn: Machine learning in Python. The Journal of machine Learning research. 1(12):2825-30
-* Rossmann LA. DFLOW User's Manual. U.S. Environmental Protection Agency.[For description of zero-adjusted harmonic mean]
-* Rousset F. 1997. Genetic differentiation and estimation of gene flow from F-statistics under isolation by distance. Genetics. 145: 1219-28.
-* Tajima F, Nei M. 1984. Estimation of evolutionary distance between nucleotide sequences. Molecular Biology and Evolution 1:269-285
-* Tamura K, Nei M. 1993. Estimation of the number of nucleotide substitutions in the control region of mitochondrial DNA in humans and chimpanzees. Molecular Biology and Evolution. 10(3):512-526.
-* Weir BS, Cockerham CC. 1984. Estimating F-statistics for the analysis of population structure. Evolution. 38: 1358-1370.
-
-#### Recommended reading:
-Here are some recommended readings and resources:
-* Comte L, Olden JD. 2018. Fish dispersal in flowing waters: A synthesis of movement- and genetic-based studies. Fish and Fisheries. 19(6): 1063-1077. 
-* Comte L, Olden JD. 2018. Evidence for dispersal syndromes in freshwater fishes. Proceedings Royal Society: B. 285(1871):  
-* Grill, G., Lehner, B., Thieme, M. et al. 2019. Mapping the world’s free-flowing rivers. Nature. 569:215–221.
-* Linke S, Lehner B, Ouellet Dallaire C. et al. 2019. Global hydro-environmental sub-basin and river reach characteristics at high spatial resolution. Sci Data 6, 283
-* Meffe GK, Vrijenhoek RC. 1988. Conservation genetics in the management of desert fishes. Conservation Biology. 2(2):157-69.
-* Meirmans PG. 2012. The trouble with isolation by distance. Molecular Ecology 21(12): 2839-46.
-* Sere M, Thevenon S, Belem AMG, De Meeus T. 2017. Comparison of different genetic distances to test isolation by distance between populations. 2017. 119(2):55-63.
-* Thomaz AT, Christie MR, Knowles LL. 2016. The architecture of river networks can drive the evolutionary dynamics of aquatic populations. Evolution. 70(3): 731-739.
-* Tonkin JD, Altermatt F, Finn DS, Heino J, Olden JD, Pauls SU, Lytle DA. 2017. The role of dispersal in river network metacommunities: Patterns, processes, and pathways. Freshwater Biology. 61(1): 141-163.
-* Wright S. 1965. Isolation by distance. Genetics. 28: 114-138.
-
-## riverscapeGA
-### Program description
-
-### Installation 
-
-#### Dependencies
-
-#### Conda installation
-Conda instructions coming soon... 
-
-
-#### PyJulia setup
-
-```
-python3 -m pip install julia
-```
-
-You will need to open Julia and install the Julia [Circuitscape](https://github.com/Circuitscape/Circuitscape.jl) package and set it up to work with your python:
-```
-$ julia
-julia> using Pkg; Pkg.add("Circuitscape")
-julia> Pkg.test("Circuitscape")
-julia> ENV["PYTHON"] = "python3"  # whatever path you have
-julia> Pkg.build("PyCall")
-```
-
-
-Depending on your environment, you may encounter an error along the lines of ```Your Python interpreter "/Users/tyler/miniconda3/envs/geo/bin/python3" is statically linked to libpython.  Currently, PyJulia does not fully support such Python interpreter.```
-If this happens, you will need to use a workaround to get Python and Julia properly working together. 
-
-```
-#install pyenv
-brew install pyenv
-#build python from scratch
-PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.6.6
-ldd ~/.pyenv/versions/3.6.6/bin/python3.6 | grep libpython
-#re-install dependencies w/ new python environment
-/Users/tyler/.pyenv/versions/3.6.6/bin/pip3 install numpy scipy networkx julia functools deap pandas
-#open python and set up julia PyCall
-/Users/tyler/.pyenv/versions/3.6.6/bin/python3 
->>> import julia
->>> julia.install()
->>> quit()
-#install rpy2 on MacOS requires you point to gcc:
-env CC=/usr/local/bin/gcc /Users/tyler/.pyenv/versions/3.6.6/bin/pip3 install rpy2
-```
-
-
- coming soon
-
-## Example Analysis
-
