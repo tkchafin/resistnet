@@ -2,8 +2,13 @@
 A collection of software tools for examining patterns of genetic differentiation in riverscapes 
 
 ### Table of Contents: 
+1. [Installation](#installation)
+	a. [Installation with conda](#conda)
+	b. [Installation with pyenv](#pyenv)
+	b. [Troubleshooting PyJulia](#pyjulia)
 
-### Installation
+
+### Installation <a name="installation"></a>
 
 Because of the number of dependencies, I recommend setting up a virtual environment to prevent any conflicts with your system Python environment. 
 
@@ -25,7 +30,7 @@ If something along the lines of "libpython3.7m.so.1.0 => /usr/lib/libpython3.7m.
 
 These installation instructions should work in Linux (or Windows Linux subsystem) or Mac, although Mac users can substitute homebrew commands where suggested. Note that these instructions are also comprehensive, including steps such as compiling and installing R from source -- many users will likely already have R installed on their system, and thus can skip some steps. 
 
-#### Installation using conda
+#### Installation using conda <a name="conda"></a>
 
 First, you need to set up a virtual environment:
 ```
@@ -59,7 +64,7 @@ python3 -m julia.sysimage sys.so
 ```
 
 
-#### Installation using pyenv and manually compiled Julia/R
+#### Installation using pyenv and manually compiled Julia/R <a name="pyenv"></a>
 
 First, clone the repository (if on Mac, you can also use [homebrew](https://brew.sh/):
 ```
@@ -178,7 +183,7 @@ R
 > install.packages("lme4")
 ```
 
-#### Troubleshooting PyJulia 
+#### Troubleshooting PyJulia <a name="pyjulia></a>
 
 As noted above, PyJulia won't work with statically-linked Python. There are several workarounds in the PyJulia [documentation](https://pyjulia.readthedocs.io/en/latest/troubleshooting.html). 
 
