@@ -373,8 +373,8 @@ def load_data(params, proc_num):
 			print("Reading network from: ", (str(params.prefix)+".network"))
 		graph = readNetwork((str(params.prefix)+".network"))
 	if my_number==0:
-		print("Reading autoStreamTree results from:", (str(params.prefix)+".streamtree.txt"))
-	(distances, predictors, edge_ids) = readStreamTree((str(params.prefix)+".streamtree.txt"), params.variables, params.force)
+		print("Reading autoStreamTree results from:", (str(params.prefix)+".streamTree.txt"))
+	(distances, predictors, edge_ids) = readStreamTree((str(params.prefix)+".streamTree.txt"), params.variables, params.force)
 	points = readPointCoords((str(params.prefix)+".pointCoords.txt"))
 	
 	#make sure points are snapped to the network

@@ -14,7 +14,7 @@ class parseArgs():
 			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
 			"burn=", "force=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
 			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all", "julia=", "no_compiled_modules",
-			"julia_sys_image="])
+			"julia_sys_image=", "lib_path="])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -132,6 +132,8 @@ class parseArgs():
 				self.compiled_modules=False
 			elif opt=="julia_sys_image":
 				self.sys_image=arg
+			# elif opt=="lib_path":
+			# 	sys.path.append(arg)
 			elif opt == 'h' or opt == 'help':
 				pass
 			else:
