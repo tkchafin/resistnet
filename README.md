@@ -5,13 +5,61 @@ A collection of software tools for examining patterns of genetic differentiation
 
 ### Installation
 
-Because of the number of dependencies, I recommend setting up a freshly built Python environment, and using a Python virtual environment (to prevent any conflicts). For this we will use [pyenv](https://github.com/pyenv/pyenv), a tool made for managing multiple Python versions. 
+Because of the number of dependencies, I recommend setting up a virtual environment to prevent any conflicts with your system Python environment. 
 
-You can also install all of these dependencies using [conda](https://www.anaconda.com/products/individual), however the PyJulia interface needed to run RiverscapeGA won't work out of the box. 
+If you are planning on using RiverscapeGA, [PyJulia](https://pyjulia.readthedocs.io/en/latest/), which forms the necessary interface for Python to access Circuitscape (a Julia program), a complication is that PyJulia cannot use a Python distribution that is statically linked to libpython (such as that installed by Ubuntu or conda, or Debian-based Linux distributions). 
+
+To check if this is a problem, you can use the following commands on Linux and Mac. If nothing prints to the screen, your Python is statically linked and will require a workaround:
+```
+#get full path to python3
+which python3
+
+#on linux
+ldd </full/path/to/python3 | grep libpython
+
+#on Mac
+otools -L </full/path/to/python3> | grep libpython
+```
+
+If something along the lines of "libpython3.7m.so.1.0 => /usr/lib/libpython3.7m.so.1.0 (0x00007f10ef116000)" printed out, you are good to go to install the dependencies using the pip or conda instructions below (depending on your system). 
 
 These installation instructions should work in Linux (or Windows Linux subsystem) or Mac, although Mac users can substitute homebrew commands where suggested. Note that these instructions are also comprehensive, including steps such as compiling and installing R from source -- many users will likely already have R installed on their system, and thus can skip some steps. 
 
-#### Installation using a Python virtual environment
+#### Installation using conda
+
+First, you need to set up a virtual environment:
+```
+conda create -n pyjulia conda-forge::python=3.6.6
+```
+
+Next, activate your environment and install dependencies:
+
+```
+#activate environment
+conda activate pyjulia
+
+#install dependencies
+conda install -c conda-forge -c bioconda -c rmg julia pyjulia  numpy scipy networkx seaborn matplotlib pandas deap sortedcontainers julia geopy geopandas shapely scikit-learn r-base=4.0.3 r-essentials r-nloptr rpy2
+```
+
+Open Julia, and install the packages that we will be needing:
+
+```
+julia
+julia> using Pkg
+julia> Pkg.add("PyCall")
+julia> Pkg.add("Circuitscape")
+julia> exit()
+```
+
+If your Python is statically linked (see above ldd command), you will also need to create a custom Julia system image that you will pass to RiverscapeGA:
+
+```
+python3 -m julia.sysimage sys.so
+```
+
+
+#### Installation using pyenv and manually compiled Julia/R
 
 First, clone the repository (if on Mac, you can also use [homebrew](https://brew.sh/):
 ```
@@ -24,6 +72,7 @@ git clone https://github.com/pyenv/pyenv.git ~/.pyenv
 Next, configure the environment:
 
 ```
+#shouldn't be necessary for homebrew users
 echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
 echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
 echo -e 'if command -v pyenv 1>/dev/null 2>&1; then\n eval "$(pyenv init -)"\nfi' >> ~/.bashrc
@@ -38,9 +87,11 @@ pyenv install --list
 Next, build python and install dependencies
 
 ```
-#build python from scratch
-export PYTHON_CONFIGURE_OPTS="--enable-shared" 
-pyenv install 3.6.6
+#build python from scratch, enabling dynamic linking (needed for PyJulia to work)
+PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.6.6
+pyenv global 3.6.6
+
+#verify Python is not statically linked to libpython
 ldd ~/.pyenv/versions/3.6.6/bin/python3.6 | grep libpython
 
 #check that the right python is in your path:
@@ -69,31 +120,43 @@ python3 -m venv riverscape
 source ./riverscape/bin/activate
 ```
 
-If you do not have the [R](https://www.r-project.org/) and [Julia](https://julialang.org/) programming languages installed on you systems, you can install them directly into your Python virtual environment like so:
+If you do not have the [R](https://www.r-project.org/) and [Julia](https://julialang.org/) programming languages installed on you systems, you can install them directly into your Python virtual environment like so. Note that you can also use pre-compiled binaries, but for the sake of completion I will here show how to compile them from source.
 
 ```
 cd ~/python_venv/riverscape
-#go to https://julialang.org/downloads/ and use 'copy link' to get a download link for the correct pre-comiled binary for your system
-wget https://julialang-s3.julialang.org/bin/linux/x64/1.0/julia-1.0.5-linux-x86_64.tar.gz
-tar -xvzf julia-1.0.5-linux-x86_64.tar.gz]
-rm julia-1.0.5-linux-x86_64.tar.gz
-ln -s ~/python_venv/riverscape/julia-1.0.5/bin/julia ~/python_venv/riverscape/bin/.
+#go to https://julialang.org/downloads/ if you want a pre-compiled binary
+#NOTE: On a Redhat Linux HPC, I could only get the LTS v1.0.5 to work
+git clone git://github.com/JuliaLang/julia.git
+cd julia
+make
+ln -s ~/python_venv/riverscape/julia/bin/julia ~/python_venv/riverscape/bin/.
 
 #follow a similar set up for R, selecting a binary or source from https://cran.r-project.org/ depending on your system
 #here, I will be compiling it from source 
-wget https://cran.r-project.org/src/base/R-4/R-4.0.3.tar.gz
-tar -xvzf R-4.0.3.tar.gz
-cd R-4.0.3
+wget https://cran.r-project.org/src/base/R-4/R-4.0.2.tar.gz
+tar -xvzf R-4.0.2.tar.gz
+cd R-4.0.2
 ./configure --prefix=/home/tkchafin/python_venv/riverscape/bin
 make
 make install
+```
+
+Open Julia, and install the packages that we will be needing:
+
+```
+julia
+julia> using Pkg
+julia> ENV["PYTHON"] = "/home/tkchafin/python_venv/riverscape/bin/python3" #whatever your path is
+julia> Pkg.add("PyCall")
+julia> Pkg.add("Circuitscape")
+julia> exit()
 ```
 
 Finally, install the required Python dependencies:
 
 ```
 #install dependencies
-pip3 install --upgrade pip3
+pip3 install --upgrade pip
 pip3 install numpy scipy networkx seaborn matplotlib pandas deap sortedcontainers julia geopy geopandas shapely scikit-learn rpy2
 
 #installing rpy2 (Python-R interface) on Mac required that I provide a path to gcc compiler:
@@ -101,9 +164,11 @@ pip3 install numpy scipy networkx seaborn matplotlib pandas deap sortedcontainer
 #this will output the path you need to set to 'CC' below
 #env CC=/usr/bin/gcc pip3 install rpy2
 ```
-Next, we need to setup the R and Julia environments that RiverscapeGA 
+
+Install the necessary R packages:
+
 ```
-#check R path is the right on
+#check R path is the right one
 which R
 #should be: ~/python_venv/riverscape/bin/R
 R
@@ -111,23 +176,6 @@ R
 > install.packages("MuMIn")
 > install.packages("Matrix")
 > install.packages("lme4")
-
-#check julia path 
-which julia 
-
-#set up PyCall from Python
-python3
->>> import julia
->>> julia.install()
->>> quit()
-
-#set up julia environment and install Circuitscape
-julia
-julia> using Pkg; Pkg.add("Circuitscape")
-julia> Pkg.test("Circuitscape")
-julia> ENV["PYTHON"] = "python3"  # whatever path you have
-julia> Pkg.build("PyCall")
-julia> exit()
 ```
 
 #### Using the pre-build Singularity image
