@@ -3,9 +3,9 @@ A collection of software tools for examining patterns of genetic differentiation
 
 ### Table of Contents: 
 1. [Installation](#installation)
-    a. [Installation with conda](#conda)
-    b. [Installation with pyenv](#pyenv)
-    c. [Troubleshooting PyJulia](#pyjulia)
+    1. [Installation with conda](#conda)
+    2. [Installation with pyenv](#pyenv)
+    3. [Troubleshooting PyJulia](#pyjulia)
 
 
 ### Installation <a name="installation"></a>
