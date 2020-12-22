@@ -382,23 +382,23 @@ If for some reason you cannot use the HydroRIVERS dataset, you will need to do s
 
 Coordinates do not need to exactly match nodes in the input shapefile, as points will be 'snapped' to network nodes after parsing. autoStreamTree will output both a table($out.snapDistances.txt) and a histogram plot ($out.snapDistances.pdf) showing distances in kilometers that samples or populations had to be snapped:
 
-![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.snapDistances.png)
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/example.snapDistances.png)
 
 #### autoStreamTree Outputs <a name="ast_outputs"></a>
 
 The first thing autoStreamTree will do upon reading your input shapefile is to calculate a minimally reduced sub-network which collapses the input river network into continuous reaches (="edges"), with nodes either representing sample localities or junctions. Because the full river network will likely contain many branches and contiguous reaches which do not contain samples, these are removed to speed up computation. The underlying metadata will be preserved, and the final output will consist of an annotated shapefile containing an EDGE_ID attribute which tells you how reaches were dissolved into contiguous edges in the graph, and a FittedD attribute giving the least-squares optimized distances.
 
 The reduced sub-network will be plotted for you in a file called $OUT.subGraph.pdf:
-![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.subGraph.png)
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/example.subGraph.png)
 
 Here, the total cumulative stream length (in km) is plotted along edges (NOTE: Any natural curvature in the river is not preserved in this plot), with sample sites as blue dots and junctions as black dots. A geographically accurate representation, coloring individual streams to designate different dissolved edges, will be provided as $out.streamsByEdgeID.pdf: 
-![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.networkByEdgeID.png)
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/example.networkByEdgeID.png)
 
 After fitting genetic distances, autoStreamTree will create several other outputs. First, a table called $out.reachToEdgeTable.txt will give a tab-delimited map of how REACH_ID attributes were dissolved into contiguous edges. Second, a tabular and graphical representation of how fitted pairwise distances compare to the raw calculates (or user-provided) pairwise distances: $out.obsVersusFittedD.txt and $out.obsVersusFittedD.pdf
-![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.obsByFittedD.png)
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/example.obsByFittedD.png)
 
 Finally, the fitted distances per stream edge will be output both as an added column to the original shapefile attribute table ($out.streamTree.shp and $out.streamTree.txt), and also as a plot showing how distances compare across all streams:
-![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.networkByStreamTree.png)
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/example.networkByStreamTree.png)
 
 #### Genetic distance models <a name="gen"></a>
 
@@ -459,7 +459,7 @@ DBSCAN options (only when --clusterpop):
 
 If using population labels, whether provided in the input file (--pop/--geopop) or calculating using DBSCAN (--clusterpop), autoStreamTree will output a plot showing cluster membership in 2-D space called $OUT.clusteredPoints.pdf:
 
-![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/example.clusteredPoints.png)
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/example.clusteredPoints.png)
 
 In this example, DBSCAN was used (hence population IDs are formatted as "DB_"#). Population centroids, which are ultimately used to "snap" populations to the stream network are shown with an "x". Note that this means that the population will only be represented by a single point on the network! 
 
@@ -674,7 +674,7 @@ Other values in the table include whether or not a variable is included in a mod
 
 A plot summarizing among models called $out.ICprofile.pdf will also be produced, which shows several pieces of information: 1) How AIC supports vary among all of the Hall of Fame models (arranged from left to right = 'best' to 'worst'). Points are separated as those which were retained for model-averaging given the <-a,--awsum> cutoff, scaled by R^2 values (i.e., correlation coefficient from the MLPE model), and with a red horizontal bar showing a raw delta-AIC cutoff of 2:
 
-![](https://raw.githubusercontent.com/tkchafin/autoStreamTree/master/examples/plots/ic_profile.png)
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/ic_profile.png)
 
 #### Genetic Algorithm options <a name="rscape_ga"></a>
 
