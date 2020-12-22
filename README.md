@@ -672,9 +672,17 @@ In addition to this, RiverscapeGA maintains a "Hall of Fame", tracking the best 
 
 Other values in the table include whether or not a variable is included in a model ($var, where $var is the variable name), specified as either "1" (=included) or "0" (=excluded), and the transformation type (=$var_trans), transformation shape parameter (=$var_shape), and weight of the parameter when calculating the composite resistance edges (=$var_weight). For the transformation column, the types of transformations are as follows: 0=Not transformed; 1=Ricker; 2=Reverse Ricker; 3=Inverse Ricker; 4=Reverse-Inverse Ricker; 5=Monomolecular; 6=Reverse Monomolecular; 7=Inverse Monomolecular; 8=Reverse-Inverse Monomolecular. In all cases, the larger the shape value, the closer each transformation gets to being linear (=essentially no transformation). 
 
-A plot summarizing among models called $out.ICprofile.pdf will also be produced, which shows several pieces of information: 1) How AIC supports vary among all of the Hall of Fame models (arranged from left to right = 'best' to 'worst'). Points are separated as those which were retained for model-averaging given the <-a,--awsum> cutoff, scaled by R^2 values (i.e., correlation coefficient from the MLPE model), and with a red horizontal bar showing a raw delta-AIC cutoff of 2:
+A plot summarizing among models called $out.ICprofile.pdf will also be produced, which shows several pieces of information: 1) How AIC supports vary among all of the Hall of Fame models (arranged from left to right = 'best' to 'worst'). Points are separated as those which were retained for model-averaging given the <-a,--awsum> cutoff, scaled by marginal R^2 values (i.e., correlation coefficient from the MLPE model), and with a red horizontal bar showing a raw delta-AIC cutoff of 2:
 
 ![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/ic_profile.png)
+
+Another plot will summarize the relationship among the various possible fitness metrics (marginal R^2, AIC, etc), as well as how these are distributed among the retained and excluded models, $out.pairPlot.pdf:
+
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/pairplot.png)
+
+Relative variable importance values will be plotted as a bar plot, $out.varImportance.pdf:
+
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/vif.png)
 
 #### Genetic Algorithm options <a name="rscape_ga"></a>
 
