@@ -410,7 +410,7 @@ Here are some recommended readings and resources:
 * Tonkin JD, Altermatt F, Finn DS, Heino J, Olden JD, Pauls SU, Lytle DA. 2017. The role of dispersal in river network metacommunities: Patterns, processes, and pathways. Freshwater Biology. 61(1): 141-163.
 * Wright S. 1965. Isolation by distance. Genetics. 28: 114-138.
 
-## riverscapeGA <a name="rscape"></a>
+## RiverscapeGA <a name="rscape"></a>
 ### Program description <a name="rscape_desc"></a>
 
 
@@ -428,7 +428,8 @@ Here are some recommended readings and resources:
 
 #### Model-averaging and multi-model importance <a name="rscape_modavg"></a>
 
-## Example Analysis
+## Example Workflows
+
 
 ## Scripts and Tools
 
