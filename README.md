@@ -684,6 +684,16 @@ Relative variable importance values will be plotted as a bar plot, $out.varImpor
 
 ![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/vif.png)
 
+If model-averaging was performed (turned on using <-A,--modavg>), RiverscapeGA will calculate model-averaged resistance values, which will be plotted by coloring edges in the stream network, $out.Model-Average.streamsByResistance.pdf:
+
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/modavg_resist.png)
+
+It will also produce plots with a simple linear regression of genetic distances against pairwise resistance ($out.Model-Average.Pairwise.pdf) and edge-wise fitted distances against effective resistances from Circuitscape ($out.Model-Average.Edgewise.pdf):
+
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/modavg_pw.png)
+
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/modavg_ew.png)
+
 #### Genetic Algorithm options <a name="rscape_ga"></a>
 
 #### Model Selection/ Optimization <a name="rscape_model"></a>
