@@ -178,6 +178,18 @@ R
 > install.packages("lme4")
 ```
 
+#### Troubleshooting PyJulia 
+
+As noted above, PyJulia won't work with statically-linked Python. There are several workarounds in the PyJulia [documentation](https://pyjulia.readthedocs.io/en/latest/troubleshooting.html). 
+
+One of the easiest workarounds is to turn off the Julia compiled cache, which you can do by passing Riverscape GA the '--no_compiled_modules' (boolean) argument. This might slow down loading Julia a little bit, but is one of the fastest ways to get up and running if you are getting PyJulia errors. 
+
+Another option is to create a custom JUlia system image, which can be passed to RiverscapeGA using the --sys_image argument:
+
+```
+python3 -m julia.sysimage sys.so
+```
+
 #### Using the pre-build Singularity image
 Coming soon...
 
