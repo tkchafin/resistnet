@@ -14,7 +14,7 @@ class parseArgs():
 			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
 			"burn=", "force=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
 			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all", "julia=", "no_compiled_modules",
-			"julia_sys_image=", "lib_path="])
+			"julia_sys_image=", "lib_path=", "max_hof_size="])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -202,6 +202,7 @@ class parseArgs():
 				    delta (Change in AIC versus null model)
 				    NOTE: Case-insensitive
 		-b,--burn	: Number of generations for pre-burnin [default=0]
+		--max_hof_size	: Maximum individuals to track in the Hall of Fame [default=100]
 	
 	Circuitscape options:
 		--cholmod	: Turn on CHOLMOD solver
