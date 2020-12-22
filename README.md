@@ -522,7 +522,137 @@ Here are some recommended readings and resources:
 
 #### Options and Help Menu <a name="rscape_help"></a>
 
+As with all of the scripts in this repository, you can view a list of the options for RiverscapeGA by calling the help menu with <-h>:
+```
+$ python3 RiverscapeGA.py -h
+Exiting because help menu was called.
+
+    o--o                                                    o-o     O  
+    |   |  o                                               o       / \ 
+    O-Oo      o   o  o-o  o-o  o-o   o-o   oo   o-o   o-o  |  -o  o---o
+    |  \   |   \ /   |-'  |     \   |     | |   |  |  |-'  o   |  |   |
+    o   o  |    o    o-o  o    o-o   o-o  o-o-  O-o   o-o   o-o   o   o
+                                                |                   
+                                                o                   
+
+    Author: Tyler K Chafin, University of Arkansas
+    Contact: tkchafin@uark.edu
+    Description: Genetic algorithm to optimize resistance models on networks
+
+	Input options:
+	  If using autoStreamTree outputs:
+		-p,--prefix	: Prefix for autoStreamTree outputs
+		
+	-or-
+	
+	  If manually specifying inputs:
+		-g,--genmat	: Genetic distance matrix
+		-n,--network	: Input graph (in pickle'd networkx format)	
+		<add the rest later>
+		
+	General options:
+		-s,--seed	: Random number seed (default=taken from clock time)
+		-T,--procs	: Number of parallel processors
+		-X,--noPlot	: Turn off plotting
+		-o,--out	: Output file prefix 
+		-h,--help	: Displays help menu
+	
+	Genetic Algorithm Options:
+		-P,--maxPop	: Maximim population size [default = 100]
+		-G,--maxGen	: Maximum number of generations [default = 500]
+		-s,--size	: Manually set population size to <-p int>
+				    NOTE: By default, #params * 15
+		-m,--mutpb	: Probability of mutation per individual [default=0.2]
+		-i,--indpb	: Probability of mutation per trait [default=0.1]
+		-c,--cxpb	: Probability of being chosen for cross-over [default=0.5]
+		-t,--tourn	: Tournament size [default=10]
+		
+	Model optimization/ selection options:
+		-F,--nfail	: Number of generations failing to improve to stop optimization
+		-d,--delt	: Threshold absolute change in fitness [default=0.0]
+		-D,--deltP	: Threshold percentage change in fitness, as decimal [default=0.001]
+		-f,--fit	: Fitness metric used to evaluate models <NOT IMPLEMENTED>
+				    Options:
+				    aic (default)
+				    loglik (log-likelihood)
+				    r2m (marginal R^2)
+				    delta (Change in AIC versus null model)
+				    NOTE: Case-insensitive
+		-b,--burn	: Number of generations for pre-burnin [default=0]
+	
+	Circuitscape options:
+		--cholmod	: Turn on CHOLMOD solver
+		-C,--cprocs	: Processors per Circuitscape process [default=1]
+				    NOTE: Total simultaneous processes= <-T> * <-C>
+	
+	Genetic distance options:
+		--force		: Use XX attribute from input table as distance metric (e.g. 'fittedD')
+				    NOTE: By default, the average of "locD_" columns will be taken
+		--infer		: Infer pairwise distances from input table (i.e., NOT input matrix)
+		-v,--vars	: Comma-separated list (no spaces) of explanatory attributes to include
+	
+	Multi-model inference options:
+		-A,--modavg	: Compute model-averaged resistances
+				    NOTE: This involves re-running Circuitscape for each model
+		-a,--awsum	: Cumulative Akaike weight threshold to retain top N models [default=0.95]
+		--report_all	: Plot per-stream resistance and generate full outputs for all retained models
+```
+
 #### Input files <a name="rscape_input"></a>
+
+For convienience, the inputs for RiverscapeGA follow the formats of the files output by autoStreamTree and streamCleaner. 
+
+#### Outputs <a name="rscape_output"></a>
+
+After parsing all of the inputs, RiverscapeGA will randomly generate a population of 'individuals' (=model parameterizations), which is by default 15X the number of parameter, up to a maximum size specified by <-P,--maxPop>. Alternatively, you can specify a fixed size with <-s,--size>. Each 'generation', individuals will be selected using the desired fitness function (specified with <-f,--fit>; e.g. -f AIC to use AIC), and the maximum, minimum, meand, and standard deviation of population fitness values will be output to the terminal (stdout):
+```
+Reading network from:  ../out3.network
+Reading autoStreamTree results from: ../out3.streamTree.txt
+Initializing genetic algorithm parameters...
+
+Establishing a population of size: 50
+
+Evaluating initial population...
+
+Starting optimization...
+
+-- Generation 1 --
+  Worst 7466.655283180244
+  Best 6644.0304460748275
+  Avg 6986.83389341895
+  Std 174.1935275523536
+  nFails 0
+-- Generation 2 --
+  Worst 7499.103994724142
+  Best 6637.266874648363
+  Avg 6821.94687814646
+  Std 149.476198344529
+  nFails 0
+...
+...
+```
+Also included in this report is the number of consecutive generations that the genetic algorithm has failed to find a 'better' individual (with 'better' being defined using thresholds set with <-d,--delt> or <-D,--deltP>). After either a specified number of generations (<-G,--maxGen>) have passed, or nFail exceeds the user-specified number (-F,--nFail), the algorithm will stop, and report to the screen which stopping criteria was met:
+```
+-- Generation 5 --
+  Worst 6854.294254647968
+  Best 6596.9194357890165
+  Avg 6643.346646257467
+  Std 53.73712600565164
+  nFails 0
+Stopping optimization after 5 generations.
+Reason: Exceeded maxGens
+```
+At this time a series of plots and tables will be produced. The fitness values through time will be reported at $out.FitnessLog.tsv (where "$out" is the output prefix defined with <-o,--out>):
+
+| Generation | Worst             | Best              | Mean              | Stdev              |
+|------------|-------------------|-------------------|-------------------|--------------------|
+| 1          | 6644.389928164675 | 7466.655283180244 | 6985.505559085744 | 173.72113685174205 |
+| 2          | 6639.881724568676 | 7499.539461868835 | 6820.890653185437 | 147.67937472826992 |
+| 3          | 6617.603822325212 | 6872.074421364015 | 6683.739424517294 | 49.76330989463599  |
+| 4          | 6610.290247013926 | 6794.057145496889 | 6642.676944232899 | 29.918610153913338 |
+| 5          | 6597.775539690673 | 7018.279668244255 | 6642.276324199858 | 67.76930180708179  |
+
+
 
 #### Genetic Algorithm options <a name="rscape_ga"></a>
 
