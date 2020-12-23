@@ -181,6 +181,7 @@ class hallOfFame():
 		plt.title("IC Profile")
 		plt.savefig((str(oname)+".ICprofile.pdf"))
 		plt.clf()
+		plt.close()
 	
 	def plotMetricPW(self, oname="out"):
 		cols=["aic", "loglik", "r2m", "delta_aic_null", "keep"]
@@ -192,6 +193,7 @@ class hallOfFame():
 		plt.title("Pair plot")
 		plt.savefig((str(oname)+".pairPlot.pdf"))
 		plt.clf()
+		plt.close()
 	
 	def plotVariableImportance(self, oname="out", cutoff=0.8):
 		cutoff=float(cutoff)
@@ -202,6 +204,7 @@ class hallOfFame():
 		plt.title("Importance of Terms")
 		plt.savefig((str(oname)+".varImportance.pdf"))
 		plt.clf()
+		plt.close()
 	
 	def writeModelSummary(self, oname):
 		out_df = self.cleanHOF()
@@ -215,6 +218,7 @@ def plotEdgeModel(gen, res, oname):
 	plt.title("Edge-wise Resistance x Genetic Distance")
 	plt.savefig((str(oname)+".Edgewise.pdf"))
 	plt.clf()
+	plt.close()
 
 def plotPairwiseModel(gen, mat, oname, partition=False):
 	g=MLPE.get_lower_tri(gen)
@@ -234,5 +238,6 @@ def plotPairwiseModel(gen, mat, oname, partition=False):
 	plt.title("Pairwise-wise Resistance x Genetic Distance")
 	plt.savefig((str(oname)+".Pairwise.pdf"))
 	plt.clf()
+	plt.close()
 
 

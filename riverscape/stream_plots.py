@@ -15,3 +15,4 @@ def plotEdgesToStreams(graph, res, shp_base, oname):
 	plt.title("Stream network colored by resistance")
 	plt.savefig((str(oname)+".streamsByResistance.pdf"))
 	plt.clf()
+	plt.close()
