@@ -37,7 +37,7 @@ A collection of software tools for examining patterns of genetic differentiation
         6. [Model Selection/ Optimization](#rscape_model)
         7. [Circuitscape Options](#rscape_cs)
         8. [Model-averaging and multi-model importance](#rscape_modavg)
-    3. [Runtimes and Benchmarking] (#rscape_benchmark)
+    3. [Runtimes and Benchmarking](#rscape_benchmark)
     4. [Example Workflows](#rscape_workflow)
 5. [Scripts and Other Tools](#tools)
 
