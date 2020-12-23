@@ -737,7 +737,11 @@ The parameters which can be manipulating from the command-line are as follows:
 ### Runtimes and Benchmarking <a name="rscape_benchmark"></a>
 In all of these tests, I used a dataset composed of N=112 network edges (corresponding to N=2,248 contiugous segments in the input shapefile), and N=78 populations. I randomly selected 10 environmental variables, and used a population size of 50. Tests were performed on a Linux computer with 256gb of memory and 16 cores. 
 
-<General runtimes>
+Increasing the <-T> parameter leads to speed increases when <-t> <= population size, although returns are diminishing at higher values, given several added costs: The need for more separate initializations, and the communication cost of sending information between the master and sub-processes. Here, for each generation, the master process has to send a model parameterization (a vector of e.g., [1, 0.89, 7, 16] x number of variables), and the sub-process returns a vector of potential fitness measures (loglik, AIC, marginal r^2, deltaAIC vs. null). Memory increases linearly as you add processors, with the slope determined by the size of the input dataset, since each sub-process maintains a deep copy of the entire graph, pairwise genetic distance matrix, etc. 
+
+In this test, I used 1-16 processors to examine N=50 individual models per generation, for 10 generations. The random number seed was fixed, to maintain comparability. Total runtimes varied from 165 minutes for <-T 1> to ~14 minutes for <-T 16>. Runtime increases linearly with number of generations, such that e.g., 200 generations with this same dataset and population size takes ~280 minutes with <-T 16>. A run of the same dataset, with a population size of 200, and 200 generations, took 840 minutes. 
+
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/rscape_benchmark.png)
 	
 In comparing the gains from parallelization, the <-T> parameter grants the most efficient use of available CPUs:
 
