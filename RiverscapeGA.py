@@ -227,10 +227,10 @@ def main():
 def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
 	cur=current_best
 	f=fails
+	threshold_1=current_best
+	threshold_2=current_best
 	if minimize is True:
 		if best < current_best:
-			threshold_1=current_best
-			threshold_2=current_best
 			cur = best
 			if params.deltaB:
 				threshold_1=current_best-params.deltaB
@@ -242,8 +242,6 @@ def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
 			f = 0
 	else:
 		if best > current_best:
-			threshold_1=current_best
-			threshold_2=current_best
 			cur = best
 			if params.deltaB:
 				threshold_1=current_best+params.deltaB
