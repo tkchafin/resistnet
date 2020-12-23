@@ -521,6 +521,12 @@ Here are some recommended readings and resources:
 ### Program description <a name="rscape_desc"></a>
 
 
+#### Genetic algorithm background and similarities to ResistanceGA
+
+All variables can vary in their model inclusion, but also in the manner by which they are transformed; transformations are the same as those used in ResistanceGA, and shape parameters are included for each variable in the "chromosome". Note that as shape parameters increase, the more similar the "transformed" values are to the original values, with high values for the shape parameter (e.g., 50-100) resulting in negligable transformation: 
+
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/transforms.png)
+
 ### Usage <a name="rscape_usage"></a>
 
 #### Options and Help Menu <a name="rscape_help"></a>
