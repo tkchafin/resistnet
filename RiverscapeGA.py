@@ -181,7 +181,7 @@ def main():
 			print("  Best %s" % best)
 			print("  Avg %s" % mean)
 			print("  Std %s" % std)
-			logger.append([g, min(fits), max(fits), mean, std])
+			logger.append([g, worst, best, mean, std])
 			print("  nFails %s" % fails)
 	
 	#best = pop[np.argmax([pool.map(toolbox.evaluate, [list(ind) for ind in pop])])]
