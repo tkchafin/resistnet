@@ -32,10 +32,13 @@ A collection of software tools for examining patterns of genetic differentiation
         1. [Options and Help Menu](#rscape_help)
         2. [Input Files](#rscape_inputs)
         3. [Output files](#rscape_output)
-        4. [Genetic Algorithm Options](#rscape_ga) 
-        5. [Model Selection/ Optimization](#rscape_model)
-        6. [Circuitscape Options](#rscape_cs)
-        7. [Model-averaging and multi-model importance](#rscape_modavg)
+        4. [Parallel execution](#rscape_parallel)
+        5. [Genetic Algorithm Options](#rscape_ga) 
+        6. [Model Selection/ Optimization](#rscape_model)
+        7. [Circuitscape Options](#rscape_cs)
+        8. [Model-averaging and multi-model importance](#rscape_modavg)
+    3. [Runtimes and Benchmarking] (#rscape_benchmark)
+    4. [Example Workflows](#rscape_workflow)
 5. [Scripts and Other Tools](#tools)
 
 
@@ -694,7 +697,30 @@ It will also produce plots with a simple linear regression of genetic distances 
 
 ![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/modavg_ew.png)
 
+If using the <--report_all> option, these plots will also be produced for every one of the "kept" models from the Hall of Fame, with naming as $out.Model-#.Pairwise.pdf (etc), where "#" is the row number from the HallofFame.tsv table (with 0-based indexing; i.e. 0="best" model; 1=second-best, and so on).
+
+#### Parallel execution <a name="rscape_parallel"></a>
+
+There are two parameters for controlling parallel execution: <-T,--procs> controls the spread of individual fitness calculations in the genetic algorithm, using the multiprocessing Python library; and <-C,--cprocs> controls the number of processor cores dedicated per Circuitscape run (which is run for every individual, every generation). <-C> * <-T> should not exceed the number of CPUs on your machine. 
+
+I've found that each Circuitscape run generally doesn't take too long with moderately sized networks (more below in the [Runtimes and Benchmarking section](#rscape_benchmark)), and that the greatest gains can be gotten by maximizing the <-T> parameter. This allows not only the Circuitscape step to be parallelized, but also the generation and parsing of Circuitscape outputs, and fitting of the MLPE model. However, extremely large networks may benefit from increasing the <-C> parameter. For most users, I wouldn't recommend increasing <-C> unless your machine has twice the number of processors as there are individuals in the GA population, as <-T> will not give any benefit if increasing beyond the population size. For example, if you have a small population size of 24 and are running on a 48-core machine, increasing <-T> beyond T=24 will not increase runtimes, and you may wish to set <-T 24> and <-C 2> in order to best use the cores avaialable. However, for most use cases, the available number of CPUs is unlikely to be larger than the population size. 
+
 #### Genetic Algorithm options <a name="rscape_ga"></a>
+
+RiverscapeGA provides options for manipulating the relevant parameters of the genetic algorithm. If there are additional parameters you wish to control, just shoot me an email (tylerkchafin@gmail.com) or launch an Issue here and GitHub and I'll add it as soon as I can. 
+
+The parameters which can be manipulating from the command-line are as follows: 
+```
+	Genetic Algorithm Options:
+		-P,--maxPop	: Maximim population size [default = 100]
+		-G,--maxGen	: Maximum number of generations [default = 500]
+		-s,--size	: Manually set population size to <-p int>
+				    NOTE: By default, #params * 15
+		-m,--mutpb	: Probability of mutation per individual [default=0.2]
+		-i,--indpb	: Probability of mutation per trait [default=0.1]
+		-c,--cxpb	: Probability of being chosen for cross-over [default=0.5]
+		-t,--tourn	: Tournament size [default=10]
+```
 
 #### Model Selection/ Optimization <a name="rscape_model"></a>
 
@@ -702,8 +728,9 @@ It will also produce plots with a simple linear regression of genetic distances 
 
 #### Model-averaging and multi-model importance <a name="rscape_modavg"></a>
 
-## Example Workflows
+### Runtimes and Benchmarking <a name="rscape_benchmark"></a>
 
+### Example Workflows <a name="rscape_workflow"></a>
 
 ## Scripts and Tools
 
