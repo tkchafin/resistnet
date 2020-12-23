@@ -161,27 +161,17 @@ def main():
 	
 		#evaluate for stopping criteria
 		if g > params.burnin:
-			threshold_1=current_best
-			threshold_2=current_best
-			if params.deltaB:
-				threshold_1=current_best+params.deltaB
-			if params.deltaB_perc:
-				threshold_2=(current_best*params.deltaB_perc)+current_best
-			if max(fits) > current_best:
-				current_best = max(fits)
-	
-			if max(fits) < threshold_1 or max(fits) < threshold_2:
-				fails += 1
-			else:
-				fails=0
 			
 			if params.fitmetric=="aic":
 				fits = [element * -1.0 for element in fits]
 				worst = max(fits)
 				best=min(fits)
+				(current_best, fails) = updateFails(best, current_best, fails, params.deltaB, params.deltaB_perc, minimize=True)
 			else:
 				worst=min(fits)
 				best=max(fits)
+				(current_best, fails) = updateFails(best, current_best, fails, params.deltaB, params.deltaB_perc, minimize=False)
+
 			length = len(pop)
 			mean = sum(fits) / length
 			sum2 = sum(x*x for x in fits)
@@ -233,6 +223,37 @@ def main():
 		os.remove(filename)
 	
 	pool.close()
+
+def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
+	cur=current_best
+	f=fails
+	if minimize is True:
+		if best < current_best:
+			threshold_1=current_best
+			threshold_2=current_best
+			cur = best
+			if params.deltaB:
+				threshold_1=current_best-params.deltaB
+			if params.deltaB_perc:
+				threshold_2=(current_best*params.deltaB_perc)-current_best
+		if best > threshold_1 or best > threshold_2:
+			f += 1
+		else:
+			f = 0
+	else:
+		if best > current_best:
+			threshold_1=current_best
+			threshold_2=current_best
+			cur = best
+			if params.deltaB:
+				threshold_1=current_best+params.deltaB
+			if params.deltaB_perc:
+				threshold_2=(current_best*params.deltaB_perc)+current_best
+		if best < threshold_1 or best < threshold_2:
+			f += 1
+		else:
+			f = 0
+	return(cur, f)
 
 def evaluate_ma(stuff):
 	model_num = stuff[0]
