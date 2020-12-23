@@ -729,6 +729,15 @@ The parameters which can be manipulating from the command-line are as follows:
 #### Model-averaging and multi-model importance <a name="rscape_modavg"></a>
 
 ### Runtimes and Benchmarking <a name="rscape_benchmark"></a>
+In all of these tests, I used a dataset composed of N=112 network edges (corresponding to N=2,248 contiugous segments in the input shapefile), and N=78 populations. I randomly selected 10 environmental variables, and used a population size of 50. Tests were performed on a Linux computer with 256gb of memory and 16 cores. 
+
+<General runtimes>
+	
+In comparing the gains from parallelization, the <-T> parameter grants the most efficient use of available CPUs:
+
+![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/t_vs_c.png)
+
+Here, dedicating all 16 cores to <-T> parallelization, after ~3 minutes spend parsing the input files, each generation took approximately 1 minute of computation. With a population size of 50, this averages out to each CPU core evaluating 3-4 individual models, so about 15-20 seconds per individual model (that includes running Circuitscape, parsing the outputs, and fitting the MLPE model). When setting <-T 8> and <-C 2>, each model evaluation averages to 20-24 seconds each, AND each CPU had to evaluate 6-7 individuals per generation. So not only did we see loss in the number of simultaneous model evaluations at a time, Circuitscape actually got slower -- probably reflecting the cost of passing around data. With much larger networks and a larger number of pairwise evaluations (maybe several hundred samples), this relationship is likely to change. For large datasets with long computation times, I would recommend doing some short runs evaluating whether or not increasing the <-C> parameter is worthwhile for your case. 
 
 ### Example Workflows <a name="rscape_workflow"></a>
 
