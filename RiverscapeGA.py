@@ -236,7 +236,7 @@ def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
 				threshold_1=current_best-params.deltaB
 			if params.deltaB_perc:
 				threshold_2=(current_best*params.deltaB_perc)-current_best
-		if best > threshold_1 or best > threshold_2:
+		if best < threshold_1 or best < threshold_2:
 			f += 1
 		else:
 			f = 0
@@ -247,7 +247,7 @@ def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
 				threshold_1=current_best+params.deltaB
 			if params.deltaB_perc:
 				threshold_2=(current_best*params.deltaB_perc)+current_best
-		if best < threshold_1 or best < threshold_2:
+		if best > threshold_1 or best > threshold_2:
 			f += 1
 		else:
 			f = 0
