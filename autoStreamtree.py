@@ -30,7 +30,7 @@ import riverscape.cluster_pops as clust
 import riverscape.report_refs as ref
 from riverscape.ast_menu import parseArgs
 import riverscape.aggregators as agg
-import riverscape.Mantel
+import riverscape.Mantel as Mantel
 
 
 #TODO: Currently assumes all points can be reached by all other points. Add option to check this first, and delete any points that are unreachable
@@ -249,7 +249,7 @@ def main():
 		#print("K:",len(K.edges())
 		for e in K.edges():
 			edge_data = K[e[0]][e[1]][params.reachid_col]
-			print(edge_data)
+			#print(edge_data)
 			for r in edge_data:
 				reach_to_edge[r] = str(i)
 			edges.append(i)
