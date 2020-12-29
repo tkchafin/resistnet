@@ -168,13 +168,15 @@ def main():
 				best=min(fits)
 				if current_best is None:
 					current_best=best
-				(current_best, fails) = updateFails(best, current_best, fails, params.deltaB, params.deltaB_perc, minimize=True)
+				else:
+					(current_best, fails) = updateFails(best, current_best, fails, params.deltaB, params.deltaB_perc, minimize=True)
 			else:
 				worst=min(fits)
 				best=max(fits)
 				if current_best is None:
 					current_best=best
-				(current_best, fails) = updateFails(best, current_best, fails, params.deltaB, params.deltaB_perc, minimize=False)
+				else:
+					(current_best, fails) = updateFails(best, current_best, fails, params.deltaB, params.deltaB_perc, minimize=False)
 
 			length = len(pop)
 			mean = sum(fits) / length
