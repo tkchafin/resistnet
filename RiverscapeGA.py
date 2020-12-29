@@ -115,7 +115,7 @@ def main():
 	
 	print("Starting optimization...\n")
 	fails=0
-	current_best=float('-inf')
+	current_best=None
 	logger=list()
 	#while max(fits) < 5 and g < 5:
 	while fails <= params.nfail and g < params.maxGens:
@@ -166,10 +166,14 @@ def main():
 				fits = [element * -1.0 for element in fits]
 				worst = max(fits)
 				best=min(fits)
+				if current_best is None:
+					current_best=best
 				(current_best, fails) = updateFails(best, current_best, fails, params.deltaB, params.deltaB_perc, minimize=True)
 			else:
 				worst=min(fits)
 				best=max(fits)
+				if current_best is None:
+					current_best=best
 				(current_best, fails) = updateFails(best, current_best, fails, params.deltaB, params.deltaB_perc, minimize=False)
 
 			length = len(pop)
@@ -236,7 +240,7 @@ def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
 				threshold_1=current_best-params.deltaB
 			if params.deltaB_perc:
 				threshold_2=(current_best*params.deltaB_perc)-current_best
-		if best < threshold_1 or best < threshold_2:
+		if best >= threshold_1 or best >= threshold_2:
 			f += 1
 		else:
 			f = 0
@@ -247,7 +251,7 @@ def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
 				threshold_1=current_best+params.deltaB
 			if params.deltaB_perc:
 				threshold_2=(current_best*params.deltaB_perc)+current_best
-		if best > threshold_1 or best > threshold_2:
+		if best <= threshold_1 or best <= threshold_2:
 			f += 1
 		else:
 			f = 0
