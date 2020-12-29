@@ -132,6 +132,7 @@ pyenv global 3.6.6
 
 #verify Python is not statically linked to libpython
 ldd ~/.pyenv/versions/3.6.6/bin/python3.6 | grep libpython
+#if nothing prints, something didn't work
 
 #check that the right python is in your path:
 which python3 
@@ -139,7 +140,7 @@ which pip3
 #output should be something like /home/USER/.pyenv/*/python3; if not, either add the correct path to .bashrc or use absolute path in the python3 and pip3 calls below
 
 #upgrade pip and make sure venv is installed 
-pip3 install --upgrade pip3
+pip3 install --upgrade pip
 ```
 
 After Python finishes building, we can set up our python virtual environment:
@@ -159,12 +160,12 @@ python3 -m venv riverscape
 source ./riverscape/bin/activate
 ```
 
-If you do not have the [R](https://www.r-project.org/) and [Julia](https://julialang.org/) programming languages installed on you systems, you can install them directly into your Python virtual environment like so. Note that you can also use pre-compiled binaries, but for the sake of completion I will here show how to compile them from source.
+If you do not have the [R](https://www.r-project.org/) and [Julia](https://julialang.org/) programming languages installed on you can install them directly into your new virtual environment like so. If on Mac you could use homebrew, or if on a Linux machine with root privileges you could use apt-get, but for the sake of completion I will here show how to compile them from source.
 
 ```
 cd ~/python_venv/riverscape
 #go to https://julialang.org/downloads/ if you want a pre-compiled binary
-#NOTE: On a Redhat Linux HPC, I could only get the LTS v1.0.5 to work
+#NOTE: On a CentOS Linux HPC, I could only get the LTS v1.0.5 to work
 git clone git://github.com/JuliaLang/julia.git
 cd julia
 make
