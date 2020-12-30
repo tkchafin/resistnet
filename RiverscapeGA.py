@@ -235,13 +235,14 @@ def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
 	f=fails
 	threshold_1=current_best
 	threshold_2=current_best
+	
 	if minimize is True:
 		if best < current_best:
 			cur = best
-			if params.deltaB is not None:
-				threshold_1=current_best-params.deltaB
-			if params.deltaB_perc is not None:
-				threshold_2=current_best-(current_best*params.deltaB_perc)
+		if params.deltaB is not None:
+			threshold_1=current_best-params.deltaB
+		if params.deltaB_perc is not None:
+			threshold_2=current_best-(current_best*params.deltaB_perc)
 		if best >= threshold_1 or best >= threshold_2:
 			f += 1
 		else:
@@ -249,10 +250,10 @@ def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
 	else:
 		if best > current_best:
 			cur = best
-			if params.deltaB is not None:
-				threshold_1=current_best+params.deltaB
-			if params.deltaB_perc is not None:
-				threshold_2=current_best+(current_best*params.deltaB_perc)
+		if params.deltaB is not None:
+			threshold_1=current_best+params.deltaB
+		if params.deltaB_perc is not None:
+			threshold_2=current_best+(current_best*params.deltaB_perc)
 		if best <= threshold_1 or best <= threshold_2:
 			f += 1
 		else:
@@ -345,11 +346,17 @@ def modelAverageCS(pool, bests, plot=False, base="", report_all=False):
 		
 		#streamtree-style plot
 
-def writeEdges(oname, edge, ids=None):
-	pass
+def writeEdges(oname, edge, ids, dist=None):
+	df=pd.DataFrame(list(zip(ids, edge)), columns=["EDGE_ID", "Resistance"])
+	if dist is not None:
+		df["FittedD"]=dist
+	df.to_csv((str(oname)+".ResistanceEdges.tsv"), sep="\t", header=True, index=False)
+	
 
-def writeMatrix(oname, edge, ids=None):
-	pass
+def writeMatrix(oname, mat, ids):
+	df=pd.DataFrame(mat, columns=ids, index=ids)
+	df.to_csv((str(oname)+".ResistanceMatrix.tsv"), sep="\t", header=True, index=True)
+
 
 def initialize_worker(params, proc_num):
 	global my_number 
