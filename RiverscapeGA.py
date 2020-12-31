@@ -219,6 +219,7 @@ def main():
 	#if params.modavg:
 	if params.modavg:
 		modelAverageCS(pool, bests.getHOF(only_keep=params.only_keep), base=params.out, plot=params.plot, report_all=params.report_all) #set to true for production
+	writeMatrix((str(params.out)+".genDistMat.tsv"), gen, list(node_point_dict.values()))
 	
 	#write hall of fame to file
 	bests.writeModelSummary(params.out)
