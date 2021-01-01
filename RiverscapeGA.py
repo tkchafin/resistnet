@@ -210,6 +210,9 @@ def main():
 		bests.plotMetricPW(params.out)
 		bests.plotVariableImportance(params.out)
 	
+	#write hall of fame to file
+	bests.writeModelSummary(params.out)
+	
 	#write log of fitnesses
 	logDF=pd.DataFrame(logger, columns=["Generation", "Worst", "Best", "Mean", "Stdev"])
 	logDF.to_csv((str(params.out)+".FitnessLog.tsv"), sep="\t", header=True, index=False)
@@ -221,8 +224,6 @@ def main():
 		modelAverageCS(pool, bests.getHOF(only_keep=params.only_keep), base=params.out, plot=params.plot, report_all=params.report_all) #set to true for production
 	writeMatrix((str(params.out)+".genDistMat.tsv"), gendist, list(node_point_dict.values()))
 	
-	#write hall of fame to file
-	bests.writeModelSummary(params.out)
 	
 	#clean up temp files
 	oname=".temp_"+str(params.out)+"*"
