@@ -205,6 +205,9 @@ def main():
 	bests.relative_variable_importance(params.only_keep)
 	bests.printHOF()
 	bests.printRVI()
+	bests.printMAW()
+	bests.writeMAW(params.out)
+	bests.writeRVI(params.out)
 	if params.plot:
 		bests.plot_ICprofile(params.out)
 		bests.plotMetricPW(params.out)

@@ -29,6 +29,7 @@ class hallOfFame():
 		self.max_size=int(max_size)
 		self.min_fitness=float('-inf')
 		self.rvi=pd.DataFrame(columns=['variable', 'RVI'])
+		self.maw=pd.DataFrame(columns=['variable', 'MAW'])
 		self.zero_threshold=0.0000000000000001
 		
 		if init_pop is not None:
@@ -78,6 +79,12 @@ class hallOfFame():
 		self.rvi = self.rvi.reset_index(drop=True)
 		with pd.option_context('display.max_rows', max_row, 'display.max_columns', max_col):  # more options can be specified also
 			print(self.rvi)
+
+	def printMAW(self, max_row=None, max_col=None):
+		self.maw = self.maw.sort_values('MAW', ascending=False)
+		self.maw = self.maw.reset_index(drop=True)
+		with pd.option_context('display.max_rows', max_row, 'display.max_columns', max_col):  # more options can be specified also
+			print(self.maw)
 	
 	def delta_aic(self):
 		if self.data.shape[0] <= 0:
@@ -137,6 +144,20 @@ class hallOfFame():
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
 		self.rvi = self.rvi.reset_index(drop=True)
 	
+	def model_average_weights(self,ignore_keep=False):
+		#clear previous calculations
+		self.maw=pd.DataFrame(columns=['variable', 'MAW'])
+		sub=self.data[self.data.keep=="True"]
+		if ignore_keep:
+			sub=self.data
+		#compute sum of weights
+		for v in self.variables:
+			w=str(w+"_weight")
+			sw=(sub[w]*sub['akaike_weight']).sum()
+			self.maw.loc[len(self.maw), :] = [v, sw]
+		self.maw = self.maw.sort_values('MAW', ascending=False)
+		self.maw = self.maw.reset_index(drop=True)
+	
 	def cleanHOF(self):
 		ret = self.data.sort_values('fitness', ascending=False)
 		ret = ret.reset_index(drop=True)
@@ -153,6 +174,12 @@ class hallOfFame():
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
 		self.rvi = self.rvi.reset_index(drop=True)
 		return(self.rvi)
+
+	def getMAW(self):
+		self.maw = self.maw.sort_values('MAW', ascending=False)
+		self.maw = self.maw.reset_index(drop=True)
+		return(self.maw)
+	
 	
 	def getHOF(self, only_keep=False):
 		self.data = self.data.sort_values('fitness', ascending=False)
@@ -206,9 +233,25 @@ class hallOfFame():
 		plt.clf()
 		plt.close()
 	
+	def plotModelAveragedWeights(self, oname="out"):
+		cutoff=float(cutoff)
+		sns.set(style="ticks")
+		sub=self.maw.sort_values('MAW', ascending=False)
+		p=sns.barplot(data=sub, x="Model-Averaged Weight", y="variable")
+		plt.title("Model-Averaged Weights")
+		plt.savefig((str(oname)+".modavgWeights.pdf"))
+		plt.clf()
+		plt.close()
+	
 	def writeModelSummary(self, oname):
 		out_df = self.cleanHOF()
 		out_df.to_csv((str(oname)+".HallOfFame.tsv"), sep="\t", index=False, na_rep="-")
+	
+	def writeMAW(self, oname):
+		self.maw.to_csv((str(oname)+".modavgWeights.tsv"), sep="\t", index=False, na_rep="-")
+		
+	def writeRVI(self, oname):
+		self.rvi.to_csv((str(oname)+".varImportance.tsv"), sep="\t", index=False, na_rep="-")
 
 def plotEdgeModel(gen, res, oname):
 	sns.set(style="ticks")
