@@ -149,6 +149,13 @@ class parseArgs():
 			else:
 				assert False, "Unhandled option %r"%opt
 		
+		if params.posWeight and params.fixWeight:
+			self.display_help("--posWeight and --fixWeight cannot be used together")
+		
+		if params.inverse:
+			if not params.posWeight and not params.fixWeight:
+				print("Allowing negative weights and inverse transforms together is not advised.")
+		
 		if self.variables is None:
 			self.display_help("No variables selected.")
 
