@@ -727,7 +727,12 @@ The parameters which can be manipulating from the command-line are as follows:
 		-i,--indpb	: Probability of mutation per trait [default=0.1]
 		-c,--cxpb	: Probability of being chosen for cross-over [default=0.5]
 		-t,--tourn	: Tournament size [default=10]
+		--posWeight	: Constrain parameter weights to between 0.0-1.0
+		--fixWeight	: Constrain parameter weights to 1.0 (i.e., unweighted)
+		--allShapes	: Allow inverse and reverse transformations
 ```
+
+The --posWeight and --fixWeight options are used to either constrain parameter weights to 0.0 - 1.0, or to fix all weights at 1.0. By default, weights can vary from -1.0 to 1.0, and all 'negatively weighted' transformations are not available (inverse and reverse). Only ricker, monomolecular, and inverse-reverse versions of both are available unless --allShapes is used. I don't recommend using both negative weights AND --allShapes together, because this creates a situation where there are multiple ways to get the same possible result (i.e., ricker with -1.0 weighting has the same impact on composite surface as reverse ricker with 1.0 weighting).
 
 #### Model Selection/ Optimization <a name="rscape_model"></a>
 
