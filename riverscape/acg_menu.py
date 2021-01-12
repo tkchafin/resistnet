@@ -14,7 +14,7 @@ class parseArgs():
 			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
 			"burn=", "force=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
 			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all", "julia=", "no_compiled_modules",
-			"julia_sys_image=", "lib_path=", "max_hof_size="])
+			"julia_sys_image=", "lib_path=", "max_hof_size=", "posWeight", "fixWeight", "inverse"])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -50,6 +50,10 @@ class parseArgs():
 		self.modavg=False
 		self.report_all=False
 		self.plot=True
+		
+		self.posWeight=False
+		self.fixWeight=False
+		self.inverse=False
 		
 		self.only_keep=True
 		self.julia="julia"
@@ -134,6 +138,12 @@ class parseArgs():
 				self.sys_image=arg
 			# elif opt=="lib_path":
 			# 	sys.path.append(arg)
+			elif opt=="posWeight":
+				self.posWeight=True
+			elif opt=="fixWeight":
+				self.fixWeight=True
+			elif opt=="inverse":
+				self.inverse=True
 			elif opt == 'h' or opt == 'help':
 				pass
 			else:
@@ -189,6 +199,9 @@ class parseArgs():
 		-i,--indpb	: Probability of mutation per trait [default=0.1]
 		-c,--cxpb	: Probability of being chosen for cross-over [default=0.5]
 		-t,--tourn	: Tournament size [default=10]
+		--posWeight	: Constrain parameter weights to between 0.0-1.0
+		--fixWeight	: Constrain parameter weights to 1.0 (i.e., unweighted)
+		--inverse	: Allow inverse transformations 
 		
 	Model optimization/ selection options:
 		-F,--nfail	: Number of generations failing to improve to stop optimization
