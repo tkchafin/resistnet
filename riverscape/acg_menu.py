@@ -14,7 +14,7 @@ class parseArgs():
 			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
 			"burn=", "force=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
 			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all", "julia=", "no_compiled_modules",
-			"julia_sys_image=", "lib_path=", "max_hof_size=", "posWeight", "fixWeight", "inverse"])
+			"julia_sys_image=", "lib_path=", "max_hof_size=", "posWeight", "fixWeight", "allShapes"])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -53,7 +53,7 @@ class parseArgs():
 		
 		self.posWeight=False
 		self.fixWeight=False
-		self.inverse=False
+		self.allShapes=False
 		
 		self.only_keep=True
 		self.julia="julia"
@@ -138,23 +138,19 @@ class parseArgs():
 				self.sys_image=arg
 			# elif opt=="lib_path":
 			# 	sys.path.append(arg)
-			elif opt=="posWeight":
-				self.posWeight=True
+			elif opt=="negWeight":
+				self.negWeight=True
 			elif opt=="fixWeight":
 				self.fixWeight=True
-			elif opt=="inverse":
-				self.inverse=True
+			elif opt=="allShapes":
+				self.allShapes=True
 			elif opt == 'h' or opt == 'help':
 				pass
 			else:
 				assert False, "Unhandled option %r"%opt
 		
-		if params.posWeight and params.fixWeight:
+		if params.negWeight and params.fixWeight:
 			self.display_help("--posWeight and --fixWeight cannot be used together")
-		
-		if params.inverse:
-			if not params.posWeight and not params.fixWeight:
-				print("Allowing negative weights and inverse transforms together is not advised.")
 		
 		if self.variables is None:
 			self.display_help("No variables selected.")
@@ -208,7 +204,7 @@ class parseArgs():
 		-t,--tourn	: Tournament size [default=10]
 		--posWeight	: Constrain parameter weights to between 0.0-1.0
 		--fixWeight	: Constrain parameter weights to 1.0 (i.e., unweighted)
-		--inverse	: Allow inverse transformations 
+		--allShapes	: Allow inverse and reverse transformations
 		
 	Model optimization/ selection options:
 		-F,--nfail	: Number of generations failing to improve to stop optimization
