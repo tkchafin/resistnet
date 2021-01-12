@@ -695,19 +695,31 @@ def transform(dat, transformation, shape):
 	elif transformation == 1:
 		d=trans.ricker(dat, shape, 10)
 	elif transformation == 2:
-		d=trans.revRicker(dat, shape, 10)
+		if params.allShapes:
+			d=trans.revRicker(dat, shape, 10)
+		else:
+			d=trans.ricker(dat, shape, 10)
 	elif transformation == 3:
-		d=trans.invRicker(dat, shape, 10)
+		if params.allShapes:
+			d=trans.invRicker(dat, shape, 10)
+		else:
+			d=trans.revInvRicker(dat, shape, 10)
 	elif transformation == 4:
 		d=trans.revInvRicker(dat, shape, 10)
 	elif transformation == 5:
 		d=trans.monomolecular(dat, shape, 10)
 	elif transformation == 6:
-		d=trans.revMonomolecular(dat, shape, 10)
+		if params.allShapes:
+			d=trans.revMonomolecular(dat, shape, 10)
+		else:
+			d=trans.monomolecular(dat, shape, 10)
 	elif transformation == 7:
-		d=trans.invMonomolecular(dat, shape, 10)
+		if params.allShapes:
+			d=trans.invMonomolecular(dat, shape, 10)
+		else:
+			d=trans.revInvMonomolecular(dat, shape, 10)
 	elif transformation == 8:
-		d=trans.revMonomolecular(dat, shape, 10)
+		d=trans.revInvMonomolecular(dat, shape, 10)
 	else:
 		print("WARNING: Invalid transformation type. Returning un-transformed data.")
 	return(trans.rescaleCols(d, 0, 10))
@@ -791,7 +803,13 @@ def mutate(individual, indpb):
 def initGA(toolbox, params):
 	#register attributes
 	toolbox.register("feature_sel", random.randint, 0, 1)
-	toolbox.register("feature_weight", random.uniform, -1.0, 1.0)
+	
+	if params.posWeight:
+		toolbox.register("feature_weight", random.uniform, 0.0, 1.0)
+	if params.fixWeight:
+		toolbox.register("feature_weight", random.uniform, 1.0, 1.0)
+	if not params.fixWeight and not params.posWeight:	
+		toolbox.register("feature_weight", random.uniform, -1.0, 1.0)
 	toolbox.register("feature_transform", random.randint, 0, 8)
 	toolbox.register("feature_shape", random.randint, 1, 100)
 	
