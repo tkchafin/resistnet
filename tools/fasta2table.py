@@ -12,6 +12,7 @@ def main():
 	if params.fasta:
 		header = False
 		headerline=""
+		num=1
 		out=(os.path.splitext(params.fasta)[0])+".tsv"
 		with open(out, 'w') as OFH:
 			for samp in read_fasta(params.fasta):
@@ -19,6 +20,9 @@ def main():
 				seq = samp[1]
 				
 				name = "".join(info[:-1])
+				if params.append:
+					name = name + "_" + str(num)
+					num+=1
 				split_dat = info[-1].replace("["," ").replace("]"," ").split(" ")
 				
 				oline = name + "\t" + split_dat[0] + "\t"
@@ -120,7 +124,7 @@ class parseArgs():
 	def __init__(self):
 		#Define options
 		try:
-			options, remainder = getopt.getopt(sys.argv[1:], 'f:t:h', \
+			options, remainder = getopt.getopt(sys.argv[1:], 'nf:t:h', \
 			["help"])
 		except getopt.GetoptError as err:
 			print(err)
@@ -129,6 +133,7 @@ class parseArgs():
 		#Input params
 		self.fasta=None
 		self.table=None
+		self.append=False
 
 
 		#First pass to see if help menu was called
@@ -145,6 +150,8 @@ class parseArgs():
 				self.fasta = arg
 			elif opt == "t":
 				self.table=arg
+			elif opt=="n":
+				self.append=True
 			elif opt == 'h' or opt == 'help':
 				pass
 			else:
@@ -167,6 +174,7 @@ class parseArgs():
 	Options:
 		-f	: Input fasta to convert to table
 		-t	: Input table to convert to fasta
+		-n	: Append unique numbering to each sample ID
 		-h,--help	: Displays help menu
 
 """)
