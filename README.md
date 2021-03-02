@@ -8,7 +8,7 @@ A collection of software tools for examining spatial patterns of diversity and d
     3. [Troubleshooting PyJulia](#pyjulia)
     4. [Singlurity/ Docker](#sing)
 2. [Summary of Programs](#programs)
-3. [autoStreamTree - Fitting distances to stream networks](#ast)
+3. [FitDistNet - Fitting distances to stream networks](#ast)
     1. [Program Description](#ast_desc)
         1. [StreamTree Background](#ast_background)
     2. [Usage](#usage)
@@ -24,7 +24,7 @@ A collection of software tools for examining spatial patterns of diversity and d
         3. [Microsatellites](#ast_example3)
     4. [Runtimes and Benchmarking](#ast_benchmark)
     5. [References](#ast_refs)
-4. [RiverscapeGA - Optimizing riverscape resistance models](#rscape)
+4. [ResistNet - Optimizing effective resistance networks](#rscape)
     1. [Program Description](#rscape_desc)
         1. [Genetic Algorithms](#rscape_background)
         2. [Resistance Models](#rscape_background2)
@@ -46,7 +46,7 @@ A collection of software tools for examining spatial patterns of diversity and d
 
 Because of the number of dependencies, I recommend setting up a virtual environment to prevent any conflicts with your system Python environment. 
 
-If you are planning on using RiverscapeGA, [PyJulia](https://pyjulia.readthedocs.io/en/latest/), which forms the necessary interface for Python to access Circuitscape (a Julia program), a complication is that PyJulia cannot use a Python distribution that is statically linked to libpython (such as that installed by Ubuntu or conda, or Debian-based Linux distributions). 
+If you are planning on using ResistNet, [PyJulia](https://pyjulia.readthedocs.io/en/latest/), which forms the necessary interface for Python to access Circuitscape (a Julia program), a complication is that PyJulia cannot use a Python distribution that is statically linked to libpython (such as that installed by Ubuntu or conda, or Debian-based Linux distributions). 
 
 To check if this is a problem, you can use the following commands on Linux and Mac. If nothing prints to the screen, your Python is statically linked and will require a workaround:
 ```
@@ -91,7 +91,7 @@ julia> Pkg.add("Circuitscape")
 julia> exit()
 ```
 
-If your Python is statically linked (see above ldd command), you will also need to create a custom Julia system image that you will pass to RiverscapeGA:
+If your Python is statically linked (see above ldd command), you will also need to create a custom Julia system image that you will pass to ResistNet:
 
 ```
 python3 -m julia.sysimage sys.so
@@ -222,9 +222,9 @@ R
 
 As noted above, PyJulia won't work with statically-linked Python. There are several workarounds in the PyJulia [documentation](https://pyjulia.readthedocs.io/en/latest/troubleshooting.html). 
 
-One of the easiest workarounds is to turn off the Julia compiled cache, which you can do by passing Riverscape GA the '--no_compiled_modules' (boolean) argument. This might slow down loading Julia a little bit, but is one of the fastest ways to get up and running if you are getting PyJulia errors. 
+One of the easiest workarounds is to turn off the Julia compiled cache, which you can do by passing ResistNet the '--no_compiled_modules' (boolean) argument. This might slow down loading Julia a little bit, but is one of the fastest ways to get up and running if you are getting PyJulia errors. 
 
-Another option is to create a custom JUlia system image, which can be passed to RiverscapeGA using the --sys_image argument:
+Another option is to create a custom Julia system image, which can be passed to ResistNet using the --sys_image argument:
 
 ```
 python3 -m julia.sysimage sys.so
@@ -234,10 +234,10 @@ python3 -m julia.sysimage sys.so
 Coming soon... I will at some point generate a Singularity image for the package -- if you need it in a hurry open and Issue so I will know to prioritize it
 
 ### Programs <a name="programs"></a>
-- *autoStreamTree.py* : This package calculates genetic and stream-distances by snapping sampling points to a network provided using an input shapefile and calculating a minimal sub-network, tests for isolation-by-distance, and fits genetic distances to stream segments using the Stream-tree algorithm by Kalinowski et al. 2008. 
-- *RiverscapeGA.py* : This package implements a genetic algorithm to optimize multi-variable resistance models on networks in Circuitscape. This is somewhat similar to the way in which ResistanceGA accomplishes this for raster datasets, but with some critical algorithmic differences (see below)
-- *streamCleaner.py* : (Coming soon) Integrates the network extraction functions of autoStreamTree with various pre-processing steps such as joining non-contiguous segments, merging redundant paths (e.g., for a braided stream) -- Not yet added
-- *riverscapeSim.py* : (Coming soon) Performs forward-simulations on a given stream network, given environmental 'resistance' variables (and optional weights) -- Not yet added
+- *FitDistNet.py* : This package calculates genetic and stream-distances by snapping sampling points to a network provided using an input shapefile and calculating a minimal sub-network, tests for isolation-by-distance, and fits genetic distances to stream segments using the Stream-tree algorithm by Kalinowski et al. 2008. 
+- *ResistNet.py* : This package implements a genetic algorithm to optimize multi-variable resistance models on networks in Circuitscape. This is somewhat similar to the way in which ResistanceGA accomplishes this for raster datasets, but with some critical algorithmic differences (see below)
+- *FormatNet.py* : (Coming soon) Integrates the network extraction functions of autoStreamTree with various pre-processing steps such as joining non-contiguous segments, merging redundant paths (e.g., for a braided stream) -- Not yet added
+- *SimNet.py* : (Coming soon) Performs forward-simulations on a given stream network, given environmental 'resistance' variables (and optional weights) -- Not yet added
 - *BGR_pipeline.py* : (Coming soon) Pipeline for applying BGR model given a set or covariates or resistance model
 - tools/ 
 	* *autoFetcher.py* : Python interface for NCBI entrez API; can be used to automatically download and parse queries
@@ -245,23 +245,20 @@ Coming soon... I will at some point generate a Singularity image for the package
 	* *fasta2phylip.py* : Converting between FASTA and PHYLIP formats
 	* *fasta2table.py* : Converting between FASTA and autoStreamTree Table formats
 	* *nremover.pl* : Filtering FASTA and PHYLIP files of concatenated SNPs
-	* *plotStreamTree.py* : Re-making StreamTree fitted distance plot with some additional options
+	* *plotStreamTree.py* : Re-making FitDistNet fitted distance plot with some additional options
 	* *modelParser.py* : Parse model outputs of RiverscapeGA.py to generate and select transformed datasets (Coming soon)
 	* [tkchafin/scripts](https://github.com/tkchafin/scripts) : For more useful file formatting and filtering scripts
 	* [stevemussmann/Streamtree_arcpy](https://github.com/stevemussmann/StreamTree_arcpy) : Code for generating inputs for the original StreamTree program by Kalinowski et al.
 
-## autoStreamTree <a name="ast"></a>
+## FitDistNet <a name="ast"></a>
 
 ### Software Description <a name="ast_desc"></a>
-autoStreamTree is a Python software package providing various analyses aimed at analyzing patterns of genetic differentiation among aquatic stream-dwelling organisms. The intention is to take what was previously a tedious process involving multiple discrete steps and to integrate these all in one place. 
+FitDistNet is a Python software package providing various analyses aimed at analyzing patterns of genetic differentiation among aquatic stream-dwelling organisms. The intention is to take what was previously a tedious process involving multiple discrete steps and to integrate these all in one place. 
 
-Currently, autoStreamTree provides a companion library of functions for calculating various measures of genetic distances among individuals or populations, including model-corrected p-distances (e.g. Jukes-Cantor 1969, Kimura 2-parameter, Tamura-Nei 1993) as well as those based on allele frequencies (e.g. Theta-ST, linearized Fst, Jost's D -- full list of available distance models below). It also includes integrated functions for parsing an input vector shapefile of streams (see below 'Requirements for input shapefiles') for easy calculation of pairwise stream distances between sites, as well as the ordinary or weighted least-squares fitting of reach-wise genetic distances according to the "stream tree" model of Kalinowski et al. (2008). Various plotting functions are also provided for downstream analysis, including looking at patterns of isolation-by-distance. Outputs should also be directly importable into R, with additional outputs with annotated streamtree fitted distances provided for analysis in your GIS suite of choice. 
+Currently, FitDistNet provides a companion library of functions for calculating various measures of genetic distances among individuals or populations, including model-corrected p-distances (e.g. Jukes-Cantor 1969, Kimura 2-parameter, Tamura-Nei 1993) as well as those based on allele frequencies (e.g. Theta-ST, linearized Fst, Jost's D -- full list of available distance models below). It also includes integrated functions for parsing an input vector shapefile of streams (see below 'Requirements for input shapefiles') for easy calculation of pairwise stream distances between sites, as well as the ordinary or weighted least-squares fitting of reach-wise genetic distances according to the "stream tree" model of Kalinowski et al. (2008). Various plotting functions are also provided for downstream analysis, including looking at patterns of isolation-by-distance. Outputs should also be directly importable into R, with additional outputs with annotated streamtree fitted distances provided for analysis in your GIS suite of choice. 
 
 If you use this package for analysis of fitted distances using the streamtree model, please cite the following:
 * Kalinowski ST, MH Meeuwig, SR Narum, ML Taper (2008) Stream trees: a statistical method for mapping genetic differences between populations of freshwater organisms to the sections of streams that connect them. Canadian Journal of Fisheries and Aquatic Sciences (65:2752-2760).
-
-If you find the code here useful for your research, for now please cite this repository:
-* Chafin TK. autoStreamTree: Automating workflows for examining patterns of genetic differentiation in stream networks. DOI: Coming soon.
 
 #### StreamTree background <a name="ast_background"></a>
 
@@ -269,13 +266,13 @@ If you find the code here useful for your research, for now please cite this rep
 
 #### Options and Help Menu <a name="ast_help"></a>
 
-To view all of the options for autoStreamTree, call the program with the <-h> argument:
+To view all of the options for FitDistNet, call the program with the <-h> argument:
 ```
-$ python3 autoStreamtree.py -h
+$ python3 FitDistNet.py -h
 
 Exiting because help menu was called.
 
-autoStreamtree.py
+FitDistNet.py
 
 Author: Tyler K Chafin, University of Arkansas
 Contact: tkchafin@uark.edu
@@ -386,23 +383,23 @@ If for some reason you cannot use the HydroRIVERS dataset, you will need to do s
 
 Coordinates do not need to exactly match nodes in the input shapefile, as points will be 'snapped' to network nodes after parsing. autoStreamTree will output both a table($out.snapDistances.txt) and a histogram plot ($out.snapDistances.pdf) showing distances in kilometers that samples or populations had to be snapped:
 
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/example.snapDistances.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/example.snapDistances.png)
 
-#### autoStreamTree Outputs <a name="ast_outputs"></a>
+#### FitDistNet Outputs <a name="ast_outputs"></a>
 
 The first thing autoStreamTree will do upon reading your input shapefile is to calculate a minimally reduced sub-network which collapses the input river network into continuous reaches (="edges"), with nodes either representing sample localities or junctions. Because the full river network will likely contain many branches and contiguous reaches which do not contain samples, these are removed to speed up computation. The underlying metadata will be preserved, and the final output will consist of an annotated shapefile containing an EDGE_ID attribute which tells you how reaches were dissolved into contiguous edges in the graph, and a FittedD attribute giving the least-squares optimized distances.
 
 The reduced sub-network will be plotted for you in a file called $OUT.subGraph.pdf:
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/example.subGraph.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/example.subGraph.png)
 
 Here, the total cumulative stream length (in km) is plotted along edges (NOTE: Any natural curvature in the river is not preserved in this plot), with sample sites as blue dots and junctions as black dots. A geographically accurate representation, coloring individual streams to designate different dissolved edges, will be provided as $out.streamsByEdgeID.pdf: 
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/example.networkByEdgeID.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/example.networkByEdgeID.png)
 
 After fitting genetic distances, autoStreamTree will create several other outputs. First, a table called $out.reachToEdgeTable.txt will give a tab-delimited map of how REACH_ID attributes were dissolved into contiguous edges. Second, a tabular and graphical representation of how fitted pairwise distances compare to the raw calculates (or user-provided) pairwise distances: $out.obsVersusFittedD.txt and $out.obsVersusFittedD.pdf
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/example.obsByFittedD.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/example.obsByFittedD.png)
 
 Finally, the fitted distances per stream edge will be output both as an added column to the original shapefile attribute table ($out.streamTree.shp and $out.streamTree.txt), and also as a plot showing how distances compare across all streams:
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/example.networkByStreamTree.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/example.networkByStreamTree.png)
 
 #### Genetic distance models <a name="gen"></a>
 
@@ -463,7 +460,7 @@ DBSCAN options (only when --clusterpop):
 
 If using population labels, whether provided in the input file (--pop/--geopop) or calculating using DBSCAN (--clusterpop), autoStreamTree will output a plot showing cluster membership in 2-D space called $OUT.clusteredPoints.pdf:
 
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/example.clusteredPoints.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/example.clusteredPoints.png)
 
 In this example, DBSCAN was used (hence population IDs are formatted as "DB_"#). Population centroids, which are ultimately used to "snap" populations to the stream network are shown with an "x". Note that this means that the population will only be represented by a single point on the network! 
 
@@ -479,8 +476,8 @@ In this example, DBSCAN was used (hence population IDs are formatted as "DB_"#).
 ### Runtimes and benchmarking <a name="ast_benchmark"></a>
 
 ### References <a name="ast_refs"></a>
-#### Citations for autoStreamTree methods 
-Below is a full list of citations for the various methods used in autoStreamTree. Apologies to anyone I missed - feel free to let me know if you notice any discrepancies. 
+#### Citations for FitDistNet methods 
+Below is a full list of citations for the various methods used in FitDistNet. Apologies to anyone I missed - feel free to let me know if you notice any discrepancies. 
 * Beyer WM, Stein M, Smith T, Ulam S. 1974. A molecular sequence metric and evolutionary trees. Mathematical Biosciences. 19: 9-25.
 * Cavalli-Sforza LL, Edwards AWF. 1967. Phylogenetic analysis: model and estimation procedures. American Journal of Human Genetics. 19: 233-257.
 * Ester M, Kriegel HP, Sander J, Xu X. 1996. A density-based algorithm for discovering  clusters in large spatial databases with noise. IN: Simoudis E, Han J, Fayyad UM. (eds.). Proceedings of the Second International Conference on Knowledge Discovery and Data Mining (KDD-96). AAAI Press. pp. 226–231.
@@ -518,23 +515,23 @@ Here are some recommended readings and resources:
 * Tonkin JD, Altermatt F, Finn DS, Heino J, Olden JD, Pauls SU, Lytle DA. 2017. The role of dispersal in river network metacommunities: Patterns, processes, and pathways. Freshwater Biology. 61(1): 141-163.
 * Wright S. 1965. Isolation by distance. Genetics. 28: 114-138.
 
-## RiverscapeGA <a name="rscape"></a>
+## ResistNet <a name="rscape"></a>
 ### Program description <a name="rscape_desc"></a>
 
 
-#### Genetic algorithm background and similarities to ResistanceGA
+#### Genetic algorithm background and similarities to ResistNet
 
-All variables can vary in their model inclusion, but also in the manner by which they are transformed; transformations are the same as those used in ResistanceGA, and shape parameters are included for each variable in the "chromosome". Note that as shape parameters increase, the more similar the "transformed" values are to the original values, with high values for the shape parameter (e.g., 50-100) resulting in negligable transformation: 
+All variables can vary in their model inclusion, but also in the manner by which they are transformed; transformations are the same as those used in ResistNet, and shape parameters are included for each variable in the "chromosome". Note that as shape parameters increase, the more similar the "transformed" values are to the original values, with high values for the shape parameter (e.g., 50-100) resulting in negligable transformation: 
 
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/transforms.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/transforms.png)
 
 ### Usage <a name="rscape_usage"></a>
 
 #### Options and Help Menu <a name="rscape_help"></a>
 
-As with all of the scripts in this repository, you can view a list of the options for RiverscapeGA by calling the help menu with <-h>:
+As with all of the scripts in this repository, you can view a list of the options for ResistNet by calling the help menu with <-h>:
 ```
-$ python3 RiverscapeGA.py -h
+$ python3 ResistNet.py -h
 Exiting because help menu was called.
 
     o--o                                                    o-o     O  
@@ -551,7 +548,7 @@ Exiting because help menu was called.
 
 	Input options:
 	  If using autoStreamTree outputs:
-		-p,--prefix	: Prefix for autoStreamTree outputs
+		-p,--prefix	: Prefix for FitDistNet outputs
 		
 	-or-
 	
@@ -611,14 +608,14 @@ Exiting because help menu was called.
 
 #### Input files <a name="rscape_input"></a>
 
-For convienience, the inputs for RiverscapeGA follow the formats of the files output by autoStreamTree and streamCleaner. 
+For convienience, the inputs for ResistNet follow the formats of the files output by FitDistNet and FormatNet (not complete yet). 
 
 #### Outputs <a name="rscape_output"></a>
 
-After parsing all of the inputs, RiverscapeGA will randomly generate a population of 'individuals' (=model parameterizations), which is by default 15X the number of parameter, up to a maximum size specified by <-P,--maxPop>. Alternatively, you can specify a fixed size with <-s,--size>. Each 'generation', individuals will be selected using the desired fitness function (specified with <-f,--fit>; e.g. -f AIC to use AIC), and the maximum, minimum, meand, and standard deviation of population fitness values will be output to the terminal (stdout):
+After parsing all of the inputs, ResistNet will randomly generate a population of 'individuals' (=model parameterizations), which is by default 15X the number of parameter, up to a maximum size specified by <-P,--maxPop>. Alternatively, you can specify a fixed size with <-s,--size>. Each 'generation', individuals will be selected using the desired fitness function (specified with <-f,--fit>; e.g. -f AIC to use AIC), and the maximum, minimum, meand, and standard deviation of population fitness values will be output to the terminal (stdout):
 ```
 Reading network from:  ../out3.network
-Reading autoStreamTree results from: ../out3.streamTree.txt
+Reading FitDistNet results from: ../out3.streamTree.txt
 Initializing genetic algorithm parameters...
 
 Establishing a population of size: 50
@@ -663,7 +660,7 @@ At this time a series of plots and tables will be produced. The fitness values t
 | 4          | 6610.290247013926 | 6794.057145496889 | 6642.676944232899 | 29.918610153913338 |
 | 5          | 6597.775539690673 | 7018.279668244255 | 6642.276324199858 | 67.76930180708179  |
 
-In addition to this, RiverscapeGA maintains a "Hall of Fame", tracking the best individuals to have ever be sampled in the population, up to a maximum Hall of Fame size specified with <--max_hof_size>, which defaults to 100. This table will be sorted by fitness value, and will include calculations of the Akaike weight. Models are assigned to be retained for model averaging using the cumulative Akaike threshold set by the user <-a,--awsum>, which defaults to 0.95.
+In addition to this, ResistNet maintains a "Hall of Fame", tracking the best individuals to have ever be sampled in the population, up to a maximum Hall of Fame size specified with <--max_hof_size>, which defaults to 100. This table will be sorted by fitness value, and will include calculations of the Akaike weight. Models are assigned to be retained for model averaging using the cumulative Akaike threshold set by the user <-a,--awsum>, which defaults to 0.95.
 | fitness            | run_mm_cyr | run_mm_cyr_weight   | run_mm_cyr_trans | run_mm_cyr_shape | kar_pc_cse | kar_pc_cse_weight | kar_pc_cse_trans | kar_pc_cse_shape | soc_th_cav | soc_th_cav_weight | soc_th_cav_trans | soc_th_cav_shape | pst_pc_cse | pst_pc_cse_weight    | pst_pc_cse_trans | pst_pc_cse_shape | riv_tc_csu | riv_tc_csu_weight   | riv_tc_csu_trans | riv_tc_csu_shape | LENGTH_KM | LENGTH_KM_weight    | LENGTH_KM_trans | LENGTH_KM_shape | slp_dg_cav | slp_dg_cav_weight   | slp_dg_cav_trans | slp_dg_cav_shape | urb_pc_cse | urb_pc_cse_weight   | urb_pc_cse_trans | urb_pc_cse_shape | CSI | CSI_weight          | CSI_trans | CSI_shape | for_pc_cse | for_pc_cse_weight   | for_pc_cse_trans | for_pc_cse_shape | loglik              | r2m                 | aic                | delta_aic_null    | delta_aic_best     | akaike_weight          | acc_akaike_weight  | keep  |
 |--------------------|------------|---------------------|------------------|------------------|------------|-------------------|------------------|------------------|------------|-------------------|------------------|------------------|------------|----------------------|------------------|------------------|------------|---------------------|------------------|------------------|-----------|---------------------|-----------------|-----------------|------------|---------------------|------------------|------------------|------------|---------------------|------------------|------------------|-----|---------------------|-----------|-----------|------------|---------------------|------------------|------------------|---------------------|---------------------|--------------------|-------------------|--------------------|------------------------|--------------------|-------|
 | 6597.775539690673  | 1          | -0.1455520926262841 | 6                | 11               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 0          | -                   | -                | -                | 0         | -                   | -               | -               | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | -0.9319860657625789 | 3         | 64        | 1          | -0.6901645609234912 | 2                | 89               | -3294.8877698453366 | 0.1945129136531144  | 6597.775539690673  | 632.5800876388339 | 0.0                | 0.5064833775653471     | 0.5064833775653471 | True  |
@@ -684,25 +681,25 @@ Other values in the table include whether or not a variable is included in a mod
 
 A plot summarizing among models called $out.ICprofile.pdf will also be produced, which shows several pieces of information: 1) How AIC supports vary among all of the Hall of Fame models (arranged from left to right = 'best' to 'worst'). Points are separated as those which were retained for model-averaging given the <-a,--awsum> cutoff, scaled by marginal R^2 values (i.e., correlation coefficient from the MLPE model), and with a red horizontal bar showing a raw delta-AIC cutoff of 2:
 
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/ic_profile.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/ic_profile.png)
 
 Another plot will summarize the relationship among the various possible fitness metrics (marginal R^2, AIC, etc), as well as how these are distributed among the retained and excluded models, $out.pairPlot.pdf:
 
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/pairplot.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/pairplot.png)
 
 Relative variable importance values will be plotted as a bar plot, $out.varImportance.pdf:
 
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/vif.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/vif.png)
 
-If model-averaging was performed (turned on using <-A,--modavg>), RiverscapeGA will calculate model-averaged resistance values, which will be plotted by coloring edges in the stream network, $out.Model-Average.streamsByResistance.pdf:
+If model-averaging was performed (turned on using <-A,--modavg>), ResistNet will calculate model-averaged resistance values, which will be plotted by coloring edges in the stream network, $out.Model-Average.streamsByResistance.pdf:
 
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/modavg_resist.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/modavg_resist.png)
 
 It will also produce plots with a simple linear regression of genetic distances against pairwise resistance ($out.Model-Average.Pairwise.pdf) and edge-wise fitted distances against effective resistances from Circuitscape ($out.Model-Average.Edgewise.pdf):
 
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/modavg_pw.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/modavg_pw.png)
 
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/modavg_ew.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/modavg_ew.png)
 
 If using the <--report_all> option, these plots will also be produced for every one of the "kept" models from the Hall of Fame, with naming as $out.Model-#.Pairwise.pdf (etc), where "#" is the row number from the HallofFame.tsv table (with 0-based indexing; i.e. 0="best" model; 1=second-best, and so on).
 
@@ -714,7 +711,7 @@ I've found that each Circuitscape run generally doesn't take too long with moder
 
 #### Genetic Algorithm options <a name="rscape_ga"></a>
 
-RiverscapeGA provides options for manipulating the relevant parameters of the genetic algorithm. If there are additional parameters you wish to control, just shoot me an email (tylerkchafin@gmail.com) or launch an Issue here and GitHub and I'll add it as soon as I can. 
+ResistNet provides options for manipulating the relevant parameters of the genetic algorithm. If there are additional parameters you wish to control, just shoot me an email (tylerkchafin@gmail.com) or launch an Issue here and GitHub and I'll add it as soon as I can. 
 
 The parameters which can be manipulating from the command-line are as follows: 
 ```
@@ -747,11 +744,11 @@ Increasing the <-T> parameter leads to speed increases when <-t> <= population s
 
 In this test, I used 1-16 processors to examine N=50 individual models per generation, for 10 generations. The random number seed was fixed, to maintain comparability. Total runtimes varied from 165 minutes for <-T 1> to ~14 minutes for <-T 16>. Runtime increases linearly with number of generations, such that e.g., 200 generations with this same dataset and population size takes ~280 minutes with <-T 16>. A run of the same dataset, with a population size of 200, and 200 generations, took 840 minutes. 
 
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/rscape_benchmark.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/rscape_benchmark.png)
 	
 In comparing the gains from parallelization, the <-T> parameter grants the most efficient use of available CPUs:
 
-![](https://raw.githubusercontent.com/tkchafin/Riverscape_Genetics/master/examples/plots/t_vs_c.png)
+![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/t_vs_c.png)
 
 Here, dedicating all 16 cores to <-T> parallelization, after ~3 minutes spend parsing the input files, each generation took approximately 1 minute of computation. With a population size of 50, this averages out to each CPU core evaluating 3-4 individual models, so about 15-20 seconds per individual model (that includes running Circuitscape, parsing the outputs, and fitting the MLPE model). When setting <-T 8> and <-C 2>, each model evaluation averages to 20-24 seconds each, AND each CPU had to evaluate 6-7 individuals per generation. So not only did we see loss in the number of simultaneous model evaluations at a time, Circuitscape actually got slower -- probably reflecting the cost of passing around data. With much larger networks and a larger number of pairwise evaluations (maybe several hundred samples), this relationship is likely to change. For large datasets with long computation times, I would recommend doing some short runs evaluating whether or not increasing the <-C> parameter is worthwhile for your case. 
 
@@ -769,7 +766,7 @@ plotStreamTree.py
 
 Author: Tyler K Chafin, University of Arkansas
 Contact: tkchafin@uark.edu
-Description: Script for re-plotting StreamTree results after running autoStreamTree
+Description: Script for re-plotting StreamTree results after running FitDistNet
 
 		-p,--prefix	: Prefix for autoStreamTree output
 		-m,--min	: Minimum genetic distance 
