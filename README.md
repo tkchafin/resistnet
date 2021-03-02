@@ -1,4 +1,4 @@
-# Riverscape Genetics
+# DENdriscape
 A collection of software tools for examining spatial patterns of diversity and differentiation in dendritic ecological networks (=DENs). Note that the contents of this directory are a work in progress. 
 
 ### Table of Contents: 
