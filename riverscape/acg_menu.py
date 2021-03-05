@@ -158,25 +158,14 @@ class parseArgs():
 	def display_help(self, message=None):
 		if message is not None:
 			print()
-			print (message)
-		print ("""\n
-
-
-    o--o                                                    o-o     O  
-    |   |  o                                               o       / \ 
-    O-Oo      o   o  o-o  o-o  o-o   o-o   oo   o-o   o-o  |  -o  o---o
-    |  \   |   \ /   |-'  |     \   |     | |   |  |  |-'  o   |  |   |
-    o   o  |    o    o-o  o    o-o   o-o  o-o-  O-o   o-o   o-o   o   o
-                                                |                   
-                                                o                   
- 
-""")
-		print("    Author: Tyler K Chafin, University of Arkansas")
-		print ("    Contact: tkchafin@uark.edu")
-		print ("    Description: Genetic algorithm to optimize resistance models on networks")
+			print(message)
+		print ("\nResistNet.py\n")
+		print("Author: Tyler K Chafin, University of Arkansas")
+		print ("Contact: tkchafin@uark.edu")
+		print ("Description: Genetic algorithm to optimize resistance models on networks")
 		print("""
 	Input options:
-	  If using autoStreamTree outputs:
+	  If using FitDistNet outputs:
 		-p,--prefix	: Prefix for autoStreamTree outputs
 		
 	-or-
