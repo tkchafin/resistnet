@@ -8,7 +8,7 @@ A collection of software tools for examining spatial patterns of diversity and d
     3. [Troubleshooting PyJulia](#pyjulia)
     4. [Singlurity/ Docker](#sing)
 2. [Summary of Programs](#programs)
-3. [FitDistNet - Fitting distances to stream networks](#ast)
+3. [DistNet - Fitting distances to stream networks](#ast)
     1. [Program Description](#ast_desc)
         1. [StreamTree Background](#ast_background)
     2. [Usage](#usage)
@@ -234,7 +234,7 @@ python3 -m julia.sysimage sys.so
 Coming soon... I will at some point generate a Singularity image for the package -- if you need it in a hurry open and Issue so I will know to prioritize it
 
 ### Programs <a name="programs"></a>
-- *FitDistNet.py* : This package calculates genetic and stream-distances by snapping sampling points to a network provided using an input shapefile and calculating a minimal sub-network, tests for isolation-by-distance, and fits genetic distances to stream segments using the Stream-tree algorithm by Kalinowski et al. 2008. 
+- *DistNet.py* : This package calculates genetic and stream-distances by snapping sampling points to a network provided using an input shapefile and calculating a minimal sub-network, tests for isolation-by-distance, and fits genetic distances to stream segments using the Stream-tree algorithm by Kalinowski et al. 2008. 
 - *ResistNet.py* : This package implements a genetic algorithm to optimize multi-variable resistance models on networks in Circuitscape. This is somewhat similar to the way in which ResistanceGA accomplishes this for raster datasets, but with some critical algorithmic differences (see below)
 - *FormatNet.py* : (Coming soon) Integrates the network extraction functions of autoStreamTree with various pre-processing steps such as joining non-contiguous segments, merging redundant paths (e.g., for a braided stream) -- Not yet added
 - *SimNet.py* : (Coming soon) Performs forward-simulations on a given stream network, given environmental 'resistance' variables (and optional weights) -- Not yet added
@@ -245,17 +245,17 @@ Coming soon... I will at some point generate a Singularity image for the package
 	* *fasta2phylip.py* : Converting between FASTA and PHYLIP formats
 	* *fasta2table.py* : Converting between FASTA and autoStreamTree Table formats
 	* *nremover.pl* : Filtering FASTA and PHYLIP files of concatenated SNPs
-	* *plotStreamTree.py* : Re-making FitDistNet fitted distance plot with some additional options
+	* *plotStreamTree.py* : Re-making DistNet fitted distance plot with some additional options
 	* *modelParser.py* : Parse model outputs of RiverscapeGA.py to generate and select transformed datasets (Coming soon)
 	* [tkchafin/scripts](https://github.com/tkchafin/scripts) : For more useful file formatting and filtering scripts
 	* [stevemussmann/Streamtree_arcpy](https://github.com/stevemussmann/StreamTree_arcpy) : Code for generating inputs for the original StreamTree program by Kalinowski et al.
 
-## FitDistNet <a name="ast"></a>
+## DistNet <a name="ast"></a>
 
 ### Software Description <a name="ast_desc"></a>
-FitDistNet is a Python software package providing various analyses aimed at analyzing patterns of genetic differentiation among aquatic stream-dwelling organisms. The intention is to take what was previously a tedious process involving multiple discrete steps and to integrate these all in one place. 
+DistNet is a Python software package providing various analyses aimed at analyzing patterns of genetic differentiation among aquatic stream-dwelling organisms. The intention is to take what was previously a tedious process involving multiple discrete steps and to integrate these all in one place. 
 
-Currently, FitDistNet provides a companion library of functions for calculating various measures of genetic distances among individuals or populations, including model-corrected p-distances (e.g. Jukes-Cantor 1969, Kimura 2-parameter, Tamura-Nei 1993) as well as those based on allele frequencies (e.g. Theta-ST, linearized Fst, Jost's D -- full list of available distance models below). It also includes integrated functions for parsing an input vector shapefile of streams (see below 'Requirements for input shapefiles') for easy calculation of pairwise stream distances between sites, as well as the ordinary or weighted least-squares fitting of reach-wise genetic distances according to the "stream tree" model of Kalinowski et al. (2008). Various plotting functions are also provided for downstream analysis, including looking at patterns of isolation-by-distance. Outputs should also be directly importable into R, with additional outputs with annotated streamtree fitted distances provided for analysis in your GIS suite of choice. 
+Currently, DistNet provides a companion library of functions for calculating various measures of genetic distances among individuals or populations, including model-corrected p-distances (e.g. Jukes-Cantor 1969, Kimura 2-parameter, Tamura-Nei 1993) as well as those based on allele frequencies (e.g. Theta-ST, linearized Fst, Jost's D -- full list of available distance models below). It also includes integrated functions for parsing an input vector shapefile of streams (see below 'Requirements for input shapefiles') for easy calculation of pairwise stream distances between sites, as well as the ordinary or weighted least-squares fitting of reach-wise genetic distances according to the "stream tree" model of Kalinowski et al. (2008). Various plotting functions are also provided for downstream analysis, including looking at patterns of isolation-by-distance. Outputs should also be directly importable into R, with additional outputs with annotated streamtree fitted distances provided for analysis in your GIS suite of choice. 
 
 If you use this package for analysis of fitted distances using the streamtree model, please cite the following:
 * Kalinowski ST, MH Meeuwig, SR Narum, ML Taper (2008) Stream trees: a statistical method for mapping genetic differences between populations of freshwater organisms to the sections of streams that connect them. Canadian Journal of Fisheries and Aquatic Sciences (65:2752-2760).
@@ -266,13 +266,13 @@ If you use this package for analysis of fitted distances using the streamtree mo
 
 #### Options and Help Menu <a name="ast_help"></a>
 
-To view all of the options for FitDistNet, call the program with the <-h> argument:
+To view all of the options for DistNet, call the program with the <-h> argument:
 ```
-$ python3 FitDistNet.py -h
+$ python3 DistNet.py -h
 
 Exiting because help menu was called.
 
-FitDistNet.py
+DistNet.py
 
 Author: Tyler K Chafin, University of Arkansas
 Contact: tkchafin@uark.edu
@@ -385,7 +385,7 @@ Coordinates do not need to exactly match nodes in the input shapefile, as points
 
 ![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/example.snapDistances.png)
 
-#### FitDistNet Outputs <a name="ast_outputs"></a>
+#### DistNet Outputs <a name="ast_outputs"></a>
 
 The first thing autoStreamTree will do upon reading your input shapefile is to calculate a minimally reduced sub-network which collapses the input river network into continuous reaches (="edges"), with nodes either representing sample localities or junctions. Because the full river network will likely contain many branches and contiguous reaches which do not contain samples, these are removed to speed up computation. The underlying metadata will be preserved, and the final output will consist of an annotated shapefile containing an EDGE_ID attribute which tells you how reaches were dissolved into contiguous edges in the graph, and a FittedD attribute giving the least-squares optimized distances.
 
@@ -476,8 +476,8 @@ In this example, DBSCAN was used (hence population IDs are formatted as "DB_"#).
 ### Runtimes and benchmarking <a name="ast_benchmark"></a>
 
 ### References <a name="ast_refs"></a>
-#### Citations for FitDistNet methods 
-Below is a full list of citations for the various methods used in FitDistNet. Apologies to anyone I missed - feel free to let me know if you notice any discrepancies. 
+#### Citations for DistNet methods 
+Below is a full list of citations for the various methods used in DistNet. Apologies to anyone I missed - feel free to let me know if you notice any discrepancies. 
 * Beyer WM, Stein M, Smith T, Ulam S. 1974. A molecular sequence metric and evolutionary trees. Mathematical Biosciences. 19: 9-25.
 * Cavalli-Sforza LL, Edwards AWF. 1967. Phylogenetic analysis: model and estimation procedures. American Journal of Human Genetics. 19: 233-257.
 * Ester M, Kriegel HP, Sander J, Xu X. 1996. A density-based algorithm for discovering  clusters in large spatial databases with noise. IN: Simoudis E, Han J, Fayyad UM. (eds.). Proceedings of the Second International Conference on Knowledge Discovery and Data Mining (KDD-96). AAAI Press. pp. 226–231.
@@ -534,21 +534,13 @@ As with all of the scripts in this repository, you can view a list of the option
 $ python3 ResistNet.py -h
 Exiting because help menu was called.
 
-    o--o                                                    o-o     O  
-    |   |  o                                               o       / \ 
-    O-Oo      o   o  o-o  o-o  o-o   o-o   oo   o-o   o-o  |  -o  o---o
-    |  \   |   \ /   |-'  |     \   |     | |   |  |  |-'  o   |  |   |
-    o   o  |    o    o-o  o    o-o   o-o  o-o-  O-o   o-o   o-o   o   o
-                                                |                   
-                                                o                   
-
     Author: Tyler K Chafin, University of Arkansas
     Contact: tkchafin@uark.edu
     Description: Genetic algorithm to optimize resistance models on networks
 
 	Input options:
-	  If using autoStreamTree outputs:
-		-p,--prefix	: Prefix for FitDistNet outputs
+	  If using DistNet outputs:
+		-p,--prefix	: Prefix for DistNet outputs
 		
 	-or-
 	
@@ -608,14 +600,14 @@ Exiting because help menu was called.
 
 #### Input files <a name="rscape_input"></a>
 
-For convienience, the inputs for ResistNet follow the formats of the files output by FitDistNet and FormatNet (not complete yet). 
+For convienience, the inputs for ResistNet follow the formats of the files output by DistNet and FormatNet (not complete yet). 
 
 #### Outputs <a name="rscape_output"></a>
 
 After parsing all of the inputs, ResistNet will randomly generate a population of 'individuals' (=model parameterizations), which is by default 15X the number of parameter, up to a maximum size specified by <-P,--maxPop>. Alternatively, you can specify a fixed size with <-s,--size>. Each 'generation', individuals will be selected using the desired fitness function (specified with <-f,--fit>; e.g. -f AIC to use AIC), and the maximum, minimum, meand, and standard deviation of population fitness values will be output to the terminal (stdout):
 ```
 Reading network from:  ../out3.network
-Reading FitDistNet results from: ../out3.streamTree.txt
+Reading DistNet results from: ../out3.streamTree.txt
 Initializing genetic algorithm parameters...
 
 Establishing a population of size: 50
@@ -766,7 +758,7 @@ plotStreamTree.py
 
 Author: Tyler K Chafin, University of Arkansas
 Contact: tkchafin@uark.edu
-Description: Script for re-plotting StreamTree results after running FitDistNet
+Description: Script for re-plotting StreamTree results after running DistNet
 
 		-p,--prefix	: Prefix for autoStreamTree output
 		-m,--min	: Minimum genetic distance 
