@@ -189,7 +189,7 @@ class parseArgs():
 		if message is not None:
 			print()
 			print (message)
-		print ("\nFitDistNet.py\n")
+		print ("\nDistNet.py\n")
 		print("Author: Tyler K Chafin, University of Arkansas")
 		print ("Contact: tkchafin@uark.edu")
 		print ("Description: Computes stream distances and genetic distances for \
