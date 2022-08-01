@@ -7,14 +7,15 @@ class parseArgs():
 	def __init__(self):
 		#Define options
 		try:
-			options, remainder = getopt.getopt(sys.argv[1:], 'hp:g:n:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:Aa:o:Xj:', \
-			["shp=", "help", "input=", "prefix=", "genmat=", "network=",
+			options, remainder = getopt.getopt(sys.argv[1:], 'hp:g:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:Aa:o:Xj:', \
+			["shp=", "help", "input=", "prefix=", "genmat=", "shapefile=",
 			"seed=", "procs=", "maxPop=", "maxpop=", "maxgen=", "maxGen=",
-			"size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=", 
+			"size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=",
 			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
 			"burn=", "force=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
 			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all", "julia=", "no_compiled_modules",
-			"julia_sys_image=", "lib_path=", "max_hof_size=", "posWeight", "fixWeight", "allShapes"])
+			"julia_sys_image=", "lib_path=", "max_hof_size=", "posWeight", "fixWeight", "allShapes",
+			"coords="])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -31,7 +32,8 @@ class parseArgs():
 		self.fitmetric="aic"
 		self.predicted=False
 		self.inmat=None
-		self.network=None
+		self.shapefile=None
+		self.coords=None
 		self.cholmod=False
 		self.GA_procs=1
 		self.CS_procs=1
@@ -50,11 +52,11 @@ class parseArgs():
 		self.modavg=False
 		self.report_all=False
 		self.plot=True
-		
+
 		self.posWeight=False
 		self.fixWeight=False
 		self.allShapes=False
-		
+
 		self.only_keep=True
 		self.julia="julia"
 		self.compiled_modules=True
@@ -75,25 +77,27 @@ class parseArgs():
 				self.prefix = arg
 			elif opt=='g' or opt=='genmat':
 				self.inmat = arg
-			elif opt=='n' or opt=='network':
-				self.network = arg
-			elif opt=='s' or opt=='seed':
+			elif opt=='s' or opt=='shp':
+				self.shapefile = arg
+			elif opt=="c" or opt=="coords":
+				self.coords = arg
+			elif opt=='seed':
 				self.seed=int(arg)
-			elif opt=='T' or opt=='procs':
+			elif opt=='t' or opt=='procs':
 				self.GA_procs=int(arg)
 			elif opt=='P' or opt=='maxPop' or opt=='maxpop':
 				self.maxpopsize=int(arg)
 			elif opt=="G" or opt=="maxGen" or opt=="maxgen":
 				self.maxGens=int(arg)
-			elif opt=="s" or opt=="popsize" or opt=="size":
+			elif opt=="popsize" or opt=="size":
 				self.popsize=int(arg)
-			elif opt=="m" or opt=="mutpb":
+			elif opt=="mutpb":
 				self.mutpb=float(arg)
-			elif opt=="i" or opt=="indpb":
+			elif opt=="indpb":
 				self.indpb=float(arg)
-			elif opt=="c" or opt=="cxpb":
+			elif opt=="cxpb":
 				self.cxpb=float(arg)
-			elif opt=="t" or opt=="tournsize":
+			elif opt=="T" or opt=="tSize" or opt=="tournSize":
 				self.tournsize=int(arg)
 			elif opt=="F" or opt=="nfail" or opt=="nFail":
 				self.nfail=int(arg)
@@ -138,8 +142,8 @@ class parseArgs():
 				self.sys_image=arg
 			# elif opt=="lib_path":
 			# 	sys.path.append(arg)
-			elif opt=="negWeight":
-				self.negWeight=True
+			elif opt=="posWeight":
+				self.posWeight=True
 			elif opt=="fixWeight":
 				self.fixWeight=True
 			elif opt=="allShapes":
@@ -148,10 +152,10 @@ class parseArgs():
 				pass
 			else:
 				assert False, "Unhandled option %r"%opt
-		
-		if params.negWeight and params.fixWeight:
+
+		if self.posWeight and self.fixWeight:
 			self.display_help("--posWeight and --fixWeight cannot be used together")
-		
+
 		if self.variables is None:
 			self.display_help("No variables selected.")
 
@@ -159,72 +163,74 @@ class parseArgs():
 		if message is not None:
 			print()
 			print(message)
-		print ("\nResistNet.py\n")
-		print("Author: Tyler K Chafin, University of Arkansas")
-		print ("Contact: tkchafin@uark.edu")
+		print ("\nresistnet.py\n")
+		print("Author: Tyler K Chafin, Biomathematics and Statistics Scotland")
+		print ("Contact: tyler.chafin@bioss.ac.uk")
 		print ("Description: Genetic algorithm to optimize resistance models on networks")
 		print("""
-	Input options:
-	  If using FitDistNet outputs:
-		-p,--prefix	: Prefix for autoStreamTree outputs
-		
-	-or-
-	
-	  If manually specifying inputs:
-		-g,--genmat	: Genetic distance matrix
-		-n,--network	: Input graph (in pickle'd networkx format)	
-		<add the rest later>
-		
-	General options:
-		-s,--seed	: Random number seed (default=taken from clock time)
-		-T,--procs	: Number of parallel processors
-		-X,--noPlot	: Turn off plotting
-		-o,--out	: Output file prefix 
-		-h,--help	: Displays help menu
-	
-	Genetic Algorithm Options:
-		-P,--maxPop	: Maximim population size [default = 100]
-		-G,--maxGen	: Maximum number of generations [default = 500]
-		-s,--size	: Manually set population size to <-p int>
-				    NOTE: By default, #params * 15
-		-m,--mutpb	: Probability of mutation per individual [default=0.2]
-		-i,--indpb	: Probability of mutation per trait [default=0.1]
-		-c,--cxpb	: Probability of being chosen for cross-over [default=0.5]
-		-t,--tourn	: Tournament size [default=10]
-		--posWeight	: Constrain parameter weights to between 0.0-1.0
-		--fixWeight	: Constrain parameter weights to 1.0 (i.e., unweighted)
-		--allShapes	: Allow inverse and reverse transformations
-		
-	Model optimization/ selection options:
-		-F,--nfail	: Number of generations failing to improve to stop optimization
-		-d,--delt	: Threshold absolute change in fitness [default=0.0]
-		-D,--deltP	: Threshold percentage change in fitness, as decimal [default=0.001]
-		-f,--fit	: Fitness metric used to evaluate models <NOT IMPLEMENTED>
-				    Options:
-				    aic (default)
-				    loglik (log-likelihood)
-				    r2m (marginal R^2)
-				    delta (Change in AIC versus null model)
-				    NOTE: Case-insensitive
-		-b,--burn	: Number of generations for pre-burnin [default=0]
-		--max_hof_size	: Maximum individuals to track in the Hall of Fame [default=100]
-	
-	Circuitscape options:
-		--cholmod	: Turn on CHOLMOD solver
-		-C,--cprocs	: Processors per Circuitscape process [default=1]
-				    NOTE: Total simultaneous processes= <-T> * <-C>
-	
-	Genetic distance options:
-		--force		: Use XX attribute from input table as distance metric (e.g. 'fittedD')
-				    NOTE: By default, the average of "locD_" columns will be taken
-		--infer		: Infer pairwise distances from input table (i.e., NOT input matrix)
-		-v,--vars	: Comma-separated list (no spaces) of explanatory attributes to include
-	
-	Multi-model inference options:
-		-A,--modavg	: Compute model-averaged resistances
-				    NOTE: This involves re-running Circuitscape for each model
-		-a,--awsum	: Cumulative Akaike weight threshold to retain top N models [default=0.95]
-		--report_all	: Plot per-stream resistance and generate full outputs for all retained models
+Input options:
+  If using FitDistNet outputs:
+	-p,--prefix	: Prefix for autoStreamTree outputs
+
+-or-
+
+  If manually specifying inputs:
+	-g,--genmat	: Genetic distance matrix
+	-s,--shp	: Path to shapefile containing cleaned, contiguous stream reaches
+	-i,--coords	: Input .tsv file containing sample coordinates
+
+General options:
+	--seed	: Random number seed (default=taken from clock time)
+	-t,--procs	: Number of parallel processors
+	-X,--noPlot	: Turn off plotting
+	-o,--out	: Output file prefix
+	-h,--help	: Displays help menu
+
+Genetic Algorithm Options:
+	-P,--maxPop	: Maximim population size [default = 100]
+	-G,--maxGen	: Maximum number of generations [default = 500]
+	-s,--size	: Manually set population size to <-p int>
+			    NOTE: By default, #params * 15
+	-m,--mutpb	: Probability of mutation per individual [default=0.2]
+	--indpb	: Probability of mutation per trait [default=0.1]
+	--cxpb	: Probability of being chosen for cross-over [default=0.5]
+	-T,--tSize	: Tournament size [default=10]
+	--posWeight	: Constrain parameter weights to between 0.0-1.0
+	--fixWeight	: Constrain parameter weights to 1.0 (i.e., unweighted)
+	--allShapes	: Allow inverse and reverse transformations
+
+Model optimization/ selection options:
+	-F,--nfail	: Number of generations failing to improve to stop optimization
+	-d,--delt	: Threshold absolute change in fitness [default=0.0]
+	-D,--deltP	: Threshold percentage change in fitness, as decimal [default=0.001]
+	-f,--fit	: Fitness metric used to evaluate models <NOT IMPLEMENTED>
+			    Options:
+			    aic (default)
+			    loglik (log-likelihood)
+			    r2m (marginal R^2)
+			    delta (Change in AIC versus null model)
+			    NOTE: Case-insensitive
+	-b,--burn	: Number of generations for pre-burnin [default=0]
+	--max_hof_size	: Maximum individuals to track in the Hall of Fame [default=100]
+	--distance	: Compute a distance-only model using this variable [default="LENGTH_KM"] ***NOT IMPLEMENTED***
+	--null	: Output null (population-only) model metrics ***NOT IMPLEMENTED***
+
+Circuitscape options:
+	--cholmod	: Turn on CHOLMOD solver
+	-C,--cprocs	: Processors per Circuitscape process [default=1]
+			    NOTE: Total simultaneous processes= <-T> * <-C>
+
+Genetic distance options:
+	--force		: Use XX attribute from input table as distance metric (e.g. 'fittedD')
+			    NOTE: By default, the average of "locD_" columns will be taken
+	--infer		: Infer pairwise distances from input table (i.e., NOT input matrix)
+	-v,--vars	: Comma-separated list (no spaces) of explanatory attributes to include
+
+Multi-model inference options:
+	-A,--modavg	: Compute model-averaged resistances
+			    NOTE: This involves re-running Circuitscape for each model
+	-a,--awsum	: Cumulative Akaike weight threshold to retain top N models [default=0.95]
+	--report_all	: Plot per-stream resistance and generate full outputs for all retained models
 
 """)
 		print()

@@ -5,9 +5,9 @@ import pandas as pd
 import numpy as np
 import pandas as pd
 from collections import OrderedDict
-from io import StringIO 
+from io import StringIO
 
-import riverscape.MLPE as mlpe_rga
+import resistnet.MLPE as mlpe_rga
 
 
 def parseEdgewise(r, edge_gendist, return_resistance=False):
@@ -19,14 +19,14 @@ def parseEdgewise(r, edge_gendist, return_resistance=False):
 	output["to"] = output["to"]-1
 	merged=pd.merge(input, output, how="left", on=["from", "to"])
 	print(merged)
-	
+
 def parsePairwise(order, points, inc_matrix, multi, gendist):
 	r=effectiveResistanceMatrix(order, points, inc_matrix, multi)
 	#print(rr)
 	res = mlpe_rga.MLPE_R(gendist, r, scale=True)
 	#print(res)
 	return(res)
-	
+
 # def parsePairwise(r, gendist, return_resistance=False):
 # 	res = mlpe_rga.MLPE_R(gendist, r, scale=True)
 # 	return(res)
@@ -48,4 +48,3 @@ def effectiveResistanceMatrix(order, points, inc_matrix, distances):
 	formatted=formatted[order]
 	formatted=formatted.to_numpy()
 	return(formatted)
-	

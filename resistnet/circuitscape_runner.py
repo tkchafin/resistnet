@@ -2,12 +2,12 @@ import sys
 import os
 import pandas as pd
 from collections import OrderedDict
-from io import StringIO 
+from io import StringIO
 
 # import seaborn as sns
 # import matplotlib.pyplot as plt
 
-import riverscape.MLPE as mlpe_rga
+import resistnet.MLPE as mlpe_rga
 #multiple mutation types: https://stackoverflow.com/questions/47720921/deap-toolbox-to-consider-different-types-and-ranges-of-genes-in-mutation-and-cr
 
 """
@@ -34,7 +34,7 @@ def parseEdgewise(oname, edge_gendist, return_resistance=True):
 	else:
 		pass
 		#some sort of spatial regression
-	
+
 
 def parsePairwise(oname, gendist, return_resistance=False):
 	pw=pd.read_csv((str(oname)+"_resistances.out"), header=0, index_col=0, sep=" ").to_numpy()
@@ -57,7 +57,7 @@ def parsePairwiseFromAll(oname, gendist, node_point_dict, return_resistance=Fals
 	else:
 		res = mlpe_rga.MLPE_R(gendist, sub, scale=True)
 		return(res)
-	
+
 def evaluateIni(jl, oname):
 	ini_path = str(oname)+".ini"
 	jl.eval(str("@suppress begin\ncompute(\"" + str(ini_path)+"\")\nend"))
@@ -90,7 +90,7 @@ def writeCircuitScape(oname, graph, points, resistance, focalPoints=False, fromA
 		#print("Number of points:",len(points))
 		for edge in graph.edges():
 			#get nodes on either side and index them
-			#get resistance 
+			#get resistance
 			#add all to output string
 			#NOTE: Points should be an OrderedDict, so this should work fine
 			#print(edge[0], " -- ", edge[1])
@@ -130,7 +130,7 @@ def writeIni(oname, cholmod=False, parallel=1):
 		ini.write("ground_file = None\n")
 		ini.write("use_unit_currents = False\n")
 		ini.write("use_direct_grounds = False\n\n")
-		
+
 		ini.write("[Calculation options]\n")
 		ini.write("low_memory_mode = False\n")
 		if cholmod:
@@ -144,7 +144,7 @@ def writeIni(oname, cholmod=False, parallel=1):
 		else:
 			ini.write("parallelize = False\n")
 			ini.write("max_parallel = 0\n\n")
-		
+
 		ini.write("[Options for pairwise and one-to-all and all-to-one modes]\n")
 		ini.write("included_pairs_file = None\n")
 		ini.write("use_included_pairs = False\n")
@@ -190,9 +190,5 @@ def writeIni(oname, cholmod=False, parallel=1):
 		ini.write("[Circuitscape mode]\n")
 		ini.write("data_type = network\n")
 		ini.write("scenario = pairwise\n\n")
-		
+
 		ini.close()
-
-
-
-	

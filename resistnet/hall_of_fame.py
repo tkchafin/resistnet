@@ -1,15 +1,15 @@
 import os
 import sys
-import pandas as pd 
+import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 
 import warnings
 warnings.simplefilter('ignore', category=UserWarning)
-pd.options.mode.chained_assignment = None 
+pd.options.mode.chained_assignment = None
 
-import riverscape.MLPE as MLPE
+import resistnet.MLPE as MLPE
 
 class hallOfFame():
 	def __init__(self, variables, max_size, init_pop=None):
@@ -31,10 +31,10 @@ class hallOfFame():
 		self.rvi=pd.DataFrame(columns=['variable', 'RVI'])
 		self.maw=pd.DataFrame(columns=['variable', 'MAW'])
 		self.zero_threshold=0.0000000000000001
-		
+
 		if init_pop is not None:
 			self.check_population(init_pop)
-			
+
 	def check_population(self, pop):
 		popDF = pd.DataFrame(pop, columns=self.data.columns)
 		popDF = popDF[popDF.fitness > float('-inf')]
@@ -44,7 +44,7 @@ class hallOfFame():
 		popDF = popDF.drop_duplicates(keep='first', ignore_index=True)
 		popDF = popDF.reset_index(drop=True)
 		space = self.max_size - self.data.shape[0]
-		
+
 		if space > 0:
 			#print('hall of fame not full')
 			select_size=space
@@ -67,13 +67,13 @@ class hallOfFame():
 				self.min_fitness = self.data['fitness'].min()
 			else:
 				return
-	
+
 	def printHOF(self, max_row=None, max_col=None):
 		self.data = self.data.sort_values('fitness', ascending=False)
 		self.data = self.data.reset_index(drop=True)
 		with pd.option_context('display.max_rows', max_row, 'display.max_columns', max_col):  # more options can be specified also
 			print(self.data)
-	
+
 	def printRVI(self, max_row=None, max_col=None):
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
 		self.rvi = self.rvi.reset_index(drop=True)
@@ -85,7 +85,7 @@ class hallOfFame():
 		self.maw = self.maw.reset_index(drop=True)
 		with pd.option_context('display.max_rows', max_row, 'display.max_columns', max_col):  # more options can be specified also
 			print(self.maw)
-	
+
 	def delta_aic(self):
 		if self.data.shape[0] <= 0:
 			return
@@ -96,7 +96,7 @@ class hallOfFame():
 			best=self.data["aic"].min()
 			self.data["delta_aic_best"] = self.data["aic"]-best
 
-	
+
 	def akaike_weights(self):
 		if self.data.shape[0] <= 0:
 			return
@@ -109,7 +109,7 @@ class hallOfFame():
 		#did a test agains MuMIn::Weights in R and this seems to be working
 		self.data["akaike_weight"]=((np.exp(-0.5*self.data["delta_aic_best"])) / (sum(np.exp(-0.5*self.data["delta_aic_best"]))))
 		self.data["akaike_weight"].mask(self.data["akaike_weight"] < self.zero_threshold, 0.0, inplace=True)
-	
+
 	def cumulative_akaike(self, threshold=1.0):
 		if self.data.shape[0] <= 0:
 			return
@@ -143,7 +143,7 @@ class hallOfFame():
 			self.rvi.loc[len(self.rvi), :] = [v, sw]
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
 		self.rvi = self.rvi.reset_index(drop=True)
-	
+
 	def model_average_weights(self,ignore_keep=False):
 		#clear previous calculations
 		self.maw=pd.DataFrame(columns=['variable', 'MAW'])
@@ -157,7 +157,7 @@ class hallOfFame():
 			self.maw.loc[len(self.maw), :] = [v, sw]
 		self.maw = self.maw.sort_values('MAW', ascending=False)
 		self.maw = self.maw.reset_index(drop=True)
-	
+
 	def cleanHOF(self):
 		ret = self.data.sort_values('fitness', ascending=False)
 		ret = ret.reset_index(drop=True)
@@ -169,7 +169,7 @@ class hallOfFame():
 		if ret.iloc[0]["fitness"] == (ret.iloc[0]["aic"]*-1):
 			ret["fitness"] = ret["fitness"]*-1
 		return(ret)
-	
+
 	def getRVI(self):
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
 		self.rvi = self.rvi.reset_index(drop=True)
@@ -179,8 +179,8 @@ class hallOfFame():
 		self.maw = self.maw.sort_values('MAW', ascending=False)
 		self.maw = self.maw.reset_index(drop=True)
 		return(self.maw)
-	
-	
+
+
 	def getHOF(self, only_keep=False):
 		self.data = self.data.sort_values('fitness', ascending=False)
 		self.data = self.data.reset_index(drop=True)
@@ -188,12 +188,12 @@ class hallOfFame():
 			return(self.data[self.data.keep=="True"])
 		else:
 			return(self.data)
-	
+
 	def output(self):
 		#Make sure to remove weights/ shapes where variable isn't selected
 		#get absolute value of AIC (made them negative so all metrics could use maximize function)
 		pass
-	
+
 	def plot_ICprofile(self, oname="out", diff=2):
 		diff=int(diff)
 		#X axis - order by AIC.
@@ -209,7 +209,7 @@ class hallOfFame():
 		plt.savefig((str(oname)+".ICprofile.pdf"))
 		plt.clf()
 		plt.close()
-	
+
 	def plotMetricPW(self, oname="out"):
 		cols=["aic", "loglik", "r2m", "delta_aic_null", "keep"]
 		if "akaike_weight" in self.data.columns:
@@ -221,7 +221,7 @@ class hallOfFame():
 		plt.savefig((str(oname)+".pairPlot.pdf"))
 		plt.clf()
 		plt.close()
-	
+
 	def plotVariableImportance(self, oname="out", cutoff=0.8):
 		cutoff=float(cutoff)
 		sns.set(style="ticks")
@@ -232,7 +232,7 @@ class hallOfFame():
 		plt.savefig((str(oname)+".varImportance.pdf"))
 		plt.clf()
 		plt.close()
-	
+
 	def plotModelAveragedWeights(self, oname="out"):
 		cutoff=float(cutoff)
 		sns.set(style="ticks")
@@ -242,14 +242,14 @@ class hallOfFame():
 		plt.savefig((str(oname)+".modavgWeights.pdf"))
 		plt.clf()
 		plt.close()
-	
+
 	def writeModelSummary(self, oname):
 		out_df = self.cleanHOF()
 		out_df.to_csv((str(oname)+".HallOfFame.tsv"), sep="\t", index=False, na_rep="-")
-	
+
 	def writeMAW(self, oname):
 		self.maw.to_csv((str(oname)+".modavgWeights.tsv"), sep="\t", index=False, na_rep="-")
-		
+
 	def writeRVI(self, oname):
 		self.rvi.to_csv((str(oname)+".varImportance.tsv"), sep="\t", index=False, na_rep="-")
 
@@ -269,7 +269,7 @@ def plotPairwiseModel(gen, mat, oname, partition=False):
 	#print(len(g))
 	#print(len(r))
 	df = pd.DataFrame(list(zip(list(g), list(r))), columns=["Genetic Distance", "Resistance Distance"])
-	
+
 	sns.set(style="ticks")
 	if partition:
 		npop=gen.shape[0]
@@ -282,5 +282,3 @@ def plotPairwiseModel(gen, mat, oname, partition=False):
 	plt.savefig((str(oname)+".Pairwise.pdf"))
 	plt.clf()
 	plt.close()
-
-

@@ -61,15 +61,8 @@ RUN apt-get install -y \
   freeglut3-dev \
   mesa-common-dev \
 	libffi-dev \
-  libgdal-dev
-
-############################################################
-# Install and configure Julia
-# version=current
-
-RUN apt-get install -y julia
-
-RUN julia -e 'using Pkg; Pkg.add("PyCall"); Pkg.add("Circuitscape")'
+  libgdal-dev \
+	libmkl-rt
 
 ############################################################
 # Install and configure R environment
@@ -105,6 +98,25 @@ RUN wget "https://www.python.org/ftp/python/3.10.5/Python-3.10.5.tgz" \
 
 # link python to python3 binary
 RUN ln -s /usr/bin/python3 /usr/bin/python
+
+
+############################################################
+# Install and configure Julia
+# version=current
+
+RUN apt-get install -y julia \
+	&& ln -s /usr/lib/aarch64-linux-gnu/libjulia.so.1 /usr/lib/aarch64-linux-gnu/libjulia.so
+
+RUN julia -e 'using Pkg; \
+	ENV["PYTHON"] = "/usr/local/bin/python3"; \
+	Pkg.add("PyCall"); \
+	Pkg.add("Circuitscape"); \
+	using PyCall; using Circuitscape'
+
+
+############################################################
+# Install python dependencies
+#
 
 RUN pip3 install --no-cache --upgrade pip wheel setuptools \
 	&& pip3 install --no-cache --upgrade \
