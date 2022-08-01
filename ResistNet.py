@@ -22,54 +22,51 @@ import timeit
 from deap import base, creator, tools, algorithms
 
 #autoStreamTree packages
-import riverscape.hall_of_fame as hof
-from riverscape.acg_menu import parseArgs
-import riverscape.circuitscape_runner as cs
-import riverscape.transform as trans
-import riverscape.stream_plots as splt
+from resistnet.params import parseArgs
+import resistnet.functions as rn
 
 
 def main():
-	
+
 	global params
 	params = parseArgs()
-	
+
 	#seed random number generator
 	#random.seed(params.seed)
 	if not params.seed:
 		params.seed=int(datetime.now())
 	random.seed(params.seed)
-	
+
 	pool = mp.Pool(processes=params.GA_procs)
-	
+
 	process_list = range(1, int(params.GA_procs)+1)
 	func = partial(initialize_worker, params)
 	results = pool.map(func, process_list)
-	
+
 	#load data for master process
-	global my_number 
+	global my_number
 	my_number = 0
 	load_data(params, 0)
-	
-	
+
+
 	#print(len(list(graph.edges())))
 	#print(results)
 	#sys.exit()
-	
+
 	#initialize a single-objective GA
 	creator.create("FitnessMax", base.Fitness, weights=(1.0,))
 	creator.create("Individual", list, fitness=creator.FitnessMax)
-	
+
 	#toolbox
 	global toolbox
 	toolbox = base.Toolbox()
-	
+
 	#register GA attributes and type variables
 	print("Initializing genetic algorithm parameters...\n")
 	initGA(toolbox, params)
-	
-	#mp.set_start_method("spawn") 
-	
+
+	#mp.set_start_method("spawn")
+
 	#initialize population
 	popsize=len(params.variables)*4*15
 	if params.popsize:
@@ -78,11 +75,11 @@ def main():
 		popsize=params.maxpopsize
 	print("Establishing a population of size:",str(popsize))
 	pop = toolbox.population(n=popsize)
-	
-	
+
+
 	# Evaluate the entire population
 	print("\nEvaluating initial population...\n")
-	
+
 	fitnesses = pool.map(toolbox.evaluate, [list(i) for i in pop])
 
 	#print(fitnesses)
@@ -99,20 +96,20 @@ def main():
 	bests = hof.hallOfFame(predictors.columns, params.max_hof_size, pop_list)
 	#sys.exit()
 	#print(pop[0])
-	
+
 	# CXPB  is the probability with which two individuals are crossed
 	# MUTPB is the probability for mutating an individual
 	cxpb, mutpb = params.cxpb, params.mutpb
-	
+
 	# Extracting all the fitnesses of population
 	fits = [i.fitness.values[0] for i in pop]
-	
+
 	# Variable keeping track of the number of generations
 	g = 0
-	
+
 	# Begin the evolution
-	#NOTE: Need to implement some sort of callback for 
-	
+	#NOTE: Need to implement some sort of callback for
+
 	print("Starting optimization...\n")
 	fails=0
 	current_best=None
@@ -122,24 +119,24 @@ def main():
 		# A new generation
 		g = g + 1
 		print("-- Generation %i --" % g)
-	
+
 		# Select the next generation individuals
 		offspring = toolbox.select(pop, len(pop))
 		# Clone the selected individuals
 		offspring = list(map(toolbox.clone, offspring))
-	
+
 		# Apply crossover and mutation on the offspring
 		for child1, child2 in zip(offspring[::2], offspring[1::2]):
 			if random.random() < cxpb:
 				toolbox.mate(child1, child2)
 				del child1.fitness.values
 				del child2.fitness.values
-	
+
 		for mutant in offspring:
 			if random.random() < mutpb:
 				toolbox.mutate(mutant)
 				del mutant.fitness.values
-	
+
 		invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
 		fitnesses = pool.map(toolbox.evaluate, [list(i) for i in invalid_ind])
 		pop_list=list()
@@ -152,16 +149,16 @@ def main():
 				ind_list.extend(fit[1])
 				pop_list.append(ind_list)
 		bests.check_population(pop_list)
-		
+
 		#replace population with offspring
 		pop[:] = offspring
-	
+
 		# Gather all the fitnesses in one list and print the stats
 		fits = [i.fitness.values[0] for i in pop]
-	
+
 		#evaluate for stopping criteria
 		if g > params.burnin:
-			
+
 			if params.fitmetric=="aic":
 				fits = [element * -1.0 for element in fits]
 				worst = max(fits)
@@ -182,21 +179,21 @@ def main():
 			mean = sum(fits) / length
 			sum2 = sum(x*x for x in fits)
 			std = abs(sum2 / length - mean**2)**0.5
-		
+
 			print("  Worst %s" % worst)
 			print("  Best %s" % best)
 			print("  Avg %s" % mean)
 			print("  Std %s" % std)
 			logger.append([g, worst, best, mean, std])
 			print("  nFails %s" % fails)
-	
+
 	#best = pop[np.argmax([pool.map(toolbox.evaluate, [list(ind) for ind in pop])])]
 	print("Stopping optimization after",str(g),"generations.")
 	if g >= params.maxGens:
 		print("Reason: Exceeded maxGens")
 	elif fails > params.nfail:
 		print("Reason: More than",str(fails),"generations since finding better solution.")
-	
+
 	# if params.fitmetric == 'aic':
 	# 	bests.correct_aic_fitness()
 	bests.delta_aic()
@@ -212,27 +209,27 @@ def main():
 		bests.plot_ICprofile(params.out)
 		bests.plotMetricPW(params.out)
 		bests.plotVariableImportance(params.out)
-	
+
 	#write hall of fame to file
 	bests.writeModelSummary(params.out)
-	
+
 	#write log of fitnesses
 	logDF=pd.DataFrame(logger, columns=["Generation", "Worst", "Best", "Mean", "Stdev"])
 	logDF.to_csv((str(params.out)+".FitnessLog.tsv"), sep="\t", header=True, index=False)
 	del logger
 	del logDF
-	
+
 	#if params.modavg:
 	if params.modavg:
 		modelAverageCS(pool, bests.getHOF(only_keep=params.only_keep), base=params.out, plot=params.plot, report_all=params.report_all) #set to true for production
 	writeMatrix((str(params.out)+".genDistMat.tsv"), gendist, list(node_point_dict.values()))
-	
-	
+
+
 	#clean up temp files
 	oname=".temp_"+str(params.out)+"*"
 	for filename in glob.glob(oname):
 		os.remove(filename)
-	
+
 	pool.close()
 
 def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
@@ -240,7 +237,7 @@ def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
 	f=fails
 	threshold_1=current_best
 	threshold_2=current_best
-	
+
 	if minimize is True:
 		if best < current_best:
 			cur = best
@@ -287,7 +284,7 @@ def evaluate_ma(stuff):
 
 	cs.writeCircuitScape(oname, graph, points, multi, focalPoints=False, fromAttribute=None)
 	cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
-	
+
 	#Call circuitscape from pyjulia
 	cs.evaluateIni(jl, oname)
 	return(model_num)
@@ -303,19 +300,19 @@ def modelAverageCS(pool, bests, plot=False, base="", report_all=False):
 		models.append([mod_num, model_string])
 		weights[mod_num]=row["akaike_weight"]
 		mod_num+=1
-	
+
 	print("Model-averaging across",mod_num,"resistance models...")
-	
+
 	model_nums = pool.map(evaluate_ma, models)
-	
+
 	edge_avg=None
 	matrix_avg=np.zeros(shape=(len(points), len(points)))
-	
+
 	for model_num in model_nums:
 		oname=str(base)+"_Model-"+str(model_num)
-		
+
 		weight = bests.iloc[model_num]["akaike_weight"]
-		
+
 		#Extract resistance for each edge
 		#print(distances)
 		edge_r = cs.parseEdgewise(oname, distances, return_resistance=True)
@@ -324,11 +321,11 @@ def modelAverageCS(pool, bests, plot=False, base="", report_all=False):
 			edge_avg=(edge_r*weight)
 		else:
 			edge_avg = np.add(edge_avg, (edge_r*weight))
-		
+
 		#extract PW matrix from full result matrix
 		matrix_r = cs.parsePairwiseFromAll(oname, gendist, node_point_dict, return_resistance=True)
 		matrix_avg += (matrix_r*weight)
-		
+
 		if report_all:
 			writeEdges(oname, edge_avg, edge_ids)
 			writeMatrix(oname, matrix_avg, list(node_point_dict.values()))
@@ -337,18 +334,18 @@ def modelAverageCS(pool, bests, plot=False, base="", report_all=False):
 				splt.plotEdgesToStreams(graph, edf, (str(params.prefix)+".streamTree.shp"), oname)
 				hof.plotEdgeModel(distances, edge_r, oname)
 				hof.plotPairwiseModel(gendist, matrix_r, oname)
-		
-	
+
+
 	oname=str(base) + ".Model-Average"
 	writeEdges(oname, edge_avg, edge_ids)
 	writeMatrix(oname, matrix_avg, list(node_point_dict.values()))
-	
+
 	if plot:
 		edf=pd.DataFrame(list(zip(edge_ids, edge_avg)), columns=["EDGE_ID", "Resistance"])
 		splt.plotEdgesToStreams(graph, edf, (str(params.prefix)+".streamTree.shp"), oname)
 		hof.plotEdgeModel(distances, edge_avg, oname)
 		hof.plotPairwiseModel(gendist, matrix_avg, oname)
-		
+
 		#streamtree-style plot
 
 def writeEdges(oname, edge, ids, dist=None):
@@ -356,7 +353,7 @@ def writeEdges(oname, edge, ids, dist=None):
 	if dist is not None:
 		df["FittedD"]=dist
 	df.to_csv((str(oname)+".ResistanceEdges.tsv"), sep="\t", header=True, index=False)
-	
+
 
 def writeMatrix(oname, mat, ids):
 	df=pd.DataFrame(mat, columns=ids, index=ids)
@@ -364,32 +361,32 @@ def writeMatrix(oname, mat, ids):
 
 
 def initialize_worker(params, proc_num):
-	global my_number 
+	global my_number
 	my_number = proc_num
 	#make new random seed, as seed+Process_number
 	local_seed = int(params.seed)+my_number
 	random.seed(local_seed)
-	
+
 	global jl
 	from julia.api import Julia
 	from julia import Base, Main
 	from julia.Main import println, redirect_stdout
-	
+
 	#establish connection to julia
 	print("Worker",proc_num,"connecting to Julia...\n")
 	if params.sys_image is not None:
 		jl = Julia(init_julia=False, sysimage=params.sys_image, julia=params.julia, compiled_modules=params.compiled_modules)
 	else:
 		jl = Julia(init_julia=False, julia=params.julia, compiled_modules=params.compiled_modules)
-	
+
 	if my_number == 0:
 		print("Loading Circuitscape in Julia...\n")
 	#jl.eval("using Pkg;")
 	jl.eval("using Circuitscape; using Suppressor;")
 	#Main.eval("stdout")
-	
+
 	load_data(params, my_number)
-	
+
 	return(local_seed)
 
 def load_data(params, proc_num):
@@ -404,7 +401,7 @@ def load_data(params, proc_num):
 	global node_point_dict
 	global edge_ids
 	my_number = proc_num
-	
+
 	#read autoStreamTree outputs
 	if params.network is not None:
 		if my_number == 0:
@@ -418,7 +415,7 @@ def load_data(params, proc_num):
 		print("Reading autoStreamTree results from:", (str(params.prefix)+".streamTree.txt"))
 	(distances, predictors, edge_ids) = readStreamTree((str(params.prefix)+".streamTree.txt"), params.variables, params.force)
 	points = readPointCoords((str(params.prefix)+".pointCoords.txt"))
-	
+
 	#make sure points are snapped to the network
 	snapped=SortedDict()
 	for point in points.keys():
@@ -431,9 +428,9 @@ def load_data(params, proc_num):
 			snapped[tuple(point)]=points[point]
 	points = snapped
 	del snapped
-	
+
 	node_point_dict=nodes_to_points(graph, points)
-	
+
 	#read genetic distances
 	if params.predicted:
 		if my_number == 0:
@@ -470,7 +467,7 @@ def checkFormatGenMat(mat, order):
 			return(None)
 	else:
 		return(None)
-		
+
 def parseInputGenMat(graph, points, prefix=None, inmat=None):
 	order = getNodeOrder(graph, points, as_list=True)
 	#if no input matrix provided, infer from autoStreamTree output
@@ -520,7 +517,7 @@ def nodes_to_points(graph, points):
 			node_idx+=1
 	return(np)
 
-#TO DO: There is some redundant use of this and similar functions... 
+#TO DO: There is some redundant use of this and similar functions...
 def getNodeOrder(graph, points, as_dict=False, as_index=False, as_list=True):
 	node_dict=OrderedDict() #maps node (tuple) to node_index
 	point_dict=OrderedDict() #maps points (a subset of nodes) to node_index
@@ -579,7 +576,7 @@ def generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances):
 def readIncidenceMatrix(inc):
 	df = pd.read_csv(inc, header=None, index_col=False, sep="\t")
 	return(df.to_numpy())
-	
+
 def readNetwork(network):
 	graph=nx.OrderedGraph(nx.read_gpickle(network).to_undirected())
 	return(graph)
@@ -611,9 +608,9 @@ def readPointCoords(pfile):
 def readStreamTree(streamtree, variables, force=None):
 	df = pd.read_csv(streamtree, header=0, index_col=False, sep="\t")
 	names=sorted(set(df["EDGE_ID"].tolist()))
-	
+
 	df = df.groupby('EDGE_ID').agg('mean')
-	
+
 	#get distances (as a list, values corresponding to nodes)
 	if force:
 		dist=df[force].tolist()
@@ -621,11 +618,11 @@ def readStreamTree(streamtree, variables, force=None):
 		#get locus columns
 		filter_col = [col for col in df if col.startswith('locD_')]
 		data = df[filter_col]
-		
+
 		#aggregate distances
 		dist = list(data.mean(axis=1))
 		#print(dist)
-	
+
 	env=trans.rescaleCols(df[variables], 0, 10)
 	return(dist, env, names)
 
@@ -635,8 +632,8 @@ def readStreamTree(streamtree, variables, force=None):
 # 	#vector to hold values across edges
 # 	fitness=None
 # 	multi=None
-# 	first=True 
-# 
+# 	first=True
+#
 # 	#build multi-surface
 # 	for i, variable in enumerate(predictors.columns):
 # 		#Perform variable transformations (if desired)
@@ -649,14 +646,14 @@ def readStreamTree(streamtree, variables, force=None):
 # 				first=False
 # 			else:
 # 				multi += predictors[variable]*(individual[1::2][i])
-# 
+#
 # 	#If no layers are selected, return a zero fitness
 # 	if first:
 # 		fitness = None
 # 	else:
 # 		#Rescale multi for circuitscape
 # 		multi = rescaleCols(multi, 1, 10)
-# 
+#
 # 		#write circuitscape inputs
 # 		oname=".temp"+str(params.seed)+"_"+str(random.randint(1, 100000))
 # 		#oname=".temp"+str(params.seed)
@@ -665,15 +662,15 @@ def readStreamTree(streamtree, variables, force=None):
 # 			focal=False
 # 		cs.writeCircuitScape(oname, graph, points, multi, focalPoints=focal, fromAttribute=None)
 # 		cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
-# 
+#
 # 		fitness=oname
 # 	#return fitness value
 # 	return(fitness)
-# 
+#
 # def parallel_eval(jl, ini_list, cstype):
 # 	#Call circuitscape from pyjulia
 # 	results = cs.evaluateIniParallel(jl, ini_list)
-# 
+#
 # 	#parse circuitscape output
 # 	fitnesses = list()
 # 	for ini in ini_list:
@@ -735,7 +732,7 @@ def evaluate(individual):
 	fitness=0
 	res=None
 	multi=None
-	first=True 
+	first=True
 
 	#build multi-surface
 	for i, variable in enumerate(predictors.columns):
@@ -806,34 +803,34 @@ def mutate(individual, indpb):
 def initGA(toolbox, params):
 	#register attributes
 	toolbox.register("feature_sel", random.randint, 0, 1)
-	
+
 	if params.posWeight:
 		toolbox.register("feature_weight", random.uniform, 0.0, 1.0)
 	if params.fixWeight:
 		toolbox.register("feature_weight", random.uniform, 1.0, 1.0)
-	if not params.fixWeight and not params.posWeight:	
+	if not params.fixWeight and not params.posWeight:
 		toolbox.register("feature_weight", random.uniform, -1.0, 1.0)
 	toolbox.register("feature_transform", random.randint, 0, 8)
 	toolbox.register("feature_shape", random.randint, 1, 100)
-	
-	#register type for individuals 
+
+	#register type for individuals
 	#these consist of chromosomes of i variables x j attributes (above)
 	toolbox.register("individual", tools.initCycle, creator.Individual,(toolbox.feature_sel, toolbox.feature_weight, toolbox.feature_transform, toolbox.feature_shape), n=len(params.variables))
 	#toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.feature_sel, n=len(params.variables))
-	
+
 	#register type for populations
 	#these are just a list of individuals
-	toolbox.register("population", tools.initRepeat, list, toolbox.individual)	
+	toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
 	#register custom evaluation function
 	toolbox.register("evaluate", evaluate)
-	
+
 	#register mating function
 	toolbox.register("mate", tools.cxTwoPoint)
-	
+
 	#register mutation function
 	toolbox.register("mutate", mutate, indpb=params.indpb) #NOTE: make indpb an argument
-	
+
 	#register tournament function
 	toolbox.register("select", tools.selTournament, tournsize=5) #NOTE: Make tournsize an argument
 
