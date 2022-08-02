@@ -1,0 +1,8 @@
+# test run
+python3 ./resistnet/resistnet.py -p data/juvpop -v riv_tc_rsu,sgr_dk_rav,tmp_dc_cyr
+
+# to do
+
+1. Have resistnet read/ subgraph a shapefile
+
+2. Variable interactions 

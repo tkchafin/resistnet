@@ -2,7 +2,7 @@ ARG FUNCTION_DIR="/function"
 ARG BINS_DIR="/function/bin"
 
 # Set the base image to Ubuntu
-FROM ubuntu:20.04
+FROM --platform=linux/amd64 ubuntu:22.04
 
 # Add timezone so that tzdata does not hang to ask for timezone
 # https://grigorkh.medium.com/fix-tzdata-hangs-docker-image-build-cdb52cc3360d
@@ -35,34 +35,38 @@ RUN apt-get update \
     software-properties-common
 
 # install libraries and dependencies needed for python/ R environments
-RUN apt-get install -y \
-  zlib1g-dev \
-  libbz2-dev \
-  libgsl0-dev \
-  libncurses5-dev \
-  libmysqlclient-dev \
-  default-libmysqlclient-dev \
-  autotools-dev \
-  automake \
-  redis-tools \
-  libblas-dev \
-  liblapack-dev \
-  libcurl4-openssl-dev \
-  libssl-dev \
-  libxml2-dev \
-  libpng-dev \
-  libjpeg-dev \
-  zlib1g-dev \
-  libfontconfig1-dev \
-  libpq-dev \
-  libudunits2-dev \
-  dirmngr \
-  libglu1-mesa-dev \
-  freeglut3-dev \
-  mesa-common-dev \
-	libffi-dev \
-  libgdal-dev \
-	libmkl-rt
+RUN add-apt-repository -y universe \
+	&& add-apt-repository -y multiverse \
+	&& apt-get install -y \
+	  zlib1g-dev \
+	  libbz2-dev \
+	  libgsl0-dev \
+	  libncurses5-dev \
+	  libmysqlclient-dev \
+	  default-libmysqlclient-dev \
+	  autotools-dev \
+	  automake \
+	  redis-tools \
+	  libblas-dev \
+	  liblapack-dev \
+	  libcurl4-openssl-dev \
+	  libssl-dev \
+	  libxml2-dev \
+	  libpng-dev \
+	  libjpeg-dev \
+	  zlib1g-dev \
+	  libfontconfig1-dev \
+	  libpq-dev \
+	  libudunits2-dev \
+	  dirmngr \
+	  libglu1-mesa-dev \
+	  freeglut3-dev \
+	  mesa-common-dev \
+		libffi-dev \
+	  libgdal-dev
+
+RUN export DEBIAN_FRONTEND=noninteractive \
+	&& yes | apt install -y --force-yes libmkl-rt
 
 ############################################################
 # Install and configure R environment
@@ -102,16 +106,20 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 
 ############################################################
 # Install and configure Julia
-# version=current
+# version=1.6.7 (LTS)
 
-RUN apt-get install -y julia \
-	&& ln -s /usr/lib/aarch64-linux-gnu/libjulia.so.1 /usr/lib/aarch64-linux-gnu/libjulia.so
+# install julia=1.6.7 (LTS)
+RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.6/julia-1.6.7-linux-x86_64.tar.gz \
+	&& tar -xvzf julia-1.6.7-linux-x86_64.tar.gz \
+	&& ln -s /julia-1.6.7/bin/julia /usr/bin/julia
 
-RUN julia -e 'using Pkg; \
+# install and precompile packages
+RUN /usr/bin/julia -e 'using Pkg; \
 	ENV["PYTHON"] = "/usr/local/bin/python3"; \
 	Pkg.add("PyCall"); \
 	Pkg.add("Circuitscape"); \
-	using PyCall; using Circuitscape'
+	Pkg.add("Suppressor"); \
+	using PyCall; using Circuitscape; using Suppressor'
 
 
 ############################################################
@@ -151,4 +159,4 @@ RUN git clone https://github.com/tkchafin/resistnet.git
 RUN chmod -R ugoa+rwx ${BINS_DIR}
 ENV PATH="${BINS_DIR}:${PATH}"
 ENV HOME=/root
-ENV LD_LIBRARY_PATH=/usr/local/lib/
+ENV LD_LIBRARY_PATH=/usr/local/lib/:/julia-1.6.7/lib:$LD_LIBRARY_PATH

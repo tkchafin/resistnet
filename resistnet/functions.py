@@ -16,6 +16,7 @@ from sortedcontainers import SortedDict
 
 import resistnet.stream_plots as splt
 import resistnet.circuitscape_runner as cs
+import resistnet.transform as trans
 
 def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
 	cur=current_best
@@ -174,6 +175,78 @@ def initialize_worker(params, proc_num):
 
 	return(local_seed)
 
+# read network
+def read_network(network, shapefile):
+	if network:
+		print("Reading network from saved file: ", network)
+		G=nx.OrderedGraph(nx.read_gpickle(network).to_undirected())
+	else:
+		print("Building network from shapefile:",shapefile)
+		print("WARNING: This can take a while with very large files!")
+		G=nx.OrderedGraph(nx.read_shp(shapefile, simplify=True, strict=True).to_undirected())
+	return(G)
+
+#get subgraph from inputs
+def parseSubgraphFromPoints(params, point_coords, pop_coords, G):
+	if params.pop or params.geopop or params.clusterpop:
+		points=pop_coords
+	else:
+		points=point_coords
+
+	#output points to table
+	p = getPointTable(points)
+	p.to_csv((str(params.out)+".pointCoords.txt"), sep="\t", index=False)
+	del p
+
+	#first pass grabs subgraph from master shapefile graph
+	print("\nExtracting full subgraph...")
+	ktemp=pathSubgraph(G, points, extractFullSubgraph, params.reachid_col, params.length_col)
+	#ktemp=extractFullSubgraph(G, points)
+	del G
+
+	#second pass to simplify subgraph and collapse redundant nodes
+	print("\nMerging redundant paths...\n")
+	K=pathSubgraph(ktemp, points, extractMinimalSubgraph, params.reachid_col, params.length_col)
+	del ktemp
+
+	#grab real coordinates as node positions for plotting
+	pos=dict()
+	for n in K.nodes:
+		pos[n] = n
+	#print(pos)
+
+	#make a color map to color sample points and junctions differently
+	color_map = []
+	for node in K:
+		if node in points.values():
+			color_map.append("blue")
+		else:
+			color_map.append("black")
+	#draw networkx
+	nx.draw_networkx(K, pos, with_labels=False, node_color=color_map, node_size=50)
+
+	#get LENGTH_KM attributes for labelling edges
+	edge_labels = nx.get_edge_attributes(K,params.length_col)
+	for e in edge_labels:
+		edge_labels[e] = "{:.2f}".format(edge_labels[e])
+
+	nx.draw_networkx_edge_labels(K, pos, edge_labels=edge_labels, font_size=6)
+
+	#save minimized network to file (unless we already read from one)
+	if not params.network:
+		net_out=str(params.out) + ".network"
+		nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
+	elif params.overwrite:
+		net_out=str(params.out) + ".network"
+		nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
+	else:
+		print("NOTE: Not over-writing existing network. To change this, use --overwrite")
+
+	network_plot=str(params.out) + ".subGraph.pdf"
+	plt.savefig(network_plot)
+
+	return(K)
+
 def load_data(params, proc_num):
 
 	#make "local" globals (i.e. global w.r.t each process)
@@ -200,7 +273,7 @@ def load_data(params, proc_num):
 		print("Reading autoStreamTree results from:", (str(params.prefix)+".streamTree.txt"))
 	(distances, predictors, edge_ids) = readStreamTree((str(params.prefix)+".streamTree.txt"), params.variables, params.force)
 	points = readPointCoords((str(params.prefix)+".pointCoords.txt"))
-
+	print(points)
 	#make sure points are snapped to the network
 	snapped=SortedDict()
 	for point in points.keys():
@@ -224,7 +297,7 @@ def load_data(params, proc_num):
 		gendist = generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances)
 	else:
 		gendist = parseInputGenMat(graph, points, prefix=params.prefix, inmat=params.inmat)
-
+	print(gendist)
 
 def checkFormatGenMat(mat, order):
 	if os.path.isfile(mat):
@@ -366,6 +439,92 @@ def readNetwork(network):
 	graph=nx.OrderedGraph(nx.read_gpickle(network).to_undirected())
 	return(graph)
 
+
+def path_edge_attributes(graph, path, attribute):
+	return [graph[u][v][attribute] for (u,v) in zip(path,path[1:])]
+
+#find and extract paths between points from a graph
+def pathSubgraph(graph, nodes, method, id_col, len_col):
+	k=nx.OrderedGraph()
+
+	#function to calculate weights for Dijkstra's shortest path algorithm
+	#i just invert the distance, so the shortest distance segments are favored
+	def dijkstra_weight(left, right, attributes):
+		#print(attributes[len_col])
+		return(10000000-attributes[len_col])
+
+	p1 = list(nodes.values())[0]
+	for p2 in list(nodes.values())[1:]:
+	#for p1, p2 in itertools.combinations(nodes.values(),2):
+		try:
+
+			#find shortest path between the two points
+			path=nx.bidirectional_dijkstra(graph, p1, p2, weight=dijkstra_weight)
+
+			#traverse the nodes in the path to build a minimal set of edges
+			method(k, graph, nodes.values(), id_col ,len_col, path[1])
+
+			if p1 not in k:
+				k.add_node(p1)
+			if p2 not in k:
+				k.add_node(p2)
+		except NodeNotFound as e:
+			print("Node not found:",e)
+		except Exception as e:
+			traceback.print_exc()
+			print("Something unexpected happened:",e)
+			sys.exit(1)
+	return(k)
+
+#extracts full subgraph from nodes
+def extractFullSubgraph(subgraph, graph, nodelist, id_col, len_col, path):
+	for first, second in zip(path, path[1:]):
+		if first not in subgraph:
+			subgraph.add_node(first)
+		if second not in subgraph:
+			subgraph.add_node(second)
+
+		dat=graph.get_edge_data(first, second)
+		subgraph.add_edge(first, second, **dat)
+
+
+#extracts a simplified subgraph from paths
+#only keeping terminal and junction nodes
+def extractMinimalSubgraph(subgraph, graph, nodelist, id_col, len_col, path):
+	curr_edge = {id_col:list(), len_col:0.0}
+	curr_start=None
+	#print("Path:",path)
+	#print("nodelist:",nodelist)
+	#for each pair of nodes in path
+	for first, second in zip(path, path[1:]):
+		#if first is either: 1) a site node; or 2) a junction node: add to new graph
+		#if second is either:a site or junction, add edge and node to new graph
+		#if not, keep edge attributes for next edge
+		if not curr_start:
+			curr_start=first
+			if first in nodelist or len(graph[first])>2:
+				subgraph.add_node(first)
+		#add path attributes to current edge
+		dat=graph.get_edge_data(first, second)
+		#print(dat)
+
+		curr_edge[id_col].extend([dat[id_col]] if not isinstance(dat[id_col], list) else dat[id_col])
+		curr_edge[len_col]=float(curr_edge[len_col])+float(dat[len_col])
+
+		#if second node is a STOP node (=in nodelist or is a junction):
+		if second in nodelist or len(graph[second])>2:
+			#add node to subgraph
+			subgraph.add_node(second)
+			#link current attribute data
+			subgraph.add_edge(curr_start, second, **curr_edge)
+			#empty edge attributes and set current second to curr_start
+			curr_edge = {id_col:list(), len_col:0}
+			curr_start = second
+		else:
+			#otherwise continue building current edge
+			continue
+
+
 #Input: Tuple of [x,y] coordinates
 #output: Closest node to those coordinates
 def snapToNode(graph, pos):
@@ -375,6 +534,7 @@ def snapToNode(graph, pos):
 	#print(nodes)
 	#print("closest to ", pos, "is",tuple(nodes[node_pos]))
 	return (tuple(nodes[node_pos]))
+
 
 def readPointCoords(pfile):
 	d=SortedDict()
@@ -523,7 +683,6 @@ def evaluate(individual):
 	for i, variable in enumerate(predictors.columns):
 		#Perform variable transformations (if desired)
 		#1)Scale to 0-10; 2) Perform desired transformation; 3) Re-scale to 0-10
-		#	NOTE: Get main implementation working first
 		#add weighted variable data to multi
 		if individual[0::4][i] == 1:
 			#print("Before:", predictors[variable])
@@ -571,8 +730,6 @@ def evaluate(individual):
 	return(fitness, res)
 
 #custom mutation function
-#To decide: Should the current state inform the next state, or let it be random?
-#May depend on the "gene"?
 def mutate(individual, indpb):
 	for (i, variable) in enumerate(predictors.columns):
 		if random.random() < indpb:

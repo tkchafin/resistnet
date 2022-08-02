@@ -30,6 +30,7 @@ class parseArgs():
 		self.maxpopsize=100
 		self.cstype="pairwise"
 		self.fitmetric="aic"
+		self.network=None
 		self.predicted=False
 		self.inmat=None
 		self.shapefile=None

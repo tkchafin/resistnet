@@ -49,7 +49,8 @@ def main():
 
 	load_data(params, 0)
 
-	sys.exit()
+	print("Done")
+	sys.exit(0)
 
 	#print(len(list(graph.edges())))
 	#print(results)
