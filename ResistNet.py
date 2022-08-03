@@ -48,7 +48,7 @@ def main():
 	point_coords = snapPoints(points, G, params.out)
 
 	# compute subgraph (minimized if params.minimze==True)
-	K = parseSubgraphFromPoints(params, point_coords, G)
+	K = parseSubgraphFromPoints(params, point_coords, G, out=params.out)
 
 
 	sys.exit()
@@ -445,12 +445,15 @@ def getPointTable(points):
 	return(p)
 
 #get subgraph from inputs
-def parseSubgraphFromPoints(params, point_coords, G):
+def parseSubgraphFromPoints(params, point_coords, G, out=None):
 	points=point_coords
 
 	#first pass grabs subgraph from master shapefile graph
 	print("\nExtracting full subgraph...")
 	ktemp=pathSubgraph(G, points, extractFullSubgraph, params.reachid_col, params.length_col)
+	if out:
+		net_out=str(out) + ".subgraph.net"
+		nx.write_gpickle(ktemp, net_out, pickle.HIGHEST_PROTOCOL)
 	#ktemp=extractFullSubgraph(G, points)
 	del G
 
@@ -458,6 +461,9 @@ def parseSubgraphFromPoints(params, point_coords, G):
 	if params.minimize:
 		print("\nMerging redundant paths...\n")
 		K=pathSubgraph(ktemp, points, extractMinimalSubgraph, params.reachid_col, params.length_col)
+		if out:
+			net_out=str(out) + ".minimalSubgraph.net"
+			nx.write_gpickle(ktemp, net_out, pickle.HIGHEST_PROTOCOL)
 		del ktemp
 	else:
 		K=ktemp
@@ -480,17 +486,7 @@ def parseSubgraphFromPoints(params, point_coords, G):
 
 	nx.draw_networkx_edge_labels(K, pos, font_size=6)
 
-	#save minimized network to file (unless we already read from one)
-	if not params.network:
-		net_out=str(params.out) + ".network"
-		nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
-	elif params.overwrite:
-		net_out=str(params.out) + ".network"
-		nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
-	else:
-		print("NOTE: Not over-writing existing network. To change this, use --overwrite")
-
-	network_plot=str(params.out) + ".subGraph.pdf"
+	network_plot=str(params.out) + ".graph.pdf"
 	plt.savefig(network_plot)
 
 	return(K)

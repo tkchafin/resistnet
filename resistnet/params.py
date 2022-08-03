@@ -15,7 +15,7 @@ class parseArgs():
 			"burn=", "force=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
 			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all", "julia=", "no_compiled_modules",
 			"julia_sys_image=", "lib_path=", "max_hof_size=", "posWeight", "fixWeight", "allShapes",
-			"coords=", "length_col=", "reachid_col="])
+			"coords=", "length_col=", "reachid_col=", "minimize"])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -86,7 +86,7 @@ class parseArgs():
 			elif opt=="c" or opt=="coords":
 				self.coords = arg
 			elif opt=="minimize":
-				self.minimize=arg
+				self.minimize=True
 			elif opt=='seed':
 				self.seed=int(arg)
 			elif opt=='t' or opt=='procs':
