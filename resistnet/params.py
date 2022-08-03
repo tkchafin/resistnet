@@ -15,7 +15,7 @@ class parseArgs():
 			"burn=", "force=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
 			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all", "julia=", "no_compiled_modules",
 			"julia_sys_image=", "lib_path=", "max_hof_size=", "posWeight", "fixWeight", "allShapes",
-			"coords="])
+			"coords=", "length_col=", "reachid_col="])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -24,9 +24,12 @@ class parseArgs():
 		self.prefix="out3"
 		self.force=None
 		self.variables = None
+		self.minimize=False
 		self.seed=None
 		self.installCS=False
 		self.popsize=None
+		self.length_col="LENGTH_KM"
+		self.reachid_col="HYRIV_ID"
 		self.maxpopsize=100
 		self.cstype="pairwise"
 		self.fitmetric="aic"
@@ -82,6 +85,8 @@ class parseArgs():
 				self.shapefile = arg
 			elif opt=="c" or opt=="coords":
 				self.coords = arg
+			elif opt=="minimize":
+				self.minimize=arg
 			elif opt=='seed':
 				self.seed=int(arg)
 			elif opt=='t' or opt=='procs':
@@ -117,6 +122,10 @@ class parseArgs():
 				self.force=arg
 			elif opt=="infer":
 				self.predicted=True
+			elif opt=="reachid_col":
+				self.reachid_col=arg
+			elif opt=="length_col":
+				self.length_col=arg
 			elif opt=="cholmod":
 				self.cholmod=True
 			elif opt=="C" or opt=="Cprocs" or opt=="cprocs":
@@ -170,11 +179,6 @@ class parseArgs():
 		print ("Description: Genetic algorithm to optimize resistance models on networks")
 		print("""
 Input options:
-  If using FitDistNet outputs:
-	-p,--prefix	: Prefix for autoStreamTree outputs
-
--or-
-
   If manually specifying inputs:
 	-g,--genmat	: Genetic distance matrix
 	-s,--shp	: Path to shapefile containing cleaned, contiguous stream reaches
@@ -182,6 +186,9 @@ Input options:
 
 General options:
 	--seed	: Random number seed (default=taken from clock time)
+	--minimize	: Minimize input graph
+	--reachid_col	: Attribute name representing primary key in shapefile [default="REACH_ID"]
+	--length_col	: Attribute name giving length in kilometers [default="LENGTH_KM"]
 	-t,--procs	: Number of parallel processors
 	-X,--noPlot	: Turn off plotting
 	-o,--out	: Output file prefix

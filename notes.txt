@@ -1,8 +1,13 @@
+# docker build
+docker build -t tkchafin/resistnet:0.3
+docker push tkchafin/resistnet:0.3
+
 # test run
+docker run -v /Users/tyler/programs/autostreamtree/data/:/root/data -v /Users/tyler/programs/resistnet/:/root/resistnet --platform linux/amd64 -it tkchafin/resistnet:0.3
 python3 ./resistnet/resistnet.py -p data/juvpop -v riv_tc_rsu,sgr_dk_rav,tmp_dc_cyr
 
 # to do
 
 1. Have resistnet read/ subgraph a shapefile
 
-2. Variable interactions 
+2. Variable interactions

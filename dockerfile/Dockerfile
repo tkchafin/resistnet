@@ -63,6 +63,7 @@ RUN add-apt-repository -y universe \
 	  freeglut3-dev \
 	  mesa-common-dev \
 		libffi-dev \
+		gdal-bin \
 	  libgdal-dev
 
 RUN export DEBIAN_FRONTEND=noninteractive \
@@ -74,13 +75,15 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 
 # install r-base
 RUN apt-get install -y \
-	r-base \
-	build-essential \
-	&& apt-get update --fix-missing
+		r-base \
+		build-essential \
+	&& apt-get update --fix-missing \
+	&& apt-get install -y \
+		r-cran-lme4 \
+		r-cran-matrix
 
 # install R packages
-RUN Rscript -e "install.packages('lme4', dependencies=TRUE)" \
-    && Rscript -e "install.packages('MuMIn', dependencies=TRUE)" \
+RUN Rscript -e "install.packages('MuMIn', dependencies=TRUE)" \
     && Rscript -e "install.packages('Matrix', dependencies=TRUE)"
 
 ############################################################
@@ -127,6 +130,7 @@ RUN /usr/bin/julia -e 'using Pkg; \
 #
 
 RUN pip3 install --no-cache --upgrade pip wheel setuptools \
+	&& pip3 install GDAL==$(gdal-config --version | awk -F'[.]' '{print $1"."$2}') \
 	&& pip3 install --no-cache --upgrade \
 		numpy \
 		scipy \
@@ -150,10 +154,9 @@ RUN pip3 install "setuptools<58.0.0" && pip3 install deap
 # Finalize
 
 # clean up
-RUN apt-get autoremove && apt-get clean
-
-# install resistnet from git
-RUN git clone https://github.com/tkchafin/resistnet.git
+RUN apt-get autoremove \
+	&& apt-get clean \
+	&& pip3 cache purge
 
 # Update permissions for binaries and append location to PATH
 RUN chmod -R ugoa+rwx ${BINS_DIR}

@@ -14,6 +14,8 @@ from functools import partial
 from collections import OrderedDict
 from sortedcontainers import SortedDict
 
+from deap import base, creator, tools, algorithms
+
 import resistnet.stream_plots as splt
 import resistnet.circuitscape_runner as cs
 import resistnet.transform as trans
@@ -247,7 +249,7 @@ def parseSubgraphFromPoints(params, point_coords, pop_coords, G):
 
 	return(K)
 
-def load_data(params, proc_num):
+def load_data(p, proc_num):
 
 	#make "local" globals (i.e. global w.r.t each process)
 	global graph
@@ -258,6 +260,8 @@ def load_data(params, proc_num):
 	global gendist
 	global node_point_dict
 	global edge_ids
+	global params
+	params = p
 	my_number = proc_num
 
 	#read autoStreamTree outputs
@@ -273,7 +277,7 @@ def load_data(params, proc_num):
 		print("Reading autoStreamTree results from:", (str(params.prefix)+".streamTree.txt"))
 	(distances, predictors, edge_ids) = readStreamTree((str(params.prefix)+".streamTree.txt"), params.variables, params.force)
 	points = readPointCoords((str(params.prefix)+".pointCoords.txt"))
-	print(points)
+	#print(points)
 	#make sure points are snapped to the network
 	snapped=SortedDict()
 	for point in points.keys():
@@ -297,7 +301,7 @@ def load_data(params, proc_num):
 		gendist = generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances)
 	else:
 		gendist = parseInputGenMat(graph, points, prefix=params.prefix, inmat=params.inmat)
-	print(gendist)
+	#print(gendist)
 
 def checkFormatGenMat(mat, order):
 	if os.path.isfile(mat):
@@ -685,9 +689,9 @@ def evaluate(individual):
 		#1)Scale to 0-10; 2) Perform desired transformation; 3) Re-scale to 0-10
 		#add weighted variable data to multi
 		if individual[0::4][i] == 1:
-			#print("Before:", predictors[variable])
+			print("Before:", predictors[variable])
 			var = transform(predictors[variable], individual[2::4][i], individual[3::4][i])
-			#print("Before:", var)
+			print("Before:", var)
 			if first:
 				#transform(data, transformation, shape) * weight
 				multi = var*(individual[1::4][i])
@@ -700,7 +704,7 @@ def evaluate(individual):
 		fitness = float('-inf')
 	else:
 		#Rescale multi for circuitscape
-		#print("Multi:",multi)
+		print("Multi:",multi)
 		multi = trans.rescaleCols(multi, 1, 10)
 
 		#write circuitscape inputs
