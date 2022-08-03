@@ -4,16 +4,20 @@ import itertools
 import math
 import random
 import getopt
+import pickle
 import scipy as sp
 import numpy as np
+import traceback
 import pandas as pd
 import networkx as nx
+import matplotlib.pyplot as plt
 import multiprocessing as mp
 from datetime import datetime
 from functools import partial
 from collections import OrderedDict
 from sortedcontainers import SortedDict
 import timeit
+from math import radians, degrees, sin, cos, asin, acos, sqrt
 
 from deap import base, creator, tools, algorithms
 
@@ -40,10 +44,11 @@ def main():
 	G = read_network(params.network, params.shapefile)
 
 	# read point coordinate data
-	points = pd.read_csv(params.coords, sep="\t", header=None)
+	points = pd.read_csv(params.coords, sep="\t", header=0)
+	point_coords = snapPoints(points, G, params.out)
 
 	# compute subgraph (minimized if params.minimze==True)
-	K = parseSubgraphFromPoints(params, point_coords, pop_coords, G)
+	K = parseSubgraphFromPoints(params, point_coords, G)
 
 
 	sys.exit()
@@ -424,24 +429,24 @@ def initialize_worker(params, proc_num):
 def read_network(network, shapefile):
 	if network:
 		print("Reading network from saved file: ", network)
-		G=nx.OrderedGraph(nx.read_gpickle(network).to_undirected())
+		G=nx.Graph(nx.read_gpickle(network).to_undirected())
 	else:
 		print("Building network from shapefile:",shapefile)
 		print("WARNING: This can take a while with very large files!")
-		G=nx.OrderedGraph(nx.read_shp(shapefile, simplify=True, strict=True).to_undirected())
+		G=nx.Graph(nx.read_shp(shapefile, simplify=True, strict=True).to_undirected())
 	return(G)
 
-#get subgraph from inputs
-def parseSubgraphFromPoints(params, point_coords, pop_coords, G):
-	if params.pop or params.geopop or params.clusterpop:
-		points=pop_coords
-	else:
-		points=point_coords
+#returns a pandas DataFrame from points dictionary
+def getPointTable(points):
+	temp=list()
+	for p in points:
+		temp.append([p, points[p][1], points[p][0]])
+	p = pd.DataFrame(temp, columns=['sample', 'lat', 'long'])
+	return(p)
 
-	#output points to table
-	p = getPointTable(points)
-	p.to_csv((str(params.out)+".pointCoords.txt"), sep="\t", index=False)
-	del p
+#get subgraph from inputs
+def parseSubgraphFromPoints(params, point_coords, G):
+	points=point_coords
 
 	#first pass grabs subgraph from master shapefile graph
 	print("\nExtracting full subgraph...")
@@ -620,6 +625,33 @@ def nodes_to_points(graph, points):
 			node_idx+=1
 	return(np)
 
+def snapPoints(points, G, out="out"):
+	point_coords=SortedDict()
+	snapDists=dict()
+	verb=True
+	first=True
+	for idx, row in points.iterrows():
+		name = row[0]
+		data = tuple([row[2], row[1]])
+		node = snapToNode(G, tuple([row[2], row[1]]))
+		snapDists[row[0]] = great_circle(node[0], node[1], row[2], row[1])
+		point_coords[name] = node
+
+	print("Read",str(len(point_coords.keys())),"individuals.")
+	#print(list(point_coords.keys()))
+	print()
+
+	#plot histogram of snap distances
+	dtemp = pd.DataFrame(list(snapDists.items()), columns=['name', 'km'])
+	dtout = str(out) + ".snapDistances.txt"
+	dtemp.to_csv(dtout, sep="\t", index=False)
+	del dtemp
+	del dtout
+	del snapDists
+
+	#return everything
+	return(point_coords)
+
 #TO DO: There is some redundant use of this and similar functions...
 def getNodeOrder(graph, points, as_dict=False, as_index=False, as_list=True):
 	node_dict=OrderedDict() #maps node (tuple) to node_index
@@ -681,7 +713,7 @@ def readIncidenceMatrix(inc):
 	return(df.to_numpy())
 
 def readNetwork(network):
-	graph=nx.OrderedGraph(nx.read_gpickle(network).to_undirected())
+	graph=nx.Graph(nx.read_gpickle(network).to_undirected())
 	return(graph)
 
 
@@ -690,7 +722,7 @@ def path_edge_attributes(graph, path, attribute):
 
 #find and extract paths between points from a graph
 def pathSubgraph(graph, nodes, method, id_col, len_col):
-	k=nx.OrderedGraph()
+	k=nx.Graph()
 
 	#function to calculate weights for Dijkstra's shortest path algorithm
 	#i just invert the distance, so the shortest distance segments are favored
@@ -702,7 +734,6 @@ def pathSubgraph(graph, nodes, method, id_col, len_col):
 	for p2 in list(nodes.values())[1:]:
 	#for p1, p2 in itertools.combinations(nodes.values(),2):
 		try:
-
 			#find shortest path between the two points
 			path=nx.bidirectional_dijkstra(graph, p1, p2, weight=dijkstra_weight)
 
@@ -713,8 +744,6 @@ def pathSubgraph(graph, nodes, method, id_col, len_col):
 				k.add_node(p1)
 			if p2 not in k:
 				k.add_node(p2)
-		except NodeNotFound as e:
-			print("Node not found:",e)
 		except Exception as e:
 			traceback.print_exc()
 			print("Something unexpected happened:",e)
@@ -780,6 +809,13 @@ def snapToNode(graph, pos):
 	#print("closest to ", pos, "is",tuple(nodes[node_pos]))
 	return (tuple(nodes[node_pos]))
 
+#function to calculate great circle distances
+#returns in units of KILOMETERS
+def great_circle(lon1, lat1, lon2, lat2):
+	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+	return 6371 * (
+		acos(sin(lat1) * sin(lat2) + cos(lat1) * cos(lat2) * cos(lon1 - lon2))
+	)
 
 def readPointCoords(pfile):
 	d=SortedDict()

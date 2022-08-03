@@ -182,7 +182,7 @@ Input options:
   If manually specifying inputs:
 	-g,--genmat	: Genetic distance matrix
 	-s,--shp	: Path to shapefile containing cleaned, contiguous stream reaches
-	-i,--coords	: Input .tsv file containing sample coordinates
+	-c,--coords	: Input .tsv file containing sample coordinates
 
 General options:
 	--seed	: Random number seed (default=taken from clock time)

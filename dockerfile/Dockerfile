@@ -145,7 +145,8 @@ RUN pip3 install --no-cache --upgrade pip wheel setuptools \
 		shapely \
 		scikit-learn \
 		pysam \
-		rpy2
+		rpy2 \
+		momepy
 
 RUN pip3 install "setuptools<58.0.0" && pip3 install deap
 
