@@ -7,22 +7,22 @@ class parseArgs():
 	def __init__(self):
 		#Define options
 		try:
-			options, remainder = getopt.getopt(sys.argv[1:], 'hp:g:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:Aa:o:Xj:', \
+			options, remainder = getopt.getopt(sys.argv[1:], 'hp:g:s:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:Aa:o:Xj:', \
 			["shp=", "help", "input=", "prefix=", "genmat=", "shapefile=",
 			"seed=", "procs=", "maxPop=", "maxpop=", "maxgen=", "maxGen=",
 			"size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=",
 			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
-			"burn=", "force=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
+			"burn=", "fittedD=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
 			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all", "julia=", "no_compiled_modules",
 			"julia_sys_image=", "lib_path=", "max_hof_size=", "posWeight", "fixWeight", "allShapes",
-			"coords=", "length_col=", "reachid_col=", "minimize"])
+			"coords=", "length_col=", "reachid_col=", "minimize", "network="])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
 		#Default values for params
 		#Input params
 		self.prefix="out3"
-		self.force=None
+		self.fittedD="fittedD"
 		self.variables = None
 		self.minimize=False
 		self.seed=None
@@ -37,6 +37,7 @@ class parseArgs():
 		self.predicted=False
 		self.inmat=None
 		self.shapefile=None
+		self.network=None
 		self.coords=None
 		self.cholmod=False
 		self.GA_procs=1
@@ -85,6 +86,8 @@ class parseArgs():
 				self.shapefile = arg
 			elif opt=="c" or opt=="coords":
 				self.coords = arg
+			elif opt=="n" or opt=="network":
+				self.network = arg
 			elif opt=="minimize":
 				self.minimize=True
 			elif opt=='seed':
@@ -118,8 +121,8 @@ class parseArgs():
 					self.fitmetric=arg.lower()
 			elif opt=="b" or opt=="burn":
 				self.burnin=int(arg)
-			elif opt=="force":
-				self.force=arg
+			elif opt=="fittedD":
+				self.fittedD=arg
 			elif opt=="infer":
 				self.predicted=True
 			elif opt=="reachid_col":
@@ -229,7 +232,7 @@ Circuitscape options:
 			    NOTE: Total simultaneous processes= <-T> * <-C>
 
 Genetic distance options:
-	--force		: Use XX attribute from input table as distance metric (e.g. 'fittedD')
+	--fittedD	: Use XX attribute from input table as distance metric (e.g. 'fittedD')
 			    NOTE: By default, the average of "locD_" columns will be taken
 	--infer		: Infer pairwise distances from input table (i.e., NOT input matrix)
 	-v,--vars	: Comma-separated list (no spaces) of explanatory attributes to include

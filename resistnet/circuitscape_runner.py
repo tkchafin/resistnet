@@ -17,23 +17,23 @@ Add options to set certain nodes as 'sources'?
 figure out how to suppress the output from Julia/ circuitscape
 """
 
-def parseEdgewise(oname, edge_gendist, return_resistance=True):
-	l=["from", "to", "r"]
-	output_file=str(oname)+"_resistances_3columns.out"
-	input=pd.read_csv((str(oname)+".graph_resistances.txt"), header=None, index_col=None, sep="\t", names=l)
-	output=pd.read_csv((str(oname)+"_resistances_3columns.out"), header=None, index_col=None, sep=" ", names=l)
-	output["from"] = output["from"]-1
-	output["to"] = output["to"]-1
-	merged=pd.merge(input, output, how="left", on=["from", "to"])
-	merged["gen"]=edge_gendist
-	#print(merged)
-	# p = sns.scatterplot(data=merged, x="r_y", y="gen", alpha=0.6)
-	# plt.show()
-	if return_resistance==True:
-		return((merged["r_y"]).to_numpy())
-	else:
-		pass
-		#some sort of spatial regression
+# def parseEdgewise(oname, edge_gendist, return_resistance=True):
+# 	l=["from", "to", "r"]
+# 	output_file=str(oname)+"_resistances_3columns.out"
+# 	input=pd.read_csv((str(oname)+".graph_resistances.txt"), header=None, index_col=None, sep="\t", names=l)
+# 	output=pd.read_csv((str(oname)+"_resistances_3columns.out"), header=None, index_col=None, sep=" ", names=l)
+# 	output["from"] = output["from"]-1
+# 	output["to"] = output["to"]-1
+# 	merged=pd.merge(input, output, how="left", on=["from", "to"])
+# 	merged["gen"]=edge_gendist
+# 	#print(merged)
+# 	# p = sns.scatterplot(data=merged, x="r_y", y="gen", alpha=0.6)
+# 	# plt.show()
+# 	if return_resistance==True:
+# 		return((merged["r_y"]).to_numpy())
+# 	else:
+# 		pass
+# 		#some sort of spatial regression
 
 
 def parsePairwise(oname, gendist, return_resistance=False):
@@ -78,7 +78,7 @@ def evaluateIniParallel(jl, ini_list):
 	jl.eval(str("@suppress begin\npmap(compute, run_list, batch_size=4)\nend;"))
 
 #function to write inputs for circuitscape
-def writeCircuitScape(oname, graph, points, resistance, focalPoints=False, fromAttribute=None):
+def writeCircuitScape(oname, graph, points, resistance, id_col="EDGE_ID", focalPoints=False, fromAttribute=None):
 	if fromAttribute is None:
 		node_dict=dict()
 		edge_idx=0
@@ -88,30 +88,29 @@ def writeCircuitScape(oname, graph, points, resistance, focalPoints=False, fromA
 		kept=0
 		#for each edge
 		#print("Number of points:",len(points))
-		for edge in graph.edges():
+		for p1 ,p2, edge in graph.edges(data=True):
 			#get nodes on either side and index them
 			#get resistance
 			#add all to output string
 			#NOTE: Points should be an OrderedDict, so this should work fine
 			#print(edge[0], " -- ", edge[1])
-			if edge[0] not in node_dict.keys():
-				node_dict[edge[0]] = node_idx
-				if focalPoints and edge[0] not in points.keys():
+			if p1 not in node_dict.keys():
+				node_dict[p1] = node_idx
+				if focalPoints and p1 not in points.keys():
 					pass
 				else:
 					pts_output += str(node_idx) + ".0\n"
 					kept+=1
 				node_idx+=1
-			if edge[1] not in node_dict.keys():
-				node_dict[edge[1]] = node_idx
-				if focalPoints and edge[1] not in points.keys():
+			if p2 not in node_dict.keys():
+				node_dict[p2] = node_idx
+				if focalPoints and p2 not in points.keys():
 					pass
 				else:
 					pts_output += str(node_idx) + ".0\n"
 					kept+=1
 				node_idx+=1
-			net_output += str(node_dict[edge[0]]) + ".0\t" + str(node_dict[edge[1]]) + ".0\t" + str(float(resistance[edge_idx])) + "\n"
-			edge_idx+=1
+			net_output += str(node_dict[p1]) + ".0\t" + str(node_dict[p2]) + ".0\t" + str(float(resistance.loc[[edge[id_col]]])) + "\n"
 		#print("Number of focal points:",kept)
 		with open((str(oname) + ".graph_resistances.txt"), "w") as ofh:
 			ofh.write(net_output)

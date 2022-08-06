@@ -5,10 +5,12 @@ import math
 import random
 import getopt
 import pickle
+import momepy
 import scipy as sp
 import numpy as np
 import traceback
 import pandas as pd
+import geopandas as gpd
 import networkx as nx
 import matplotlib.pyplot as plt
 import multiprocessing as mp
@@ -24,6 +26,7 @@ from deap import base, creator, tools, algorithms
 from resistnet.params import parseArgs
 import resistnet.transform as trans
 import resistnet.hall_of_fame as hof
+import resistnet.resist_dist as rd
 import resistnet.circuitscape_runner as cs
 
 def main():
@@ -48,10 +51,14 @@ def main():
 	point_coords = snapPoints(points, G, params.out)
 
 	# compute subgraph (minimized if params.minimze==True)
-	K = parseSubgraphFromPoints(params, point_coords, G, out=params.out)
+	K, Kmin = parseSubgraphFromPoints(params, point_coords, G, out=params.out)
 
+	annotateEdges(K, Kmin, params.reachid_col, params.out)
 
-	sys.exit()
+	if params.minimize:
+		params.network = str(params.out) + ".minimalSubgraph.net"
+	else:
+		params.network = str(params.out) + ".subgraph.net"
 
 	#########################################################
 	# Step 2: Initialize worker processes
@@ -67,12 +74,12 @@ def main():
 	global my_number
 	my_number = 0
 
+	print("Loading data...", flush=True)
 	load_data(params, 0)
 
-	print("Done")
-	#sys.exit(0)
-
 	#print(len(list(graph.edges())))
+	print(inc_matrix)
+	#sys.exit()
 	#print(results)
 	#sys.exit()
 
@@ -261,7 +268,7 @@ def main():
 
 
 	#clean up temp files
-	oname=".temp_"+str(params.out)+"*"
+	oname=".temp_"+str(os.path.basename(params.out))+"*"
 	for filename in glob.glob(oname):
 		os.remove(filename)
 
@@ -395,32 +402,46 @@ def writeMatrix(oname, mat, ids):
 	df=pd.DataFrame(mat, columns=ids, index=ids)
 	df.to_csv((str(oname)+".ResistanceMatrix.tsv"), sep="\t", header=True, index=True)
 
+# def initialize_worker(params, proc_num):
+# 	global my_number
+# 	my_number = proc_num
+# 	#make new random seed, as seed+Process_number
+# 	local_seed = int(params.seed)+my_number
+# 	random.seed(local_seed)
+#
+# 	#print("")
+# 	load_data(params, my_number)
+# 	return(local_seed)
 
+# DEPRECATED -- CIRCUITSCAPE VERSION
 def initialize_worker(params, proc_num):
 	global my_number
 	my_number = proc_num
 	#make new random seed, as seed+Process_number
 	local_seed = int(params.seed)+my_number
 	random.seed(local_seed)
+	print("Worker",proc_num,"initializing...\n", flush=True)
 
-	global jl
-	from julia.api import Julia
-	from julia import Base, Main
-	from julia.Main import println, redirect_stdout
+	# global jl
+	# from julia.api import Julia
+	# from julia import Base, Main
+	# from julia.Main import println, redirect_stdout
+	#
+	# #establish connection to julia
+	# print("Worker",proc_num,"connecting to Julia...\n", flush=True)
+	# if params.sys_image:
+	# 	jl = Julia(init_julia=True, sysimage=params.sys_image, julia=params.julia, compiled_modules=params.compiled_modules)
+	# else:
+	# 	print("julia", flush=True)
+	# 	jl = Julia(init_julia=True, julia=params.julia, compiled_modules=params.compiled_modules)
+	#
+	# if my_number == 0:
+	# 	print("Loading Circuitscape in Julia...\n", flush=True)
+	# #jl.eval("using Pkg;")
+	# jl.eval("using Circuitscape; using Suppressor;")
+	# Main.eval("stdout")
 
-	#establish connection to julia
-	print("Worker",proc_num,"connecting to Julia...\n")
-	if params.sys_image is not None:
-		jl = Julia(init_julia=False, sysimage=params.sys_image, julia=params.julia, compiled_modules=params.compiled_modules)
-	else:
-		jl = Julia(init_julia=False, julia=params.julia, compiled_modules=params.compiled_modules)
-
-	if my_number == 0:
-		print("Loading Circuitscape in Julia...\n")
-	#jl.eval("using Pkg;")
-	jl.eval("using Circuitscape; using Suppressor;")
-	#Main.eval("stdout")
-
+	#print("")
 	load_data(params, my_number)
 
 	return(local_seed)
@@ -433,7 +454,9 @@ def read_network(network, shapefile):
 	else:
 		print("Building network from shapefile:",shapefile)
 		print("WARNING: This can take a while with very large files!")
-		G=nx.Graph(nx.read_shp(shapefile, simplify=True, strict=True).to_undirected())
+		rivers = gpd.read_file(shapefile)
+		G=momepy.gdf_to_nx(rivers, approach="primal", directed=False, multigraph=False)
+		#G=nx.Graph(nx.read_shp(shapefile, simplify=True, strict=True).to_undirected())
 	return(G)
 
 #returns a pandas DataFrame from points dictionary
@@ -450,52 +473,78 @@ def parseSubgraphFromPoints(params, point_coords, G, out=None):
 
 	#first pass grabs subgraph from master shapefile graph
 	print("\nExtracting full subgraph...")
-	ktemp=pathSubgraph(G, points, extractFullSubgraph, params.reachid_col, params.length_col)
+	K=pathSubgraph(G, points, extractFullSubgraph, params.reachid_col, params.length_col)
 	if out:
 		net_out=str(out) + ".subgraph.net"
-		nx.write_gpickle(ktemp, net_out, pickle.HIGHEST_PROTOCOL)
-	#ktemp=extractFullSubgraph(G, points)
+		nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
+		# pos=dict()
+		# for n in K.nodes:
+		# 	pos[n] = n
+		# color_map = []
+		# for node in K:
+		# 	if node in points.values():
+		# 		color_map.append("blue")
+		# 	else:
+		# 		color_map.append("black")
+		# #draw networkx
+		# nx.draw_networkx(K, pos, with_labels=False, node_color=color_map, node_size=50)
+		# nx.draw_networkx_edge_labels(K, pos, font_size=6)
+		# network_plot=str(out) + ".subgraph.pdf"
+		# plt.savefig(network_plot)
 	del G
 
 	#second pass to simplify subgraph and collapse redundant nodes
-	if params.minimize:
-		print("\nMerging redundant paths...\n")
-		K=pathSubgraph(ktemp, points, extractMinimalSubgraph, params.reachid_col, params.length_col)
-		if out:
-			net_out=str(out) + ".minimalSubgraph.net"
-			nx.write_gpickle(ktemp, net_out, pickle.HIGHEST_PROTOCOL)
-		del ktemp
-	else:
-		K=ktemp
+	print("\nMerging redundant paths...\n")
+	Kmin=pathSubgraph(K, points, extractMinimalSubgraph, params.reachid_col, params.length_col)
+	if out:
+		net_out=str(out) + ".minimalSubgraph.net"
+		nx.write_gpickle(Kmin, net_out, pickle.HIGHEST_PROTOCOL)
+		pos=dict()
+		for n in Kmin.nodes:
+			pos[n] = n
+		color_map = []
+		for node in Kmin:
+			if node in points.values():
+				color_map.append("blue")
+			else:
+				color_map.append("black")
+		#draw networkx
+		nx.draw_networkx(Kmin, pos, with_labels=False, node_color=color_map, node_size=50)
+		#nx.draw_networkx_edge_labels(Kmin, pos, font_size=6)
+		network_plot=str(out) + ".minimalSubgraph.pdf"
+		plt.savefig(network_plot)
 
-	#grab real coordinates as node positions for plotting
-	pos=dict()
-	for n in K.nodes:
-		pos[n] = n
-	#print(pos)
+	return(K, Kmin)
 
-	#make a color map to color sample points and junctions differently
-	color_map = []
-	for node in K:
-		if node in points.values():
-			color_map.append("blue")
-		else:
-			color_map.append("black")
-	#draw networkx
-	nx.draw_networkx(K, pos, with_labels=False, node_color=color_map, node_size=50)
+def annotateEdges(K, Kmin, reachid_col, out=None):
+	reach_to_edge = dict()
+	i=0
+	edges = list()
+	#print("K:",len(K.edges())
+	for p1, p2, dat in Kmin.edges(data=True):
+		reaches = dat[reachid_col]
+		nx.set_edge_attributes(Kmin, {(p1, p2): {"EDGE_ID": str(i)}})
+		for r in reaches:
+			reach_to_edge[r] = str(i)
+		i+=1
 
-	nx.draw_networkx_edge_labels(K, pos, font_size=6)
+	for p1, p2, dat in K.edges(data=True):
+		edge_id = reach_to_edge[dat[reachid_col]]
+		nx.set_edge_attributes(K, {(p1, p2): {"EDGE_ID": str(edge_id)}})
 
-	network_plot=str(params.out) + ".graph.pdf"
-	plt.savefig(network_plot)
+	if out:
+		kmin_out=str(out) + ".minimalSubgraph.net"
+		nx.write_gpickle(Kmin, kmin_out, pickle.HIGHEST_PROTOCOL)
+		k_out=str(out) + ".subgraph.net"
+		nx.write_gpickle(K, k_out, pickle.HIGHEST_PROTOCOL)
 
-	return(K)
+	return(K, Kmin)
 
 def load_data(p, proc_num):
 
 	#make "local" globals (i.e. global w.r.t each process)
 	global graph
-	global distances
+	#global distances
 	global predictors
 	global inc_matrix
 	global points
@@ -503,24 +552,51 @@ def load_data(p, proc_num):
 	global node_point_dict
 	global edge_ids
 	global params
+	global id_col
 	params = p
 	my_number = proc_num
 
 	#read autoStreamTree outputs
-	if params.network is not None:
+	if params.network:
 		if my_number == 0:
 			print("Reading network from: ", str(params.network))
 		graph = readNetwork(params.network)
 	else:
-		if my_number == 0:
-			print("Reading network from: ", (str(params.prefix)+".network"))
-		graph = readNetwork((str(params.prefix)+".network"))
-	if my_number==0:
-		print("Reading autoStreamTree results from:", (str(params.prefix)+".streamTree.txt"))
-	(distances, predictors, edge_ids) = readStreamTree((str(params.prefix)+".streamTree.txt"), params.variables, params.force)
-	points = readPointCoords((str(params.prefix)+".pointCoords.txt"))
-	#print(points)
-	#make sure points are snapped to the network
+		sys.exit("ERROR: No network specified. Nothing to load.")
+
+	if params.minimize:
+		full_subgraph = params.network.replace("minimalSubgraph", "subgraph")
+		K = readNetwork(full_subgraph)
+		df = nx_to_df(K)
+		id_col="EDGE_ID"
+	else:
+		df = nx_to_df(graph)
+		id_col=params.reachid_col
+		df["EDGE_ID"] = df[id_col]
+
+	names=df["EDGE_ID"].unique().tolist()
+
+	df = df.groupby('EDGE_ID').agg('mean')
+
+	# #get distances (as a list, values corresponding to nodes)
+	# if params.fittedD != "locD":
+	# 	distances=df[params.fittedD].tolist()
+	# else:
+	# 	#get locus columns
+	# 	filter_col = [col for col in df if col.startswith('locD_')]
+	# 	data = df[filter_col]
+	#
+	# 	#aggregate distances
+	# 	distances = list(data.mean(axis=1))
+		#print(dist)
+
+	predictors=trans.rescaleCols(df[params.variables], 0, 10)
+	# make sure df is sorted the same as names
+	predictors = predictors.loc[names]
+
+
+	points = readPointCoords(params.coords)
+	# make sure points are snapped to the network
 	snapped=SortedDict()
 	for point in points.keys():
 		if point not in graph.nodes():
@@ -531,19 +607,67 @@ def load_data(p, proc_num):
 		else:
 			snapped[tuple(point)]=points[point]
 	points = snapped
-	del snapped
 
 	node_point_dict=nodes_to_points(graph, points)
 
+	# build incidence matrix
+	inc_matrix = incidenceMatrix(graph, points, params.length_col, id_col, edge_order=names)
+	ofh=params.out+".incidenceMatrix.txt"
+	with np.printoptions(precision=0, suppress=True):
+		np.savetxt(ofh, inc_matrix, delimiter="\t", fmt='%i')
+
 	#read genetic distances
-	if params.predicted:
-		if my_number == 0:
-			print("Reading incidence matrix from: ", (str(params.prefix)+".incidenceMatrix.txt"))
-		inc_matrix = readIncidenceMatrix((str(params.prefix)+".incidenceMatrix.txt"))
-		gendist = generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances)
-	else:
-		gendist = parseInputGenMat(graph, points, prefix=params.prefix, inmat=params.inmat)
+	gendist = parseInputGenMat(graph, points, prefix=params.prefix, inmat=params.inmat)
 	#print(gendist)
+
+def incidenceMatrix(graph, points, len_col, id_col, edge_order):
+	#make matrix
+	inc = np.zeros((nCr(len(points),2), len(edge_order)), dtype=int)
+	edge_to_index=dict()
+	index=0
+	for e in edge_order:
+		edge_to_index[e]=index
+		index+=1
+
+	#function to calculate weights for Dijkstra's shortest path algorithm
+	#i just invert the distance, so the shortest distance segments are favored
+	def dijkstra_weight(left, right, attributes):
+		#print(attributes[len_col])
+		return(10000000000-attributes[len_col])
+
+	#print(points)
+	index=0
+	for ia, ib in itertools.combinations(range(0,len(points)),2):
+		path = nx.bidirectional_dijkstra(graph, points.keys()[ia], points.keys()[ib], weight=dijkstra_weight)
+		for p1, p2, edge in graph.edges(data=True):
+			eid=edge[id_col]
+			if find_pair(path[1], p1, p2):
+				#print("yes:",edge)
+				inc[index, edge_to_index[eid]] = 1
+			else:
+				#print("no")
+				inc[index, edge_to_index[eid]] = 0
+		index = index+1
+		#print("\n---\n")
+	return(inc)
+
+#utility function to test if two elements are consecutive in list (irrespective of order)
+def find_pair(list, x, y):
+	if x not in list or y not in list:
+		return(False)
+	elif abs(list.index(x)-list.index(y)) == 1:
+		return(True)
+	else:
+		return(False)
+
+def nx_to_df(G):
+	l=list()
+	for p1, p2, e in G.edges(data=True):
+		e["left"] = p1
+		e["right"] = p2
+		l.append(e)
+	df=pd.DataFrame(l)
+	return(df)
 
 def checkFormatGenMat(mat, order):
 	if os.path.isfile(mat):
@@ -594,7 +718,7 @@ def parseInputGenMat(graph, points, prefix=None, inmat=None):
 			sys.exit()
 	else:
 		#read input matrix instead
-		gen = checkFormatGenMat(inmat)
+		gen = checkFormatGenMat(inmat, order)
 		if gen is not None:
 			return(gen)
 		else:
@@ -621,7 +745,7 @@ def nodes_to_points(graph, points):
 			node_idx+=1
 	return(np)
 
-def snapPoints(points, G, out="out"):
+def snapPoints(points, G, out=None):
 	point_coords=SortedDict()
 	snapDists=dict()
 	verb=True
@@ -637,14 +761,11 @@ def snapPoints(points, G, out="out"):
 	#print(list(point_coords.keys()))
 	print()
 
-	#plot histogram of snap distances
-	dtemp = pd.DataFrame(list(snapDists.items()), columns=['name', 'km'])
-	dtout = str(out) + ".snapDistances.txt"
-	dtemp.to_csv(dtout, sep="\t", index=False)
-	del dtemp
-	del dtout
-	del snapDists
-
+	if out:
+		#plot histogram of snap distances
+		dtemp = pd.DataFrame(list(snapDists.items()), columns=['name', 'km'])
+		dtout = str(out) + ".snapDistances.txt"
+		dtemp.to_csv(dtout, sep="\t", index=False)
 	#return everything
 	return(point_coords)
 
@@ -683,30 +804,6 @@ def getNodeOrder(graph, points, as_dict=False, as_index=False, as_list=True):
 		return(order)
 	#otherwise, return list of NAMES in correct order
 	return(order)
-
-def generatePairwiseDistanceMatrix(graph, points, inc_matrix, distances):
-	node_dict=getNodeOrder(graph, points, as_index=True)
-	gen=np.zeros(shape=(len(points), len(points)))
-	inc_row=0
-	#print(node_dict.keys())
-	#print(node_dict[tuple(list(points.keys())[0])])
-	for ia, ib in itertools.combinations(range(0,len(points)),2):
-		inc_streams=inc_matrix[inc_row,]
-		#print(distances*inc_streams)
-		d=sum(distances*inc_streams)
-		#print(d)
-		inc_row+=1
-		#print(node_dict)
-		#print(ia, " -- ", list(points.keys())[ia], " -- ", node_dict[list(points.keys())[ia]])
-		#print(ib, " -- ", list(points.keys())[ib], " -- ", node_dict[list(points.keys())[ib]])
-		gen[node_dict[list(points.keys())[ia]], node_dict[list(points.keys())[ib]]] = d
-	#print(gen)
-	return(gen)
-
-
-def readIncidenceMatrix(inc):
-	df = pd.read_csv(inc, header=None, index_col=False, sep="\t")
-	return(df.to_numpy())
 
 def readNetwork(network):
 	graph=nx.Graph(nx.read_gpickle(network).to_undirected())
@@ -805,6 +902,11 @@ def snapToNode(graph, pos):
 	#print("closest to ", pos, "is",tuple(nodes[node_pos]))
 	return (tuple(nodes[node_pos]))
 
+#utility function to calculate number of combinations n choose k
+def nCr(n,k):
+	f = math.factorial
+	return f(n) // f(k) // f(n-k)
+
 #function to calculate great circle distances
 #returns in units of KILOMETERS
 def great_circle(lon1, lat1, lon2, lat2):
@@ -827,29 +929,6 @@ def readPointCoords(pfile):
 			d[coords]=name
 	return(d)
 
-def readStreamTree(streamtree, variables, force=None):
-	df = pd.read_csv(streamtree, header=0, index_col=False, sep="\t")
-	names=sorted(set(df["HYRIV_ID"].tolist()))
-	df["EDGE_ID"] = df["HYRIV_ID"]
-	del df["HYRIV_ID"]
-
-	df = df.groupby('EDGE_ID').agg('mean')
-
-
-	#get distances (as a list, values corresponding to nodes)
-	if force:
-		dist=df[force].tolist()
-	else:
-		#get locus columns
-		filter_col = [col for col in df if col.startswith('locD_')]
-		data = df[filter_col]
-
-		#aggregate distances
-		dist = list(data.mean(axis=1))
-		#print(dist)
-
-	env=trans.rescaleCols(df[variables], 0, 10)
-	return(dist, env, names)
 
 # #parallel version; actually returns a list of filenames
 # #custom evaluation function
@@ -965,9 +1044,9 @@ def evaluate(individual):
 		#1)Scale to 0-10; 2) Perform desired transformation; 3) Re-scale to 0-10
 		#add weighted variable data to multi
 		if individual[0::4][i] == 1:
-			print("Before:", predictors[variable])
+			#print("Before:", predictors[variable])
 			var = transform(predictors[variable], individual[2::4][i], individual[3::4][i])
-			print("After:", var)
+			#print("After:", var)
 			if first:
 				#transform(data, transformation, shape) * weight
 				multi = var*(individual[1::4][i])
@@ -980,32 +1059,37 @@ def evaluate(individual):
 		fitness = float('-inf')
 	else:
 		#Rescale multi for circuitscape
-		print("Multi:",multi)
 		multi = trans.rescaleCols(multi, 1, 10)
 
 		#write circuitscape inputs
 		#oname=".temp"+str(params.seed)+"_"+str(mp.Process().name)
-		oname=".temp_"+str(params.out)+"_p"+str(my_number)
-		print(oname)
+		oname=".temp_"+str(os.path.basename(params.out))+"_p"+str(my_number)
 		focal=True
-		if params.cstype=="edgewise":
-			focal=False
-		cs.writeCircuitScape(oname, graph, points, multi, focalPoints=focal, fromAttribute=None)
-		cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
-		print("evaluate")
+		# if params.cstype=="edgewise":
+		# 	focal=False
+		#cs.writeCircuitScape(oname, graph, points, multi, id_col=id_col, focalPoints=focal, fromAttribute=None)
+		#cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
 		#Call circuitscape from pyjulia
-		cs.evaluateIni(jl, oname)
+		print("evaluate", flush=True)
+		# cs.evaluateIni(jl, oname)
 
-		#parse circuitscape output
-		if params.cstype=="edgewise":
-			res = cs.parseEdgewise(oname, distances)
-			fitness = res[params.fitmetric][0]
-			res=list(res.iloc[0])
-		else:
-			res = cs.parsePairwise(oname, gendist)
-			fitness = res[params.fitmetric][0]
-			res=list(res.iloc[0])
+		# #parse circuitscape output
+		# if params.cstype=="edgewise":
+		# 	res = cs.parseEdgewise(oname, distances)
+		# 	fitness = res[params.fitmetric][0]
+		# 	res=list(res.iloc[0])
+		# else:
+		# res = cs.parsePairwise(oname, gendist)
+		# fitness = res[params.fitmetric][0]
+		# res=list(res.iloc[0])
 
+		# evaluate using simple resistance distance
+		r = rd.parsePairwise(points, inc_matrix, multi, gendist)
+		print(r)
+		oname=".rdist_"+str(os.path.basename(params.out))+"_p"+str(my_number)
+		np.savetxt(oname, r, delimiter="\t", fmt='%i')
+		print("Done")
+		sys.exit()
 	#return fitness value
 	return(fitness, res)
 
