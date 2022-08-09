@@ -265,8 +265,8 @@ def main():
 	#if params.modavg:
 	if params.modavg:
 		modelAverageCS(pool, bests.getHOF(only_keep=params.only_keep), base=params.out, plot=params.plot, report_all=params.report_all) #set to true for production
-	writeMatrix((str(params.out)+".genDistMat.tsv"), gendist, list(node_point_dict.values()))
-
+	df=pd.DataFrame(gendist, columns=list(node_point_dict.values()), index=list(node_point_dict.values()))
+	df.to_csv((str(params.out)+".genDistMat.tsv"), sep="\t", header=True, index=True)
 
 	#clean up temp files
 	oname=".temp_"+str(os.path.basename(params.out))+"*"
@@ -629,6 +629,7 @@ def load_data(p, proc_num):
 
 	#read genetic distances
 	gendist = parseInputGenMat(graph, points_names, prefix=params.prefix, inmat=params.inmat)
+	print(gendist)
 	ofh=params.out+".genMat.txt"
 	with np.printoptions(precision=0, suppress=True):
 		np.savetxt(ofh, gendist, delimiter="\t")
@@ -700,7 +701,11 @@ def checkFormatGenMat(mat, points):
 					inds1 = [inmat.columns.get_loc(x) for x in points.values()[ia]]
 					inds2 = [inmat.columns.get_loc(x) for x in points.values()[ib]]
 					results = inmat.iloc[inds1, inds2]
-					results = agg.aggregateDist("ARITH", results)
+					print(results)
+					results = agg.aggregateDist("ARITH", results.to_numpy())
+					print()
+					print("MEAN:", results)
+					print()
 				np.fill_diagonal(gen, 0.0)
 			return(gen)
 		else:
