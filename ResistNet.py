@@ -28,6 +28,7 @@ import resistnet.transform as trans
 import resistnet.hall_of_fame as hof
 import resistnet.resist_dist as rd
 import resistnet.circuitscape_runner as cs
+import resistnet.aggregators as agg
 
 def main():
 
@@ -422,24 +423,24 @@ def initialize_worker(params, proc_num):
 	random.seed(local_seed)
 	print("Worker",proc_num,"initializing...\n", flush=True)
 
-	# global jl
-	# from julia.api import Julia
-	# from julia import Base, Main
-	# from julia.Main import println, redirect_stdout
-	#
-	# #establish connection to julia
-	# print("Worker",proc_num,"connecting to Julia...\n", flush=True)
-	# if params.sys_image:
-	# 	jl = Julia(init_julia=True, sysimage=params.sys_image, julia=params.julia, compiled_modules=params.compiled_modules)
-	# else:
-	# 	print("julia", flush=True)
-	# 	jl = Julia(init_julia=True, julia=params.julia, compiled_modules=params.compiled_modules)
-	#
-	# if my_number == 0:
-	# 	print("Loading Circuitscape in Julia...\n", flush=True)
-	# #jl.eval("using Pkg;")
-	# jl.eval("using Circuitscape; using Suppressor;")
-	# Main.eval("stdout")
+	global jl
+	from julia.api import Julia
+	from julia import Base, Main
+	from julia.Main import println, redirect_stdout
+
+	#establish connection to julia
+	print("Worker",proc_num,"connecting to Julia...\n", flush=True)
+	if params.sys_image:
+		jl = Julia(init_julia=True, sysimage=params.sys_image, julia=params.julia, compiled_modules=params.compiled_modules)
+	else:
+		print("julia", flush=True)
+		jl = Julia(init_julia=True, julia=params.julia, compiled_modules=params.compiled_modules)
+
+	if my_number == 0:
+		print("Loading Circuitscape in Julia...\n", flush=True)
+	#jl.eval("using Pkg;")
+	jl.eval("using Circuitscape; using Suppressor;")
+	Main.eval("stdout")
 
 	#print("")
 	load_data(params, my_number)
@@ -553,6 +554,7 @@ def load_data(p, proc_num):
 	global edge_ids
 	global params
 	global id_col
+	global points_names
 	params = p
 	my_number = proc_num
 
@@ -603,10 +605,19 @@ def load_data(p, proc_num):
 			node=snapToNode(graph, point)
 			if my_number == 0:
 				print("Point not found in graph, snapping to nearest node:", point, " -- ", node)
+			if tuple(node) not in snapped:
+				snapped[tuple(node)]=list()
 			snapped[tuple(node)]=points[point]
 		else:
+			if tuple(point) not in snapped:
+				snapped[tuple(point)]=list()
 			snapped[tuple(point)]=points[point]
-	points = snapped
+	points_names = snapped
+	index=0
+	points=snapped.copy()
+	for p in points.keys():
+		points[p]=index
+		index+=1
 
 	node_point_dict=nodes_to_points(graph, points)
 
@@ -617,8 +628,10 @@ def load_data(p, proc_num):
 		np.savetxt(ofh, inc_matrix, delimiter="\t", fmt='%i')
 
 	#read genetic distances
-	gendist = parseInputGenMat(graph, points, prefix=params.prefix, inmat=params.inmat)
-	#print(gendist)
+	gendist = parseInputGenMat(graph, points_names, prefix=params.prefix, inmat=params.inmat)
+	ofh=params.out+".genMat.txt"
+	with np.printoptions(precision=0, suppress=True):
+		np.savetxt(ofh, gendist, delimiter="\t")
 
 def incidenceMatrix(graph, points, len_col, id_col, edge_order):
 	#make matrix
@@ -669,61 +682,42 @@ def nx_to_df(G):
 	df=pd.DataFrame(l)
 	return(df)
 
-def checkFormatGenMat(mat, order):
+def checkFormatGenMat(mat, points):
+	order = [item for sublist in list(points.values()) for item in sublist]
 	if os.path.isfile(mat):
 		#read and see if it has the correct dimensions
 		inmat = pd.read_csv(mat, header=0, index_col=0, sep="\t")
 		#if correct dimensions, check if labelled correctly
 		if len(inmat.columns) >= len(order):
-			if set(list(inmat.columns.values)) != set(list(inmat.columns.values)):
-				#print("columns and rows don't match")
-				return(None)
-			# elif set(list(inmat.columns.values)) != set(order):
-			# 	#print("Oh no! Input matrix columns and/ or rows don't appear to be labelled properly. Please provide an input matrix with column and row names!")
-			# 	return(None)
-			else:
-				#this must be the one. Reorder it and return
-				#print("Reading genetic distances from input matrix:",indmat)
-				formatted = inmat.reindex(order)
-				formatted = formatted[order]
-				#print(formatted)
-				gen = formatted.to_numpy()
-				return(gen)
-		#otherwise, skip and try the popgenmat
+			formatted = inmat.reindex(index=order, columns=order)
+			#print(formatted.columns)
+			if len(formatted.columns) > len(list(points.keys())):
+				print("Some populations have identical coordinates. Merging genetic distances using 'arithmetic mean'")
+				gen = np.zeros((len(points.keys()),len(points.keys())))
+				#establish as nan
+				gen[:] = np.nan
+				for ia,ib in itertools.combinations(range(0,len(list(points.keys()))),2):
+					inds1 = [inmat.columns.get_loc(x) for x in points.values()[ia]]
+					inds2 = [inmat.columns.get_loc(x) for x in points.values()[ib]]
+					results = inmat.iloc[inds1, inds2]
+					results = agg.aggregateDist("ARITH", results)
+				np.fill_diagonal(gen, 0.0)
+			return(gen)
 		else:
-			#print("wrong number of columns")
+			print("ERROR: Input genetic distance matrix has wrong dimensions")
+			sys.exit(1)
 			return(None)
 	else:
 		return(None)
 
 def parseInputGenMat(graph, points, prefix=None, inmat=None):
-	order = getNodeOrder(graph, points, as_list=True)
-	#if no input matrix provided, infer from autoStreamTree output
-	if inmat is None:
-		#check if pop and ind mats both exist
-		indmat = str(prefix) + ".indGenDistMat.txt"
-		popmat = str(prefix) + ".popGenDistMat.txt"
-		#if indmat exists
-		ind = checkFormatGenMat(indmat, order)
-		pop = checkFormatGenMat(popmat, order)
-		#print(pop)
-		#print(order)
-		#print(pop.dtype)
-		if pop is not None:
-			return(pop)
-		elif ind is not None:
-			return(ind)
-		else:
-			print("Failed to read autoStreamTree genetic distance matrix.")
-			sys.exit()
+	#read input matrix
+	gen = checkFormatGenMat(inmat, points)
+	if gen is not None:
+		return(gen)
 	else:
-		#read input matrix instead
-		gen = checkFormatGenMat(inmat, order)
-		if gen is not None:
-			return(gen)
-		else:
-			print("Failed to read input genetic distance matrix:",inmat)
-			sys.exit()
+		print("Failed to read input genetic distance matrix:",inmat)
+		sys.exit()
 
 def nodes_to_points(graph, points):
 	"node to point"
@@ -757,7 +751,7 @@ def snapPoints(points, G, out=None):
 		snapDists[row[0]] = great_circle(node[0], node[1], row[2], row[1])
 		point_coords[name] = node
 
-	print("Read",str(len(point_coords.keys())),"individuals.")
+	print("Read",str(len(point_coords.keys())),"points.")
 	#print(list(point_coords.keys()))
 	print()
 
@@ -926,7 +920,9 @@ def readPointCoords(pfile):
 			stuff=line.split()
 			name=stuff[0]
 			coords=tuple([float(stuff[2]), float(stuff[1])])
-			d[coords]=name
+			if coords not in d:
+				d[coords]=list()
+			d[coords].append(name)
 	return(d)
 
 
@@ -1067,27 +1063,29 @@ def evaluate(individual):
 		focal=True
 		# if params.cstype=="edgewise":
 		# 	focal=False
-		#cs.writeCircuitScape(oname, graph, points, multi, id_col=id_col, focalPoints=focal, fromAttribute=None)
-		#cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
+		cs.writeCircuitScape(oname, graph, points, multi, id_col=id_col, focalPoints=focal, fromAttribute=None)
+		cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
 		#Call circuitscape from pyjulia
 		print("evaluate", flush=True)
-		# cs.evaluateIni(jl, oname)
+		cs.evaluateIni(jl, oname)
 
-		# #parse circuitscape output
+		#parse circuitscape output
 		# if params.cstype=="edgewise":
 		# 	res = cs.parseEdgewise(oname, distances)
 		# 	fitness = res[params.fitmetric][0]
 		# 	res=list(res.iloc[0])
 		# else:
-		# res = cs.parsePairwise(oname, gendist)
-		# fitness = res[params.fitmetric][0]
-		# res=list(res.iloc[0])
+
+		res = cs.parsePairwise(oname, gendist)
+		print(res)
+		fitness = res[params.fitmetric][0]
+		res=list(res.iloc[0])
 
 		# evaluate using simple resistance distance
-		r = rd.parsePairwise(points, inc_matrix, multi, gendist)
-		print(r)
+		r, res = rd.parsePairwise(points, inc_matrix, multi, gendist)
+		print(res)
 		oname=".rdist_"+str(os.path.basename(params.out))+"_p"+str(my_number)
-		np.savetxt(oname, r, delimiter="\t", fmt='%i')
+		np.savetxt(oname, r, delimiter="\t")
 		print("Done")
 		sys.exit()
 	#return fitness value

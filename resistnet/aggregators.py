@@ -14,7 +14,7 @@ def aggregateDist(method, stuff):
 			print("")
 			sys.exit(1)
 	elif method == "ARITH":
-		return(np.mean(stuff))
+		return(stuff.mean())
 	elif method == "GEOM":
 		return(scipy.stats.mstats.gmean(stuff))
 	elif method == "MEDIAN":

@@ -77,6 +77,49 @@ def evaluateIniParallel(jl, ini_list):
 	Main.run_list = run_list
 	jl.eval(str("@suppress begin\npmap(compute, run_list, batch_size=4)\nend;"))
 
+
+# #function to write inputs for circuitscape
+# def writeCircuitScape(oname, graph, points, resistance, id_col="EDGE_ID", focalPoints=False, fromAttribute=None):
+# 	if fromAttribute is None:
+# 		node_dict=dict()
+# 		edge_idx=0
+# 		node_idx=1
+# 		net_output=""
+# 		pts_output=""
+# 		kept=0
+# 		#for each edge
+# 		#print("Number of points:",len(points))
+# 		#for p1 ,p2, edge in graph.edges(data=True):
+# 			#get nodes on either side and index them
+# 			#get resistance
+# 			#add all to output string
+# 			#NOTE: Points should be an OrderedDict, so this should work fine
+# 			#print(edge[0], " -- ", edge[1])
+# 			if p1 not in node_dict.keys():
+# 				node_dict[p1] = node_idx
+# 				if focalPoints and p1 not in points.keys():
+# 					pass
+# 				else:
+# 					pts_output += str(node_idx) + ".0\n"
+# 					kept+=1
+# 				node_idx+=1
+# 			if p2 not in node_dict.keys():
+# 				node_dict[p2] = node_idx
+# 				if focalPoints and p2 not in points.keys():
+# 					pass
+# 				else:
+# 					pts_output += str(node_idx) + ".0\n"
+# 					kept+=1
+# 				node_idx+=1
+# 			net_output += str(node_dict[p1]) + ".0\t" + str(node_dict[p2]) + ".0\t" + str(float(resistance.loc[[edge[id_col]]])) + "\n"
+# 		#print("Number of focal points:",kept)
+# 		with open((str(oname) + ".graph_resistances.txt"), "w") as ofh:
+# 			ofh.write(net_output)
+# 			ofh.close()
+# 		with open((str(oname) + ".focal_nodes.txt"), "w") as pfh:
+# 			pfh.write(pts_output)
+# 			pfh.close()
+
 #function to write inputs for circuitscape
 def writeCircuitScape(oname, graph, points, resistance, id_col="EDGE_ID", focalPoints=False, fromAttribute=None):
 	if fromAttribute is None:
@@ -88,6 +131,12 @@ def writeCircuitScape(oname, graph, points, resistance, id_col="EDGE_ID", focalP
 		kept=0
 		#for each edge
 		#print("Number of points:",len(points))
+		for i in points:
+			if i not in node_dict.keys():
+				node_dict[i] = node_idx
+				node_idx+=1
+				pts_output += str(node_idx) + ".0\n"
+				kept+=1
 		for p1 ,p2, edge in graph.edges(data=True):
 			#get nodes on either side and index them
 			#get resistance
