@@ -706,6 +706,7 @@ def checkFormatGenMat(mat, points):
 					print()
 					print("MEAN:", results)
 					print()
+					gen[ia, ib] = gen[ib, ia] = results
 				np.fill_diagonal(gen, 0.0)
 			return(gen)
 		else:
