@@ -50,7 +50,7 @@ class hallOfFame():
 			select_size=space
 			if space> popDF.shape[0]:
 				select_size=popDF.shape[0]
-			self.data = pd.concat([self.data, popDF[:select_size]], ignore_axis=True)
+			self.data = pd.concat([self.data, popDF[:select_size]], ignore_index=True)
 			self.data = self.data.sort_values('fitness', ascending=False)
 			self.data = self.data.drop_duplicates(keep='first', ignore_index=True)
 			self.data = self.data.reset_index(drop=True)
