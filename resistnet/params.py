@@ -12,10 +12,10 @@ class parseArgs():
 			"seed=", "procs=", "maxPop=", "maxpop=", "maxgen=", "maxGen=",
 			"size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=",
 			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
-			"burn=", "fittedD=", "infer", "cholmod", "cprocs=", "Cprocs=", "vars=", "modavg",
-			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all", "julia=", "no_compiled_modules",
-			"julia_sys_image=", "lib_path=", "max_hof_size=", "posWeight", "fixWeight", "allShapes",
-			"coords=", "length_col=", "reachid_col=", "minimize", "network="])
+			"burn=", "fittedD=", "vars=", "modavg", "pop_agg=",
+			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all",
+			"max_hof_size=", "posWeight", "fixWeight", "allShapes",
+			"coords=", "length_col=", "reachid_col=", "minimize", "network=", "fixShape"])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -30,6 +30,7 @@ class parseArgs():
 		self.popsize=None
 		self.length_col="LENGTH_KM"
 		self.reachid_col="HYRIV_ID"
+		self.pop_agg="ARITH"
 		self.maxpopsize=100
 		self.cstype="pairwise"
 		self.fitmetric="aic"
@@ -61,6 +62,7 @@ class parseArgs():
 		self.posWeight=False
 		self.fixWeight=False
 		self.allShapes=False
+		self.fixShape=False
 
 		self.only_keep=True
 		self.julia="julia"
@@ -100,6 +102,10 @@ class parseArgs():
 				self.maxGens=int(arg)
 			elif opt=="popsize" or opt=="size":
 				self.popsize=int(arg)
+			elif opt=="pop_agg":
+				self.pop_agg = arg.upper()
+				if self.pop_agg not in ["HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX", "MIN", "FIRST"]:
+					self.display_help("Invalid option "+str(arg).upper()+" for option <--pop_agg>")
 			elif opt=="mutpb":
 				self.mutpb=float(arg)
 			elif opt=="indpb":
@@ -131,8 +137,6 @@ class parseArgs():
 				self.length_col=arg
 			elif opt=="cholmod":
 				self.cholmod=True
-			elif opt=="C" or opt=="Cprocs" or opt=="cprocs":
-				self.CS_procs=int(arg)
 			elif opt=="v" or opt=="vars":
 				self.variables=arg.split(",")
 			elif opt=="A" or opt=="modavg" or opt=="modAvg":
@@ -147,20 +151,15 @@ class parseArgs():
 				self.out=arg
 			elif opt=="avgall":
 				self.only_keep=False
-			elif opt=="julia" or opt=="j":
-				self.julia = arg
-			elif opt=="no_compiled_modules":
-				self.compiled_modules=False
-			elif opt=="julia_sys_image":
-				self.sys_image=arg
-			# elif opt=="lib_path":
-			# 	sys.path.append(arg)
+
 			elif opt=="posWeight":
 				self.posWeight=True
 			elif opt=="fixWeight":
 				self.fixWeight=True
 			elif opt=="allShapes":
 				self.allShapes=True
+			elif opt=="fixShape":
+				self.fixShape=True
 			elif opt == 'h' or opt == 'help':
 				pass
 			else:
@@ -182,16 +181,25 @@ class parseArgs():
 		print ("Description: Genetic algorithm to optimize resistance models on networks")
 		print("""
 Input options:
-  If manually specifying inputs:
 	-g,--genmat	: Genetic distance matrix
 	-s,--shp	: Path to shapefile containing cleaned, contiguous stream reaches
 	-c,--coords	: Input .tsv file containing sample coordinates
+
 
 General options:
 	--seed	: Random number seed (default=taken from clock time)
 	--minimize	: Minimize input graph
 	--reachid_col	: Attribute name representing primary key in shapefile [default="REACH_ID"]
 	--length_col	: Attribute name giving length in kilometers [default="LENGTH_KM"]
+	--pop_agg	: Method to use to combine genetic distances for populations mapping to same node
+		  ARITH		: [default] Use arithmetic mean
+		  MEDIAN	: Use median distance
+		  HARM		: Use harmonic mean
+		  ADJHARM	: Adjusted harmonic mean (see docs)
+		  GEOM		: Use geometric mean
+		  MIN		: Use minimum distance
+		  MAX		: Use maximum distance
+		  FIRST		: Use first value
 	-t,--procs	: Number of parallel processors
 	-X,--noPlot	: Turn off plotting
 	-o,--out	: Output file prefix
@@ -208,9 +216,11 @@ Genetic Algorithm Options:
 	-T,--tSize	: Tournament size [default=10]
 	--posWeight	: Constrain parameter weights to between 0.0-1.0
 	--fixWeight	: Constrain parameter weights to 1.0 (i.e., unweighted)
+	--fixShape	: Turn off feature transformation
 	--allShapes	: Allow inverse and reverse transformations
 
 Model optimization/ selection options:
+	-v,--vars	: Comma-separated list (no spaces) of explanatory attributes to include
 	-F,--nfail	: Number of generations failing to improve to stop optimization
 	-d,--delt	: Threshold absolute change in fitness [default=0.0]
 	-D,--deltP	: Threshold percentage change in fitness, as decimal [default=0.001]
@@ -225,17 +235,6 @@ Model optimization/ selection options:
 	--max_hof_size	: Maximum individuals to track in the Hall of Fame [default=100]
 	--distance	: Compute a distance-only model using this variable [default="LENGTH_KM"] ***NOT IMPLEMENTED***
 	--null	: Output null (population-only) model metrics ***NOT IMPLEMENTED***
-
-Circuitscape options:
-	--cholmod	: Turn on CHOLMOD solver
-	-C,--cprocs	: Processors per Circuitscape process [default=1]
-			    NOTE: Total simultaneous processes= <-T> * <-C>
-
-Genetic distance options:
-	--fittedD	: Use XX attribute from input table as distance metric (e.g. 'fittedD')
-			    NOTE: By default, the average of "locD_" columns will be taken
-	--infer		: Infer pairwise distances from input table (i.e., NOT input matrix)
-	-v,--vars	: Comma-separated list (no spaces) of explanatory attributes to include
 
 Multi-model inference options:
 	-A,--modavg	: Compute model-averaged resistances
