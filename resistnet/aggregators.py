@@ -29,6 +29,14 @@ def aggregateDist(method, stuff):
 		return(np.std(stuff))
 	elif method == "VAR":
 		return(np.var(stuff))
+	elif method == "FIRST":
+		return(stuff.flat[0])
+	elif method == "CV":
+		sd=np.std(stuff)
+		if sd==0.0:
+			return(0.0)
+		else:
+			return(sd/np.mean(stuff))
 
 #computes an harmonic mean corrected for non-positive values
 def adjustedHarmonicMean(stuff):
