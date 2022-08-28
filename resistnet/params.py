@@ -178,7 +178,18 @@ class parseArgs():
 			self.display_help("--posWeight and --fixWeight cannot be used together")
 
 		if self.varFile is not None:
-			pass
+			if self.variables is not None:
+				print("Warning: Variables were specified with both <-v> and <-V>... Over-riding options using file provided with <-V>")
+			if self.edge_agg is None:
+				self.edge_agg="ARITH"
+			with open(self.varFile) as fp:
+				for line in fp:
+					line=line.strip()
+					stuff=line.split("\t")
+					if len(stuff) < 2:
+						self.agg_opts[stuff[0]]=self.edge_agg
+					else:
+						self.agg_opts[stuff[0]]=stuff[1]
 		else:
 			for v in self.variables:
 				self.agg_opts[v]=self.edge_agg
