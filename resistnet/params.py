@@ -7,13 +7,13 @@ class parseArgs():
 	def __init__(self):
 		#Define options
 		try:
-			options, remainder = getopt.getopt(sys.argv[1:], 'hp:g:s:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:Aa:o:Xj:', \
+			options, remainder = getopt.getopt(sys.argv[1:], 'hp:g:s:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:V:Aa:o:Xj:', \
 			["shp=", "help", "input=", "prefix=", "genmat=", "shapefile=",
 			"seed=", "procs=", "maxPop=", "maxpop=", "maxgen=", "maxGen=",
 			"size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=",
 			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
-			"burn=", "fittedD=", "vars=", "modavg", "pop_agg=",
-			"modAvg", "awsum=", "report_all", "noPlot", "out=", "keep_all",
+			"burn=", "dist_col=", "vars=", "pop_agg=", "varfile=",
+			"awsum=", "report_all", "noPlot", "out=", "keep_all",
 			"max_hof_size=", "posWeight", "fixWeight", "allShapes",
 			"coords=", "length_col=", "reachid_col=", "minimize", "network=", "fixShape"])
 		except getopt.GetoptError as err:
@@ -22,8 +22,10 @@ class parseArgs():
 		#Default values for params
 		#Input params
 		self.prefix="out3"
-		self.fittedD="fittedD"
+		self.dist_col=None
 		self.variables = None
+		self.agg_opts = dict()
+		self.varFile=None
 		self.minimize=False
 		self.seed=None
 		self.installCS=False
@@ -31,6 +33,7 @@ class parseArgs():
 		self.length_col="LENGTH_KM"
 		self.reachid_col="HYRIV_ID"
 		self.pop_agg="ARITH"
+		self.edge_agg="ARITH"
 		self.maxpopsize=100
 		self.cstype="pairwise"
 		self.fitmetric="aic"
@@ -55,7 +58,7 @@ class parseArgs():
 		self.max_hof_size=100
 		self.out="output"
 		self.awsum=0.95
-		self.modavg=False
+		self.modavg=True
 		self.report_all=False
 		self.plot=True
 
@@ -104,8 +107,12 @@ class parseArgs():
 				self.popsize=int(arg)
 			elif opt=="pop_agg":
 				self.pop_agg = arg.upper()
-				if self.pop_agg not in ["HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX", "MIN", "FIRST"]:
+				if self.pop_agg not in ["HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX", "MIN", "SUM", "FIRST", "SD", "VAR", "CV"]:
 					self.display_help("Invalid option "+str(arg).upper()+" for option <--pop_agg>")
+			elif opt=="edge_agg":
+				self.edge_agg = arg.upper()
+				if self.edge_agg not in ["HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX", "MIN", "SUM", "FIRST", "SD", "VAR", "CV"]:
+					self.display_help("Invalid option "+str(arg).upper()+" for option <--edge_agg>")
 			elif opt=="mutpb":
 				self.mutpb=float(arg)
 			elif opt=="indpb":
@@ -127,8 +134,8 @@ class parseArgs():
 					self.fitmetric=arg.lower()
 			elif opt=="b" or opt=="burn":
 				self.burnin=int(arg)
-			elif opt=="fittedD":
-				self.fittedD=arg
+			elif opt=="dist_col":
+				self.dist_col=arg
 			elif opt=="infer":
 				self.predicted=True
 			elif opt=="reachid_col":
@@ -139,6 +146,8 @@ class parseArgs():
 				self.cholmod=True
 			elif opt=="v" or opt=="vars":
 				self.variables=arg.split(",")
+			elif opt=="V" or opt=="varFile":
+				self.varFile=arg
 			elif opt=="A" or opt=="modavg" or opt=="modAvg":
 				self.modavg=True
 			elif opt=="a" or opt=="awsum":
@@ -168,6 +177,12 @@ class parseArgs():
 		if self.posWeight and self.fixWeight:
 			self.display_help("--posWeight and --fixWeight cannot be used together")
 
+		if self.varFile is not None:
+			pass
+		else:
+			for v in self.variables:
+				self.agg_opts[v]=self.edge_agg
+
 		if self.variables is None:
 			self.display_help("No variables selected.")
 
@@ -185,13 +200,21 @@ Input options:
 	-s,--shp	: Path to shapefile containing cleaned, contiguous stream reaches
 	-c,--coords	: Input .tsv file containing sample coordinates
 
-
 General options:
 	--seed	: Random number seed (default=taken from clock time)
 	--minimize	: Minimize input graph
+	--dist_col	: Optional attribute representing edge-wise distance, e.g., "fittedD"
 	--reachid_col	: Attribute name representing primary key in shapefile [default="REACH_ID"]
 	--length_col	: Attribute name giving length in kilometers [default="LENGTH_KM"]
+	-t,--procs	: Number of parallel processors
+	-X,--noPlot	: Turn off plotting
+	-o,--out	: Output file prefix
+	-h,--help	: Displays help menu
+
+Aggregation options:
+	--edge_agg	: Method to use when combining variable values across segments (e.g., with --minimize)
 	--pop_agg	: Method to use to combine genetic distances for populations mapping to same node
+		All of these can take the following options:
 		  ARITH		: [default] Use arithmetic mean
 		  MEDIAN	: Use median distance
 		  HARM		: Use harmonic mean
@@ -200,10 +223,11 @@ General options:
 		  MIN		: Use minimum distance
 		  MAX		: Use maximum distance
 		  FIRST		: Use first value
-	-t,--procs	: Number of parallel processors
-	-X,--noPlot	: Turn off plotting
-	-o,--out	: Output file prefix
-	-h,--help	: Displays help menu
+		  SD		: Use standard deviation
+		  VAR		: Use variance
+		  SUM		: Use simple sum
+		  CV		: Use coefficient of variation (=SD/MEAN)
+		Optionally, these may be specified individuall for each variable with -V
 
 Genetic Algorithm Options:
 	-P,--maxPop	: Maximim population size [default = 100]
@@ -221,6 +245,11 @@ Genetic Algorithm Options:
 
 Model optimization/ selection options:
 	-v,--vars	: Comma-separated list (no spaces) of explanatory attributes to include
+	-V,--varfile	: Optional file with variables provided like so:
+		  var1 \t <Optional aggregator function>
+		  var2 \t <Optional aggregator function>
+		  ...
+		  ...
 	-F,--nfail	: Number of generations failing to improve to stop optimization
 	-d,--delt	: Threshold absolute change in fitness [default=0.0]
 	-D,--deltP	: Threshold percentage change in fitness, as decimal [default=0.001]
@@ -237,8 +266,6 @@ Model optimization/ selection options:
 	--null	: Output null (population-only) model metrics ***NOT IMPLEMENTED***
 
 Multi-model inference options:
-	-A,--modavg	: Compute model-averaged resistances
-			    NOTE: This involves re-running Circuitscape for each model
 	-a,--awsum	: Cumulative Akaike weight threshold to retain top N models [default=0.95]
 	--report_all	: Plot per-stream resistance and generate full outputs for all retained models
 
