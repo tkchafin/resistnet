@@ -29,6 +29,7 @@ import resistnet.hall_of_fame as hof
 import resistnet.resist_dist as rd
 import resistnet.circuitscape_runner as cs
 import resistnet.aggregators as agg
+import resistnet.stream_plots as splt
 
 def main():
 
@@ -79,7 +80,7 @@ def main():
 	load_data(params, 0)
 
 	#print(len(list(graph.edges())))
-	print(inc_matrix)
+	#print(inc_matrix)
 	#sys.exit()
 	#print(results)
 	#sys.exit()
@@ -262,10 +263,9 @@ def main():
 	del logger
 	del logDF
 
-	#if params.modavg:
-	if params.modavg:
-		modelAverageCS(pool, bests.getHOF(only_keep=params.only_keep), base=params.out, plot=params.plot, report_all=params.report_all) #set to true for production
-	df=pd.DataFrame(gendist, columns=list(node_point_dict.values()), index=list(node_point_dict.values()))
+	# perform model averaging
+	modelAverage(pool, bests.getHOF(only_keep=params.only_keep), base=params.out) #set to true for production
+	df=pd.DataFrame(gendist, columns=list(points_names.values()), index=list(points_names.values()))
 	df.to_csv((str(params.out)+".genDistMat.tsv"), sep="\t", header=True, index=True)
 
 	#clean up temp files
@@ -306,7 +306,7 @@ def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
 			f = 0
 	return(cur, f)
 
-def evaluate_ma(stuff):
+def modelOutput(stuff):
 	model_num = stuff[0]
 	individual = stuff[1]
 	first=True
@@ -323,17 +323,29 @@ def evaluate_ma(stuff):
 				multi += var*(individual[1::4][i])
 			multi = trans.rescaleCols(multi, 1, 10)
 
-	#write circuitscape inputs
-	oname=str(params.out)+"_Model-"+str(model_num)
+	# OUTPUT PREFIX
+	oname=str(params.out)+".Model-"+str(model_num)
 
-	cs.writeCircuitScape(oname, graph, points, multi, focalPoints=False, fromAttribute=None)
-	cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
+	# get point names
+	names=list(points_names.values())
 
-	#Call circuitscape from pyjulia
-	cs.evaluateIni(jl, oname)
-	return(model_num)
+	# Get pairwise r
+	r=rd.effectiveResistanceMatrix(points, inc_matrix, multi)
+	writeMatrix(oname, r, names)
 
-def modelAverageCS(pool, bests, plot=False, base="", report_all=False):
+	# get edgewise R
+	writeEdges(oname, multi, multi.index)
+
+	if params.plot:
+		edf=pd.DataFrame(list(zip(multi.index, multi)), columns=["EDGE_ID", "Resistance"])
+		splt.plotEdgesToStreams((str(params.out)+".subgraph.net"), edf, oname)
+		if distances is not None:
+			hof.plotEdgeModel(distances, edf, oname)
+		hof.plotPairwiseModel(gendist, r, oname)
+
+	return(model_num, r, multi)
+
+def modelAverage(pool, bests, base=""):
 	#build model list and run Circuitscape on each model
 	models=list()
 	mod_num=0
@@ -347,61 +359,52 @@ def modelAverageCS(pool, bests, plot=False, base="", report_all=False):
 
 	print("Model-averaging across",mod_num,"resistance models...")
 
-	model_nums = pool.map(evaluate_ma, models)
+	# evaluate models in parallel
+	model_results = pool.map(modelOutput, models)
 
+	# model averaging w/ akaike_weights
 	edge_avg=None
 	matrix_avg=np.zeros(shape=(len(points), len(points)))
 
-	for model_num in model_nums:
-		oname=str(base)+"_Model-"+str(model_num)
+	for m in model_results:
+		model_num=m[0]
+		matrix_r=m[1]
+		edge_r=m[2]
+		oname=str(base)+".Model-"+str(model_num)
 
+		# get weighted contributions to av model
 		weight = bests.iloc[model_num]["akaike_weight"]
-
-		#Extract resistance for each edge
-		#print(distances)
-		edge_r = cs.parseEdgewise(oname, distances, return_resistance=True)
-		#print(edge_r)
 		if edge_avg is None:
 			edge_avg=(edge_r*weight)
 		else:
 			edge_avg = np.add(edge_avg, (edge_r*weight))
-
-		#extract PW matrix from full result matrix
-		matrix_r = cs.parsePairwiseFromAll(oname, gendist, node_point_dict, return_resistance=True)
 		matrix_avg += (matrix_r*weight)
-
-		if report_all:
-			writeEdges(oname, edge_avg, edge_ids)
-			writeMatrix(oname, matrix_avg, list(node_point_dict.values()))
-			if plot:
-				edf=pd.DataFrame(list(zip(edge_ids, edge_r)), columns=["EDGE_ID", "Resistance"])
-				splt.plotEdgesToStreams(graph, edf, (str(params.prefix)+".streamTree.shp"), oname)
-				hof.plotEdgeModel(distances, edge_r, oname)
-				hof.plotPairwiseModel(gendist, matrix_r, oname)
 
 
 	oname=str(base) + ".Model-Average"
-	writeEdges(oname, edge_avg, edge_ids)
-	writeMatrix(oname, matrix_avg, list(node_point_dict.values()))
+	writeEdges(oname, edge_avg, edge_avg.index)
+	writeMatrix(oname, matrix_avg, list(points_names.values()))
 
-	if plot:
-		edf=pd.DataFrame(list(zip(edge_ids, edge_avg)), columns=["EDGE_ID", "Resistance"])
-		splt.plotEdgesToStreams(graph, edf, (str(params.prefix)+".streamTree.shp"), oname)
-		hof.plotEdgeModel(distances, edge_avg, oname)
+	if params.plot:
+		edf=pd.DataFrame(list(zip(edge_avg.index, edge_avg)), columns=["EDGE_ID", "Resistance"])
+		splt.plotEdgesToStreams((str(params.out)+".subgraph.net"), edf, oname)
+		if distances is not None:
+			hof.plotEdgeModel(distances, edf, oname)
 		hof.plotPairwiseModel(gendist, matrix_avg, oname)
 
-		#streamtree-style plot
 
 def writeEdges(oname, edge, ids, dist=None):
+	out=(str(oname)+".ResistanceEdges.tsv")
 	df=pd.DataFrame(list(zip(ids, edge)), columns=["EDGE_ID", "Resistance"])
-	if dist is not None:
-		df["FittedD"]=dist
-	df.to_csv((str(oname)+".ResistanceEdges.tsv"), sep="\t", header=True, index=False)
+	df.to_csv(out, sep="\t", header=True, index=False)
+	return(out)
 
 
 def writeMatrix(oname, mat, ids):
+	out=(str(oname)+".ResistanceMatrix.tsv")
 	df=pd.DataFrame(mat, columns=ids, index=ids)
-	df.to_csv((str(oname)+".ResistanceMatrix.tsv"), sep="\t", header=True, index=True)
+	df.to_csv(out, sep="\t", header=True, index=True)
+	return(out)
 
 # def initialize_worker(params, proc_num):
 # 	global my_number
@@ -423,24 +426,24 @@ def initialize_worker(params, proc_num):
 	random.seed(local_seed)
 	print("Worker",proc_num,"initializing...\n", flush=True)
 
-	global jl
-	from julia.api import Julia
-	from julia import Base, Main
-	from julia.Main import println, redirect_stdout
-
-	#establish connection to julia
-	print("Worker",proc_num,"connecting to Julia...\n", flush=True)
-	if params.sys_image:
-		jl = Julia(init_julia=True, sysimage=params.sys_image, julia=params.julia, compiled_modules=params.compiled_modules)
-	else:
-		print("julia", flush=True)
-		jl = Julia(init_julia=True, julia=params.julia, compiled_modules=params.compiled_modules)
-
-	if my_number == 0:
-		print("Loading Circuitscape in Julia...\n", flush=True)
-	#jl.eval("using Pkg;")
-	jl.eval("using Circuitscape; using Suppressor;")
-	Main.eval("stdout")
+	# global jl
+	# from julia.api import Julia
+	# from julia import Base, Main
+	# from julia.Main import println, redirect_stdout
+	#
+	# #establish connection to julia
+	# print("Worker",proc_num,"connecting to Julia...\n", flush=True)
+	# if params.sys_image:
+	# 	jl = Julia(init_julia=True, sysimage=params.sys_image, julia=params.julia, compiled_modules=params.compiled_modules)
+	# else:
+	# 	print("julia", flush=True)
+	# 	jl = Julia(init_julia=True, julia=params.julia, compiled_modules=params.compiled_modules)
+	#
+	# if my_number == 0:
+	# 	print("Loading Circuitscape in Julia...\n", flush=True)
+	# #jl.eval("using Pkg;")
+	# jl.eval("using Circuitscape; using Suppressor;")
+	# Main.eval("stdout")
 
 	#print("")
 	load_data(params, my_number)
@@ -545,18 +548,18 @@ def load_data(p, proc_num):
 
 	#make "local" globals (i.e. global w.r.t each process)
 	global graph
-	#global distances
+	global distances
 	global predictors
 	global inc_matrix
 	global points
 	global gendist
-	global node_point_dict
 	global edge_ids
 	global params
 	global id_col
 	global points_names
 	params = p
 	my_number = proc_num
+	distances = None
 
 	#read autoStreamTree outputs
 	if params.network:
@@ -568,34 +571,39 @@ def load_data(p, proc_num):
 
 	if params.minimize:
 		full_subgraph = params.network.replace("minimalSubgraph", "subgraph")
-		K = readNetwork(full_subgraph)
-		df = nx_to_df(K)
+		graph = readNetwork(full_subgraph)
+		df = nx_to_df(graph)
 		id_col="EDGE_ID"
 	else:
 		df = nx_to_df(graph)
 		id_col=params.reachid_col
 		df["EDGE_ID"] = df[id_col]
 
-	names=df["EDGE_ID"].unique().tolist()
 
-	df = df.groupby('EDGE_ID').agg('mean')
+	# if edges are groups (--minimize) apply specified aggregator function
+	global agg_opts
+	agg_opts = dict()
+	for v in params.variables:
+		agg_opts[v] = "ARITH"
 
-	# #get distances (as a list, values corresponding to nodes)
-	# if params.fittedD != "locD":
-	# 	distances=df[params.fittedD].tolist()
-	# else:
-	# 	#get locus columns
-	# 	filter_col = [col for col in df if col.startswith('locD_')]
-	# 	data = df[filter_col]
-	#
-	# 	#aggregate distances
-	# 	distances = list(data.mean(axis=1))
-		#print(dist)
+	agg_funs=dict()
+	grouped=df.groupby('EDGE_ID')
+
+	for v in params.variables:
+		agg_funs[v] = partial(agg.aggregateDist, method=agg_opts[v])
+	df = grouped.agg(agg_funs)
+
+	names=df.index
 
 	predictors=trans.rescaleCols(df[params.variables], 0, 10)
+
+	if params.dist_col:
+		distances=grouped.agg('sum')[params.dist_col]
+		distances=distances.loc[names]
+		distances=pd.DataFrame(list(zip(distances.index, distances)), columns=["EDGE_ID", "Edgewise Genetic Distance"])
+
 	# make sure df is sorted the same as names
 	predictors = predictors.loc[names]
-
 
 	points = readPointCoords(params.coords)
 	# make sure points are snapped to the network
@@ -619,20 +627,66 @@ def load_data(p, proc_num):
 		points[p]=index
 		index+=1
 
-	node_point_dict=nodes_to_points(graph, points)
+	#node_point_dict=nodes_to_points(graph, points)
+
+	# testing: generate pairwise distance matrix for specific variable directly from graph
+	# for ia, ib in itertools.combinations(range(0,len(points)),2):
+	ref = getPairwisePathweights(graph, points, params.variables)
+	if my_number == 0:
+		ofh=params.out+".rawResistMat.txt"
+		with np.printoptions(precision=0, suppress=True):
+			np.savetxt(ofh, ref, delimiter="\t")
 
 	# build incidence matrix
 	inc_matrix = incidenceMatrix(graph, points, params.length_col, id_col, edge_order=names)
-	ofh=params.out+".incidenceMatrix.txt"
-	with np.printoptions(precision=0, suppress=True):
-		np.savetxt(ofh, inc_matrix, delimiter="\t", fmt='%i')
+	if my_number == 0:
+		ofh=params.out+".incidenceMatrix.txt"
+		with np.printoptions(precision=0, suppress=True):
+			np.savetxt(ofh, inc_matrix, delimiter="\t", fmt='%i')
 
 	#read genetic distances
-	gendist = parseInputGenMat(graph, points_names, prefix=params.prefix, inmat=params.inmat)
-	print(gendist)
-	ofh=params.out+".genMat.txt"
-	with np.printoptions(precision=0, suppress=True):
-		np.savetxt(ofh, gendist, delimiter="\t")
+	gendist = parseInputGenMat(graph, points_names, prefix=params.prefix, inmat=params.inmat, agg_method=params.pop_agg)
+	if my_number == 0:
+		ofh=params.out+".genDistMat.txt"
+		with np.printoptions(precision=0, suppress=True):
+			np.savetxt(ofh, gendist, delimiter="\t")
+
+	# pick first site for each in points_names as final name
+	ol=list()
+	for p in points_names:
+		name = points_names[p][0]
+		names=",".join(points_names[p])
+		points_names[p] = name
+		ol.append([name, p, points[p], names])
+
+	# write table mapping final label to input pop labels and node coordinates
+	if my_number == 0:
+		df = pd.DataFrame(ol, columns = ['Label', 'Index', 'Node', 'Names'])
+		dtout = str(params.out) + ".pointsTable.txt"
+		df.to_csv(dtout, sep="\t", index=False)
+
+	#print(points_names)
+
+def getPairwisePathweights(graph, points, attributes):
+
+	def path_weight(G, p1, p2, attributes):
+		path=nx.dijkstra_path(G, p1, p2)
+		sum=0
+		for att in attributes:
+			sum += nx.path_weight(G, path, att)
+		return(sum)
+
+	pw=pd.DataFrame(columns=list(points.values()), index=list(points.values()))
+
+	for ia, ib in itertools.combinations(range(0,len(points)),2):
+		p1=points.keys()[ia]
+		p2=points.keys()[ib]
+		s=path_weight(graph, p1, p2, attributes)
+		pw.loc[list(points.values())[ia], list(points.values())[ib]] = s
+		pw.loc[list(points.values())[ib], list(points.values())[ia]] = s
+	pw=pw.astype('float64').to_numpy()
+	np.fill_diagonal(pw, 0.0)
+	return(pw)
 
 def incidenceMatrix(graph, points, len_col, id_col, edge_order):
 	#make matrix
@@ -683,7 +737,11 @@ def nx_to_df(G):
 	df=pd.DataFrame(l)
 	return(df)
 
-def checkFormatGenMat(mat, points):
+def unique(sequence):
+    seen = set()
+    return [x for x in sequence if not (x in seen or seen.add(x))]
+
+def checkFormatGenMat(mat, points, agg_method="ARITH"):
 	order = [item for sublist in list(points.values()) for item in sublist]
 	if os.path.isfile(mat):
 		#read and see if it has the correct dimensions
@@ -693,20 +751,21 @@ def checkFormatGenMat(mat, points):
 			formatted = inmat.reindex(index=order, columns=order)
 			#print(formatted.columns)
 			if len(formatted.columns) > len(list(points.keys())):
-				print("Some populations have identical coordinates. Merging genetic distances using 'arithmetic mean'")
+				print("\nSome populations have identical coordinates. Merging genetic distances using method", agg_method)
 				gen = np.zeros((len(points.keys()),len(points.keys())))
 				#establish as nan
 				gen[:] = np.nan
+				# names=list()
 				for ia,ib in itertools.combinations(range(0,len(list(points.keys()))),2):
 					inds1 = [inmat.columns.get_loc(x) for x in points.values()[ia]]
 					inds2 = [inmat.columns.get_loc(x) for x in points.values()[ib]]
 					results = inmat.iloc[inds1, inds2]
-					print(results)
-					results = agg.aggregateDist("ARITH", results.to_numpy())
-					print()
-					print("MEAN:", results)
-					print()
+					results = agg.aggregateDist(results.to_numpy(), agg_method)
 					gen[ia, ib] = gen[ib, ia] = results
+				# 	names.append(points.values()[ia][0])
+				# 	names.append(points.values()[ib][0])
+				# names=unique(names)
+				# print("NAMES", names)
 				np.fill_diagonal(gen, 0.0)
 			return(gen)
 		else:
@@ -716,34 +775,35 @@ def checkFormatGenMat(mat, points):
 	else:
 		return(None)
 
-def parseInputGenMat(graph, points, prefix=None, inmat=None):
+def parseInputGenMat(graph, points, prefix=None, inmat=None, agg_method="ARITH"):
 	#read input matrix
-	gen = checkFormatGenMat(inmat, points)
+	gen = checkFormatGenMat(inmat, points, agg_method)
 	if gen is not None:
 		return(gen)
 	else:
 		print("Failed to read input genetic distance matrix:",inmat)
 		sys.exit()
 
-def nodes_to_points(graph, points):
-	"node to point"
-	np=OrderedDict()
-	seen=dict()
-	node_idx=0
-	for edge in graph.edges:
-		if edge[0] not in seen.keys():
-			if edge[0] in points.keys():
-				#print("New node:",points[edge[0]], " -- Index:",node_idx)
-				np[node_idx] = points[edge[0]]
-			seen[edge[0]] = True
-			node_idx+=1
-		if edge[1] not in seen.keys():
-			if edge[1] in points.keys():
-				#print("New node:",points[edge[1]], " -- Index:",node_idx)
-				np[node_idx] = points[edge[1]]
-			seen[edge[1]] = True
-			node_idx+=1
-	return(np)
+# DEPRECATED
+# def nodes_to_points(graph, points):
+# 	"node to point"
+# 	np=OrderedDict()
+# 	seen=dict()
+# 	node_idx=0
+# 	for edge in graph.edges:
+# 		if edge[0] not in seen.keys():
+# 			if edge[0] in points.keys():
+# 				#print("New node:",points[edge[0]], " -- Index:",node_idx)
+# 				np[node_idx] = points[edge[0]]
+# 			seen[edge[0]] = True
+# 			node_idx+=1
+# 		if edge[1] not in seen.keys():
+# 			if edge[1] in points.keys():
+# 				#print("New node:",points[edge[1]], " -- Index:",node_idx)
+# 				np[node_idx] = points[edge[1]]
+# 			seen[edge[1]] = True
+# 			node_idx+=1
+# 	return(np)
 
 def snapPoints(points, G, out=None):
 	point_coords=SortedDict()
@@ -808,7 +868,6 @@ def getNodeOrder(graph, points, as_dict=False, as_index=False, as_list=True):
 def readNetwork(network):
 	graph=nx.Graph(nx.read_gpickle(network).to_undirected())
 	return(graph)
-
 
 def path_edge_attributes(graph, path, attribute):
 	return [graph[u][v][attribute] for (u,v) in zip(path,path[1:])]
@@ -1063,17 +1122,20 @@ def evaluate(individual):
 		#Rescale multi for circuitscape
 		multi = trans.rescaleCols(multi, 1, 10)
 
-		#write circuitscape inputs
-		#oname=".temp"+str(params.seed)+"_"+str(mp.Process().name)
+
 		oname=".temp_"+str(os.path.basename(params.out))+"_p"+str(my_number)
 		focal=True
+
+		# DEPRECATED
+		#write circuitscape inputs
+		#oname=".temp"+str(params.seed)+"_"+str(mp.Process().name)
 		# if params.cstype=="edgewise":
 		# 	focal=False
-		cs.writeCircuitScape(oname, graph, points, multi, id_col=id_col, focalPoints=focal, fromAttribute=None)
-		cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
-		#Call circuitscape from pyjulia
-		print("evaluate", flush=True)
-		cs.evaluateIni(jl, oname)
+		# cs.writeCircuitScape(oname, graph, points, multi, id_col=id_col, focalPoints=focal, fromAttribute=None)
+		# cs.writeIni(oname, cholmod=params.cholmod, parallel=int(params.CS_procs))
+		# #Call circuitscape from pyjulia
+		# print("evaluate", flush=True)
+		# cs.evaluateIni(jl, oname)
 
 		#parse circuitscape output
 		# if params.cstype=="edgewise":
@@ -1082,18 +1144,16 @@ def evaluate(individual):
 		# 	res=list(res.iloc[0])
 		# else:
 
-		res = cs.parsePairwise(oname, gendist)
-		print(res)
-		fitness = res[params.fitmetric][0]
-		res=list(res.iloc[0])
+		# res = cs.parsePairwise(oname, gendist)
+		# fitness = res[params.fitmetric][0]
+		# res=list(res.iloc[0])
 
 		# evaluate using simple resistance distance
 		r, res = rd.parsePairwise(points, inc_matrix, multi, gendist)
-		print(res)
 		oname=".rdist_"+str(os.path.basename(params.out))+"_p"+str(my_number)
+		fitness = res[params.fitmetric][0]
+		res=list(res.iloc[0])
 		np.savetxt(oname, r, delimiter="\t")
-		print("Done")
-		sys.exit()
 	#return fitness value
 	return(fitness, res)
 
@@ -1120,8 +1180,12 @@ def initGA(toolbox, params):
 		toolbox.register("feature_weight", random.uniform, 1.0, 1.0)
 	if not params.fixWeight and not params.posWeight:
 		toolbox.register("feature_weight", random.uniform, -1.0, 1.0)
-	toolbox.register("feature_transform", random.randint, 0, 8)
-	toolbox.register("feature_shape", random.randint, 1, 100)
+	if not params.fixShape:
+		toolbox.register("feature_transform", random.randint, 0, 8)
+		toolbox.register("feature_shape", random.randint, 1, 100)
+	else:
+		toolbox.register("feature_transform", random.randint, 0, 0)
+		toolbox.register("feature_shape", random.randint, 1, 1)
 
 	#register type for individuals
 	#these consist of chromosomes of i variables x j attributes (above)
