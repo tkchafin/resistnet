@@ -4,7 +4,7 @@ import numpy as np
 import scipy
 
 
-def aggregateDist(method, stuff):
+def aggregateDist(stuff, method):
 	if method == "HARM":
 		try:
 			return(scipy.stats.hmean(stuff))
@@ -37,6 +37,8 @@ def aggregateDist(method, stuff):
 			return(0.0)
 		else:
 			return(sd/np.mean(stuff))
+	elif method=="SUM":
+		return(np.sum(stuff))
 
 #computes an harmonic mean corrected for non-positive values
 def adjustedHarmonicMean(stuff):
