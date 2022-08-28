@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 def plotEdgesToStreams(network, res, oname):
 	G=nx.Graph(nx.read_gpickle(network).to_undirected())
 	nodeDF, edgeDF=momepy.nx_to_gdf(G)
+	edgeDF.EDGE_ID.astype(int)
 	geoDF = edgeDF.merge(res, on="EDGE_ID")
 	sns.set(style="ticks")
 	geoDF.plot(column="Resistance", cmap = "RdYlGn_r", legend=True)
