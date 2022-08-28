@@ -255,11 +255,12 @@ class hallOfFame():
 
 def plotEdgeModel(gen, res, oname):
 	sns.set(style="ticks")
-	df = pd.DataFrame(list(zip(gen, res)), columns=["Fitted Genetic Distance", "Resistance"])
+	# convert series to df
+	df = res.merge(gen, on="EDGE_ID")
 	#print(df)
-	sns.lmplot(x="Resistance", y="Fitted Genetic Distance", data=df)
+	sns.lmplot(x="Resistance", y="Edgewise Genetic Distance", data=df)
 	plt.title("Edge-wise Resistance x Genetic Distance")
-	plt.savefig((str(oname)+".Edgewise.pdf"))
+	plt.savefig((str(oname)+".EdgewiseRegplot.pdf"))
 	plt.clf()
 	plt.close()
 
@@ -279,6 +280,6 @@ def plotPairwiseModel(gen, mat, oname, partition=False):
 	else:
 		sns.lmplot(x="Resistance Distance", y="Genetic Distance", data=df)
 	plt.title("Pairwise-wise Resistance x Genetic Distance")
-	plt.savefig((str(oname)+".Pairwise.pdf"))
+	plt.savefig((str(oname)+".PairwiseRegplot.pdf"))
 	plt.clf()
 	plt.close()

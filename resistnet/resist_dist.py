@@ -9,17 +9,6 @@ from io import StringIO
 
 import resistnet.MLPE as mlpe_rga
 
-
-# def parseEdgewise(r, edge_gendist, return_resistance=False):
-# 	l=["from", "to", "r"]
-# 	output_file=str(oname)+"_resistances_3columns.out"
-# 	input=pd.read_csv((str(oname)+".graph_resistances.txt"), header=None, index_col=None, sep="\t", names=l)
-# 	output=pd.read_csv((str(oname)+"_resistances_3columns.out"), header=None, index_col=None, sep=" ", names=l)
-# 	output["from"] = output["from"]-1
-# 	output["to"] = output["to"]-1
-# 	merged=pd.merge(input, output, how="left", on=["from", "to"])
-# 	print(merged)
-
 def parsePairwise(points, inc_matrix, multi, gendist):
 	#print("parsePairwise")
 	print("evaluate")
