@@ -14,7 +14,7 @@ class parseArgs():
 			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
 			"burn=", "dist_col=", "vars=", "pop_agg=", "varfile=",
 			"awsum=", "report_all", "noPlot", "out=", "keep_all",
-			"max_hof_size=", "posWeight", "fixWeight", "allShapes",
+			"max_hof_size=", "posWeight", "fixWeight", "allShapes", "efit_agg=",
 			"coords=", "length_col=", "reachid_col=", "minimize", "network=", "fixShape"])
 		except getopt.GetoptError as err:
 			print(err)
@@ -34,6 +34,7 @@ class parseArgs():
 		self.reachid_col="HYRIV_ID"
 		self.pop_agg="ARITH"
 		self.edge_agg="ARITH"
+		self.efit_agg="SUM"
 		self.maxpopsize=100
 		self.cstype="pairwise"
 		self.fitmetric="aic"
@@ -160,7 +161,10 @@ class parseArgs():
 				self.out=arg
 			elif opt=="avgall":
 				self.only_keep=False
-
+			elif opt=="efit_agg":
+				self.efit_agg = arg.upper()
+				if self.efit_agg not in ["HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX", "MIN", "SUM", "FIRST", "SD", "VAR", "CV"]:
+					self.display_help("Invalid option "+str(arg).upper()+" for option <--efit_agg>")
 			elif opt=="posWeight":
 				self.posWeight=True
 			elif opt=="fixWeight":
@@ -190,6 +194,7 @@ class parseArgs():
 						self.agg_opts[stuff[0]]=self.edge_agg
 					else:
 						self.agg_opts[stuff[0]]=stuff[1]
+			self.variables=list(self.agg_opts.keys())
 		else:
 			for v in self.variables:
 				self.agg_opts[v]=self.edge_agg
@@ -224,6 +229,7 @@ General options:
 
 Aggregation options:
 	--edge_agg	: Method to use when combining variable values across segments (e.g., with --minimize)
+	--efit_agg	: Method to use to aggregate variable used for calculating edge-wise fit [default=SUM]
 	--pop_agg	: Method to use to combine genetic distances for populations mapping to same node
 		All of these can take the following options:
 		  ARITH		: [default] Use arithmetic mean
