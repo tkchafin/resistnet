@@ -152,7 +152,7 @@ class hallOfFame():
 			sub=self.data
 		#compute sum of weights
 		for v in self.variables:
-			w=str(w+"_weight")
+			w=str(str(v)+"_weight")
 			sw=(sub[w]*sub['akaike_weight']).sum()
 			self.maw.loc[len(self.maw), :] = [v, sw]
 		self.maw = self.maw.sort_values('MAW', ascending=False)
