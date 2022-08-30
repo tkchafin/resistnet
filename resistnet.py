@@ -244,6 +244,7 @@ def main():
 	bests.akaike_weights()
 	bests.cumulative_akaike(threshold=params.awsum)
 	bests.relative_variable_importance(params.only_keep)
+	bests.model_average_weights()
 	bests.printHOF()
 	bests.printRVI()
 	bests.printMAW()
@@ -263,7 +264,7 @@ def main():
 	del logger
 	del logDF
 
-	# perform model averaging
+	# get results for best models and model-averaged 
 	modelAverage(pool, bests.getHOF(only_keep=params.only_keep), base=params.out) #set to true for production
 	df=pd.DataFrame(gendist, columns=list(points_names.values()), index=list(points_names.values()))
 	df.to_csv((str(params.out)+".genDistMat.tsv"), sep="\t", header=True, index=True)
@@ -527,14 +528,14 @@ def annotateEdges(K, Kmin, reachid_col, out=None):
 	#print("K:",len(K.edges())
 	for p1, p2, dat in Kmin.edges(data=True):
 		reaches = dat[reachid_col]
-		nx.set_edge_attributes(Kmin, {(p1, p2): {"EDGE_ID": str(i)}})
+		nx.set_edge_attributes(Kmin, {(p1, p2): {"EDGE_ID": int(i)}})
 		for r in reaches:
 			reach_to_edge[r] = str(i)
 		i+=1
 
 	for p1, p2, dat in K.edges(data=True):
 		edge_id = reach_to_edge[dat[reachid_col]]
-		nx.set_edge_attributes(K, {(p1, p2): {"EDGE_ID": str(edge_id)}})
+		nx.set_edge_attributes(K, {(p1, p2): {"EDGE_ID": int(edge_id)}})
 
 	if out:
 		kmin_out=str(out) + ".minimalSubgraph.net"
@@ -580,17 +581,11 @@ def load_data(p, proc_num):
 		df["EDGE_ID"] = df[id_col]
 
 
-	# if edges are groups (--minimize) apply specified aggregator function
-	global agg_opts
-	agg_opts = dict()
-	for v in params.variables:
-		agg_opts[v] = "ARITH"
-
 	agg_funs=dict()
 	grouped=df.groupby('EDGE_ID')
 
 	for v in params.variables:
-		agg_funs[v] = partial(agg.aggregateDist, method=agg_opts[v])
+		agg_funs[v] = partial(agg.aggregateDist, method=params.agg_opts[v])
 	df = grouped.agg(agg_funs)
 
 	names=df.index
@@ -598,7 +593,8 @@ def load_data(p, proc_num):
 	predictors=trans.rescaleCols(df[params.variables], 0, 10)
 
 	if params.dist_col:
-		distances=grouped.agg('sum')[params.dist_col]
+		agg_fun = partial(agg.aggregateDist, method=params.efit_agg)
+		distances = grouped.agg(agg_fun)[params.dist_col]
 		distances=distances.loc[names]
 		distances=pd.DataFrame(list(zip(distances.index, distances)), columns=["EDGE_ID", "Edgewise Genetic Distance"])
 
