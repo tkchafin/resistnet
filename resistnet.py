@@ -264,7 +264,7 @@ def main():
 	del logger
 	del logDF
 
-	# get results for best models and model-averaged 
+	# get results for best models and model-averaged
 	modelAverage(pool, bests.getHOF(only_keep=params.only_keep), base=params.out) #set to true for production
 	df=pd.DataFrame(gendist, columns=list(points_names.values()), index=list(points_names.values()))
 	df.to_csv((str(params.out)+".genDistMat.tsv"), sep="\t", header=True, index=True)
@@ -339,7 +339,11 @@ def modelOutput(stuff):
 
 	if params.plot:
 		edf=pd.DataFrame(list(zip(multi.index, multi)), columns=["EDGE_ID", "Resistance"])
-		splt.plotEdgesToStreams((str(params.out)+".subgraph.net"), edf, oname)
+		if params.minimize:
+			id_col="EDGE_ID"
+		else:
+			id_col=params.reachid_col
+		splt.plotEdgesToStreams((str(params.out)+".subgraph.net"), edf, oname, id_col)
 		if distances is not None:
 			hof.plotEdgeModel(distances, edf, oname)
 		hof.plotPairwiseModel(gendist, r, oname)
@@ -388,7 +392,11 @@ def modelAverage(pool, bests, base=""):
 
 	if params.plot:
 		edf=pd.DataFrame(list(zip(edge_avg.index, edge_avg)), columns=["EDGE_ID", "Resistance"])
-		splt.plotEdgesToStreams((str(params.out)+".subgraph.net"), edf, oname)
+		if params.minimize:
+			id_col="EDGE_ID"
+		else:
+			id_col=params.reachid_col
+		splt.plotEdgesToStreams((str(params.out)+".subgraph.net"), edf, oname, id_col)
 		if distances is not None:
 			hof.plotEdgeModel(distances, edf, oname)
 		hof.plotPairwiseModel(gendist, matrix_avg, oname)
