@@ -11,8 +11,16 @@ python3 ./resistnet/resistnet.py -s data/juvpop.streamTree.shp -g data/juvpop.po
 # full subgraph
 python3 ./resistnet/resistnet.py -s data/juvpop.streamTree.shp -g data/juvpop.popGenDistMat.txt -c data/juvpop.pointCoords.txt -v sgr_dk_rav,tmp_dc_cyr --out resistnet/out/out --fittedD fittedD_x
 
-# to do
 
-1. Have resistnet read/ subgraph a shapefile
-
-2. Variable interactions
+python3 ./resistnet/resistnet.py \
+	-s data/juvpop.streamTree.shp \
+	-g data/juvpop.popGenDistMat.txt \
+	-c data/juvpop.pointCoords.txt \
+	-V resistnet/data/selected_vars.txt \
+	--out resistnet/out/out \
+	--dist_col fittedD_x \
+	--fixWeight \
+	--pop_agg MEDIAN \
+	--efit_agg SUM \
+	--reachid_col HYRIV_ID
+	-P 5 -G 2
