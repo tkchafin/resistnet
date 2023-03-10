@@ -21,6 +21,6 @@ python3 ./resistnet/resistnet.py \
 	--dist_col fittedD_x \
 	--fixWeight \
 	--pop_agg MEDIAN \
-	--efit_agg SUM \
-	--reachid_col HYRIV_ID
+	--efit_agg ARITH \
+	--reachid_col HYRIV_ID \
 	-P 5 -G 2

@@ -27,7 +27,6 @@ from resistnet.params import parseArgs
 import resistnet.transform as trans
 import resistnet.hall_of_fame as hof
 import resistnet.resist_dist as rd
-import resistnet.circuitscape_runner as cs
 import resistnet.aggregators as agg
 import resistnet.stream_plots as splt
 
@@ -111,6 +110,7 @@ def main():
 		popsize=params.maxpopsize
 	print("Establishing a population of size:",str(popsize))
 	pop = toolbox.population(n=popsize)
+	#pop = apply_linkage(pop)
 
 
 	# Evaluate the entire population
@@ -178,6 +178,11 @@ def main():
 				del mutant.fitness.values
 
 		invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+
+		#offspring = apply_linkage(offspring)
+		#print(offspring)
+		#sys.exit()
+
 		fitnesses = pool.map(toolbox.evaluate, [list(i) for i in invalid_ind])
 		pop_list=list()
 		for ind, fit in zip(invalid_ind, fitnesses):
@@ -196,24 +201,25 @@ def main():
 		# Gather all the fitnesses in one list and print the stats
 		fits = [i.fitness.values[0] for i in pop]
 
+
 		#evaluate for stopping criteria
 		if g > params.burnin:
 
-			if params.fitmetric=="aic":
-				fits = [element * -1.0 for element in fits]
-				worst = max(fits)
-				best=min(fits)
-				if current_best is None:
-					current_best=best
-				else:
-					(current_best, fails) = updateFails(best, current_best, fails, params.deltaB, params.deltaB_perc, minimize=True)
+			# if params.fitmetric=="aic":
+			# 	fits = [element * -1.0 for element in fits]
+			# 	worst = max(fits)
+			# 	best=min(fits)
+			# 	if current_best is None:
+			# 		current_best=best
+			# 	else:
+			# 		(current_best, fails) = updateFails(best, current_best, fails, params.deltaB, params.deltaB_perc, minimize=True)
+			# else:
+			worst=min(fits)
+			best=max(fits)
+			if current_best is None:
+				current_best=best
 			else:
-				worst=min(fits)
-				best=max(fits)
-				if current_best is None:
-					current_best=best
-				else:
-					(current_best, fails) = updateFails(best, current_best, fails, params.deltaB, params.deltaB_perc, minimize=False)
+				(current_best, fails) = updateFails(best, current_best, fails, params.deltaB, params.deltaB_perc, minimize=False)
 
 			length = len(pop)
 			mean = sum(fits) / length
@@ -274,8 +280,19 @@ def main():
 	for filename in glob.glob(oname):
 		os.remove(filename)
 
-	pool.close()
+	#print("closing pool")
+	#pool.close()
+	pool.terminate()
+	sys.exit(0)
 
+def apply_linkage(pop):
+	ret = list()
+	for ind in pop:
+		for i, x in enumerate(ind[0::4]):
+			for j in [1,2,3]:
+				ind[(i*4)+j] = ind[(i*4)+j]*x
+		ret.append(ind)
+	return(ret)
 
 def updateFails(best, current_best, fails, deltB, deltB_perc, minimize=False):
 	cur=current_best
@@ -332,21 +349,23 @@ def modelOutput(stuff):
 
 	# Get pairwise r
 	r=rd.effectiveResistanceMatrix(points, inc_matrix, multi)
-	writeMatrix(oname, r, names)
 
-	# get edgewise R
-	writeEdges(oname, multi, multi.index)
+	if params.report_all:
+		writeMatrix(oname, r, names)
 
-	if params.plot:
-		edf=pd.DataFrame(list(zip(multi.index, multi)), columns=["EDGE_ID", "Resistance"])
-		if params.minimize:
-			id_col="EDGE_ID"
-		else:
-			id_col=params.reachid_col
-		splt.plotEdgesToStreams((str(params.out)+".subgraph.net"), edf, oname, id_col)
-		if distances is not None:
-			hof.plotEdgeModel(distances, edf, oname)
-		hof.plotPairwiseModel(gendist, r, oname)
+		# get edgewise R
+		writeEdges(oname, multi, multi.index)
+
+		if params.plot:
+			edf=pd.DataFrame(list(zip(multi.index, multi)), columns=["EDGE_ID", "Resistance"])
+			if params.minimize:
+				id_col="EDGE_ID"
+			else:
+				id_col=params.reachid_col
+			splt.plotEdgesToStreams((str(params.out)+".subgraph.net"), edf, oname, id_col)
+			if distances is not None:
+				hof.plotEdgeModel(distances, edf, oname)
+			hof.plotPairwiseModel(gendist, r, oname)
 
 	return(model_num, r, multi)
 
@@ -542,6 +561,7 @@ def annotateEdges(K, Kmin, reachid_col, out=None):
 		i+=1
 
 	for p1, p2, dat in K.edges(data=True):
+		#print(dat)
 		edge_id = reach_to_edge[dat[reachid_col]]
 		nx.set_edge_attributes(K, {(p1, p2): {"EDGE_ID": int(edge_id)}})
 
@@ -635,11 +655,11 @@ def load_data(p, proc_num):
 
 	# testing: generate pairwise distance matrix for specific variable directly from graph
 	# for ia, ib in itertools.combinations(range(0,len(points)),2):
-	ref = getPairwisePathweights(graph, points, params.variables)
-	if my_number == 0:
-		ofh=params.out+".rawResistMat.txt"
-		with np.printoptions(precision=0, suppress=True):
-			np.savetxt(ofh, ref, delimiter="\t")
+	# ref = getPairwisePathweights(graph, points, params.variables)
+	# if my_number == 0:
+	# 	ofh=params.out+".rawResistMat.txt"
+	# 	with np.printoptions(precision=0, suppress=True):
+	# 		np.savetxt(ofh, ref, delimiter="\t")
 
 	# build incidence matrix
 	inc_matrix = incidenceMatrix(graph, points, params.length_col, id_col, edge_order=names)
@@ -750,15 +770,18 @@ def checkFormatGenMat(mat, points, agg_method="ARITH"):
 	if os.path.isfile(mat):
 		#read and see if it has the correct dimensions
 		inmat = pd.read_csv(mat, header=0, index_col=0, sep="\t")
+		inmat.index = inmat.index.astype(str)
+		inmat.columns = inmat.columns.astype(str)
 		#if correct dimensions, check if labelled correctly
 		if len(inmat.columns) >= len(order):
 			formatted = inmat.reindex(index=order, columns=order)
+			gen = np.zeros((len(points.keys()),len(points.keys())))
+			#establish as nan
+			gen[:] = np.nan
 			#print(formatted.columns)
 			if len(formatted.columns) > len(list(points.keys())):
 				print("\nSome populations have identical coordinates. Merging genetic distances using method", agg_method)
-				gen = np.zeros((len(points.keys()),len(points.keys())))
-				#establish as nan
-				gen[:] = np.nan
+				
 				# names=list()
 				for ia,ib in itertools.combinations(range(0,len(list(points.keys()))),2):
 					inds1 = [inmat.columns.get_loc(x) for x in points.values()[ia]]
@@ -771,7 +794,10 @@ def checkFormatGenMat(mat, points, agg_method="ARITH"):
 				# names=unique(names)
 				# print("NAMES", names)
 				np.fill_diagonal(gen, 0.0)
-			return(gen)
+				#print(gen)
+				return(gen)
+			else:
+				return(formatted.to_numpy())
 		else:
 			print("ERROR: Input genetic distance matrix has wrong dimensions")
 			sys.exit(1)
@@ -972,11 +998,14 @@ def nCr(n,k):
 
 #function to calculate great circle distances
 #returns in units of KILOMETERS
-def great_circle(lon1, lat1, lon2, lat2):
-	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-	return 6371 * (
-		acos(sin(lat1) * sin(lat2) + cos(lat1) * cos(lat2) * cos(lon1 - lon2))
-	)
+def great_circle(lon1, lat1, lon2, lat2, thresh=0.0000001):
+	if (abs(lon1 - lon2)) < thresh and (abs(lat1 - lat2)) < thresh:
+		return(0.0)
+	else:
+		lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+		return 6371 * (
+			acos(sin(lat1) * sin(lat2) + cos(lat1) * cos(lat2) * cos(lon1 - lon2))
+		)
 
 def readPointCoords(pfile):
 	d=SortedDict()
@@ -1007,7 +1036,6 @@ def readPointCoords(pfile):
 # 	for i, variable in enumerate(predictors.columns):
 # 		#Perform variable transformations (if desired)
 # 		#1)Scale to 0-10; 2) Perform desired transformation; 3) Re-scale to 0-10
-# 		#	NOTE: Get main implementation working first
 # 		#add weighted variable data to multi
 # 		if individual[0::2][i] == 1:
 # 			if first:
@@ -1155,7 +1183,9 @@ def evaluate(individual):
 		# evaluate using simple resistance distance
 		r, res = rd.parsePairwise(points, inc_matrix, multi, gendist)
 		oname=".rdist_"+str(os.path.basename(params.out))+"_p"+str(my_number)
+		#print(res)
 		fitness = res[params.fitmetric][0]
+		#print(fitness)
 		res=list(res.iloc[0])
 		np.savetxt(oname, r, delimiter="\t")
 	#return fitness value
@@ -1179,14 +1209,14 @@ def initGA(toolbox, params):
 	toolbox.register("feature_sel", random.randint, 0, 1)
 
 	if params.posWeight:
-		toolbox.register("feature_weight", random.uniform, 0.0, 1.0)
+		toolbox.register("feature_weight", random.uniform, params.min_weight, 1.0)
 	if params.fixWeight:
 		toolbox.register("feature_weight", random.uniform, 1.0, 1.0)
 	if not params.fixWeight and not params.posWeight:
 		toolbox.register("feature_weight", random.uniform, -1.0, 1.0)
 	if not params.fixShape:
 		toolbox.register("feature_transform", random.randint, 0, 8)
-		toolbox.register("feature_shape", random.randint, 1, 100)
+		toolbox.register("feature_shape", random.randint, 1, params.max_shape)
 	else:
 		toolbox.register("feature_transform", random.randint, 0, 0)
 		toolbox.register("feature_shape", random.randint, 1, 1)

@@ -54,6 +54,7 @@ class hallOfFame():
 			self.data = self.data.sort_values('fitness', ascending=False)
 			self.data = self.data.drop_duplicates(keep='first', ignore_index=True)
 			self.data = self.data.reset_index(drop=True)
+			self.custom_drop()
 			self.min_fitness = self.data['fitness'].min()
 		else:
 			if popDF['fitness'].max() > self.min_fitness:
@@ -62,11 +63,20 @@ class hallOfFame():
 				self.data = self.data.sort_values('fitness', ascending=False)
 				self.data = self.data.drop_duplicates(keep='first', ignore_index=True)
 				self.data = self.data.reset_index(drop=True)
+				self.custom_drop()
 				if self.data.shape[0] > self.max_size:
 					self.data = self.data[:self.max_size]
 				self.min_fitness = self.data['fitness'].min()
 			else:
 				return
+
+	def custom_drop(self):
+		for v in self.variables:
+			self.data[str(v)+"_weight"] = self.data[str(v)] * self.data[str(v)+"_weight"]
+			self.data[str(v)+"_trans"] = self.data[str(v)] * self.data[str(v)+"_trans"]
+			self.data[str(v)+"_shape"] = self.data[str(v)] * self.data[str(v)+"_shape"]
+			self.data = self.data.drop_duplicates(keep='first', ignore_index=True)
+			self.data = self.data.reset_index(drop=True)
 
 	def printHOF(self, max_row=None, max_col=None):
 		self.data = self.data.sort_values('fitness', ascending=False)

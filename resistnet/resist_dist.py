@@ -11,7 +11,7 @@ import resistnet.MLPE as mlpe_rga
 
 def parsePairwise(points, inc_matrix, multi, gendist):
 	#print("parsePairwise")
-	print("evaluate")
+	#print("evaluate")
 	#print(gendist, flush=True)
 	r=effectiveResistanceMatrix(points, inc_matrix, multi)
 	#print(r)

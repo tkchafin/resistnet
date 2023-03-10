@@ -7,13 +7,13 @@ class parseArgs():
 	def __init__(self):
 		#Define options
 		try:
-			options, remainder = getopt.getopt(sys.argv[1:], 'hp:g:s:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:V:Aa:o:Xj:', \
+			options, remainder = getopt.getopt(sys.argv[1:], 'hp:g:s:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:V:Aa:o:Xj:n:', \
 			["shp=", "help", "input=", "prefix=", "genmat=", "shapefile=",
 			"seed=", "procs=", "maxPop=", "maxpop=", "maxgen=", "maxGen=",
 			"size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=",
 			"nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=", "metric=", "fitness=",
-			"burn=", "dist_col=", "vars=", "pop_agg=", "varfile=",
-			"awsum=", "report_all", "noPlot", "out=", "keep_all",
+			"burn=", "dist_col=", "vars=", "pop_agg=", "varfile=", "maxShape=",
+			"awsum=", "report_all", "noPlot", "out=", "keep_all", "minWeight=",
 			"max_hof_size=", "posWeight", "fixWeight", "allShapes", "efit_agg=",
 			"coords=", "length_col=", "reachid_col=", "minimize", "network=", "fixShape"])
 		except getopt.GetoptError as err:
@@ -67,6 +67,9 @@ class parseArgs():
 		self.fixWeight=False
 		self.allShapes=False
 		self.fixShape=False
+		self.max_shape=100
+
+		self.min_weight=0.0
 
 		self.only_keep=True
 		self.julia="julia"
@@ -106,6 +109,8 @@ class parseArgs():
 				self.maxGens=int(arg)
 			elif opt=="popsize" or opt=="size":
 				self.popsize=int(arg)
+			elif opt=="minWeight":
+				self.min_weight=float(arg)
 			elif opt=="pop_agg":
 				self.pop_agg = arg.upper()
 				if self.pop_agg not in ["HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX", "MIN", "SUM", "FIRST", "SD", "VAR", "CV"]:
@@ -153,6 +158,8 @@ class parseArgs():
 				self.modavg=True
 			elif opt=="a" or opt=="awsum":
 				self.awsum=float(arg)
+			elif opt=="maxShape":
+				self.max_shape=float(arg)
 			elif opt=="report_all":
 				self.report_all=True
 			elif opt=="X" or opt=="noPlot":
@@ -199,7 +206,7 @@ class parseArgs():
 			for v in self.variables:
 				self.agg_opts[v]=self.edge_agg
 
-		if self.variables is None:
+		if not self.variables:
 			self.display_help("No variables selected.")
 
 	def display_help(self, message=None):
@@ -256,9 +263,11 @@ Genetic Algorithm Options:
 	--cxpb	: Probability of being chosen for cross-over [default=0.5]
 	-T,--tSize	: Tournament size [default=10]
 	--posWeight	: Constrain parameter weights to between 0.0-1.0
+	--minWeight : Sets a minimum allowable weight (only valid when --posWeight)
 	--fixWeight	: Constrain parameter weights to 1.0 (i.e., unweighted)
 	--fixShape	: Turn off feature transformation
 	--allShapes	: Allow inverse and reverse transformations
+	--maxShape	: Maximum shape value (all transformations approach linear as shape increases) [default=100]
 
 Model optimization/ selection options:
 	-v,--vars	: Comma-separated list (no spaces) of explanatory attributes to include
@@ -270,7 +279,7 @@ Model optimization/ selection options:
 	-F,--nfail	: Number of generations failing to improve to stop optimization
 	-d,--delt	: Threshold absolute change in fitness [default=0.0]
 	-D,--deltP	: Threshold percentage change in fitness, as decimal [default=0.001]
-	-f,--fit	: Fitness metric used to evaluate models <NOT IMPLEMENTED>
+	-f,--fit	: Fitness metric used to evaluate models 
 			    Options:
 			    aic (default)
 			    loglik (log-likelihood)
@@ -279,7 +288,6 @@ Model optimization/ selection options:
 			    NOTE: Case-insensitive
 	-b,--burn	: Number of generations for pre-burnin [default=0]
 	--max_hof_size	: Maximum individuals to track in the Hall of Fame [default=100]
-	--distance	: Compute a distance-only model using this variable [default="LENGTH_KM"] ***NOT IMPLEMENTED***
 	--null	: Output null (population-only) model metrics ***NOT IMPLEMENTED***
 
 Multi-model inference options:
