@@ -1182,12 +1182,11 @@ def evaluate(individual):
 
 		# evaluate using simple resistance distance
 		r, res = rd.parsePairwise(points, inc_matrix, multi, gendist)
-		oname=".rdist_"+str(os.path.basename(params.out))+"_p"+str(my_number)
-		#print(res)
 		fitness = res[params.fitmetric][0]
-		#print(fitness)
 		res=list(res.iloc[0])
-		np.savetxt(oname, r, delimiter="\t")
+
+		# oname=".rdist_"+str(os.path.basename(params.out))+"_p"+str(my_number)
+		# np.savetxt(oname, r, delimiter="\t")
 	#return fitness value
 	return(fitness, res)
 
