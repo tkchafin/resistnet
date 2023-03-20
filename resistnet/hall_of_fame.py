@@ -71,12 +71,17 @@ class hallOfFame():
 				return
 
 	def custom_drop(self):
+		print(self.data)
 		for v in self.variables:
 			self.data[str(v)+"_weight"] = self.data[str(v)] * self.data[str(v)+"_weight"]
 			self.data[str(v)+"_trans"] = self.data[str(v)] * self.data[str(v)+"_trans"]
 			self.data[str(v)+"_shape"] = self.data[str(v)] * self.data[str(v)+"_shape"]
+			temp = self.data[str(v)+"_trans"]
+			temp[temp>1] = 1
+			self.data[str(v)+"_shape"] = self.data[str(v)] * temp
 			self.data = self.data.drop_duplicates(keep='first', ignore_index=True)
 			self.data = self.data.reset_index(drop=True)
+		print(self.data)
 
 	def printHOF(self, max_row=None, max_col=None):
 		self.data = self.data.sort_values('fitness', ascending=False)
