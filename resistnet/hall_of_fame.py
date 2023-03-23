@@ -28,8 +28,9 @@ class hallOfFame():
 		self.variables=variables
 		self.max_size=int(max_size)
 		self.min_fitness=float('-inf')
-		self.rvi=pd.DataFrame(columns=['variable', 'RVI'])
-		self.maw=pd.DataFrame(columns=['variable', 'MAW'])
+		self.rvi=None
+		self.maw=None
+		self.best=None
 		self.zero_threshold=0.0000000000000001
 
 		if init_pop is not None:
@@ -71,7 +72,6 @@ class hallOfFame():
 				return
 
 	def custom_drop(self):
-		print(self.data)
 		for v in self.variables:
 			self.data[str(v)+"_weight"] = self.data[str(v)] * self.data[str(v)+"_weight"]
 			self.data[str(v)+"_trans"] = self.data[str(v)] * self.data[str(v)+"_trans"]
@@ -81,7 +81,6 @@ class hallOfFame():
 			self.data[str(v)+"_shape"] = self.data[str(v)] * temp
 			self.data = self.data.drop_duplicates(keep='first', ignore_index=True)
 			self.data = self.data.reset_index(drop=True)
-		print(self.data)
 
 	def printHOF(self, max_row=None, max_col=None):
 		self.data = self.data.sort_values('fitness', ascending=False)
@@ -89,17 +88,37 @@ class hallOfFame():
 		with pd.option_context('display.max_rows', max_row, 'display.max_columns', max_col):  # more options can be specified also
 			print(self.data)
 
+	def printBest(self, max_row=None, max_col=None):
+		if self.best is None:
+			self.get_best_model()
+		self.best = self.best.sort_values('Variable', ascending=False)
+		self.best = self.best.reset_index(drop=True)
+		with pd.option_context('display.max_rows', max_row, 'display.max_columns', max_col):  # more options can be specified also
+			print(self.best)
+
 	def printRVI(self, max_row=None, max_col=None):
+		if self.rvi is None:
+			self.relative_variable_importance()
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
 		self.rvi = self.rvi.reset_index(drop=True)
 		with pd.option_context('display.max_rows', max_row, 'display.max_columns', max_col):  # more options can be specified also
 			print(self.rvi)
 
 	def printMAW(self, max_row=None, max_col=None):
+		if self.maw is None:
+			self.model_average_weights()
 		self.maw = self.maw.sort_values('MAW', ascending=False)
 		self.maw = self.maw.reset_index(drop=True)
 		with pd.option_context('display.max_rows', max_row, 'display.max_columns', max_col):  # more options can be specified also
 			print(self.maw)
+
+	def recalculate_aic(self):
+		k = self.data[self.variables].apply(lambda x: (x == 1).sum(), axis=1)
+		self.data['aic'] = -2 * self.data['loglik'] + 2 * k
+
+	def calculate_bic(self, n):
+		k = self.data[self.variables].apply(lambda x: (x == 1).sum(), axis=1)
+		self.data['bic'] = -2 * self.data['loglik'] + k * np.log(n)
 
 	def delta_aic(self):
 		if self.data.shape[0] <= 0:
@@ -110,7 +129,6 @@ class hallOfFame():
 			self.data["aic"] = self.data["aic"]*-1 #reverse the neg sign i added for maximizing
 			best=self.data["aic"].min()
 			self.data["delta_aic_best"] = self.data["aic"]-best
-
 
 	def akaike_weights(self):
 		if self.data.shape[0] <= 0:
@@ -123,7 +141,8 @@ class hallOfFame():
 		#sum_k = self.data["delta_aic_best"].to_numpy()
 		#did a test agains MuMIn::Weights in R and this seems to be working
 		self.data["akaike_weight"]=((np.exp(-0.5*self.data["delta_aic_best"])) / (sum(np.exp(-0.5*self.data["delta_aic_best"]))))
-		self.data["akaike_weight"].mask(self.data["akaike_weight"] < self.zero_threshold, 0.0, inplace=True)
+		self.data["akaike_weight"]=self.data['akaike_weight'] / self.data['akaike_weight'].sum()
+		#self.data["akaike_weight"].mask(self.data["akaike_weight"] < self.zero_threshold, 0.0, inplace=True)
 
 	def cumulative_akaike(self, threshold=1.0):
 		if self.data.shape[0] <= 0:
@@ -159,6 +178,19 @@ class hallOfFame():
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
 		self.rvi = self.rvi.reset_index(drop=True)
 
+	def get_best_model(self):
+		best_model = self.data.iloc[0]
+		best_model_variables = []
+		for var in self.variables:
+			best_model_variables.append({
+				'Variable': var,
+				'Weight': best_model[str(var) + '_weight'],
+				'Shape': best_model[str(var) + '_shape'],
+				'Transformation': best_model[str(var) + '_trans']
+			})
+		self.best = pd.DataFrame(best_model_variables)
+		return self.best
+
 	def model_average_weights(self,ignore_keep=False):
 		#clear previous calculations
 		self.maw=pd.DataFrame(columns=['variable', 'MAW'])
@@ -185,12 +217,26 @@ class hallOfFame():
 			ret["fitness"] = ret["fitness"]*-1
 		return(ret)
 
+	def get_variables(self):
+		return(self.variables)
+
+	def getBest(self):
+		if self.best is None:
+			self.get_best_model()
+		self.best = self.best.sort_values('Variable', ascending=False)
+		self.best = self.best.reset_index(drop=True)
+		return(self.best)
+
 	def getRVI(self):
+		if self.rvi is None:
+			self.relative_variable_importance()
 		self.rvi = self.rvi.sort_values('RVI', ascending=False)
 		self.rvi = self.rvi.reset_index(drop=True)
 		return(self.rvi)
 
 	def getMAW(self):
+		if self.maw is None:
+			self.model_average_weights()
 		self.maw = self.maw.sort_values('MAW', ascending=False)
 		self.maw = self.maw.reset_index(drop=True)
 		return(self.maw)
@@ -263,10 +309,52 @@ class hallOfFame():
 		out_df.to_csv((str(oname)+".HallOfFame.tsv"), sep="\t", index=False, na_rep="-")
 
 	def writeMAW(self, oname):
+		if self.maw is None:
+			self.model_average_weights()
 		self.maw.to_csv((str(oname)+".modavgWeights.tsv"), sep="\t", index=False, na_rep="-")
 
 	def writeRVI(self, oname):
+		if self.rvi is None:
+			self.relative_variable_importance()
 		self.rvi.to_csv((str(oname)+".varImportance.tsv"), sep="\t", index=False, na_rep="-")
+
+	def writeBest(self, oname):
+		if self.best is None:
+			self.get_best_model()
+		self.best.to_csv((str(oname)+".bestModel.tsv"), sep="\t", index=False, na_rep="-")
+
+
+	@classmethod
+	def from_dataframe(cls, df, max_size=None):
+		#columns_to_drop=["akaike_weight", "acc_akaike_weight", "keep", "delta_aic_best"]
+		#df = df.drop(columns=[col for col in columns_to_drop if col in df.columns])
+		# Extract variable names from the DataFrame column names
+		variable_prefixes = ["_weight", "_trans", "_shape"]
+		variables = set()
+		for col in df.columns:
+			for prefix in variable_prefixes:
+				if col.endswith(prefix):
+					variables.add(col.replace(prefix, ""))
+		variables = list(variables)
+		if "acc_akaike" in variables: variables.remove("acc_akaike")
+		if "akaike" in variables: variables.remove("akaike")
+
+		df = df.fillna(0.0)
+		# Set max_size to the maximum allowable row number if it is not provided
+		if max_size is None:
+			max_size = pd.options.display.max_rows
+
+		# Create a new instance of the hallOfFame class
+		instance = cls(variables, max_size)
+
+		df["aic"] = df["aic"]*-1 #reverse the neg sign i added for maximizing
+		best=df["aic"].min()
+		df["delta_aic_best"] = df["aic"]-best
+
+		# Update the instance attributes with the provided DataFrame
+		instance.data = df.copy()
+
+		return instance
 
 def plotEdgeModel(gen, res, oname):
 	sns.set(style="ticks")
