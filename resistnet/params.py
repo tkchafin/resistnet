@@ -35,7 +35,7 @@ class parseArgs():
 		self.pop_agg="ARITH"
 		self.edge_agg="ARITH"
 		self.efit_agg="SUM"
-		self.maxpopsize=100
+		self.maxpopsize=1000
 		self.cstype="pairwise"
 		self.fitmetric="aic"
 		self.network=None
