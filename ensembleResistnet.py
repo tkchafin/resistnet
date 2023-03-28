@@ -76,7 +76,11 @@ def main():
 	   sep="\t")
 
 	# read models 
-	hofs = read_and_concat_files(params.paths, ".HallOfFame.tsv")
+	if params.only_best:
+		local_rows=1
+	else:
+		local_rows=None
+	hofs = read_and_concat_files(params.paths, ".HallOfFame.tsv", local_rows=local_rows)
 	if (hofs['fitness'] == hofs['aic']).all():
 		hofs["fitness"] = hofs["fitness"]*-1
 	hofs["aic"] = hofs["aic"]*-1
@@ -164,7 +168,7 @@ def main():
 	modelAverage(pool, bests.getHOF(only_keep=True), base=params.out) #set to true for production
 
 
-def read_and_concat_files(paths, extension, index_column=None):
+def read_and_concat_files(paths, extension, index_column=None, local_rows=None):
 	# Ensure paths is a list, even if a single string is provided
 	if isinstance(paths, str):
 		paths = [paths]
@@ -188,6 +192,10 @@ def read_and_concat_files(paths, extension, index_column=None):
 			if index_column is not None and index_column in df.columns:
 				df[index_column] = df[index_column].astype(str) + f"_{i}"
 			
+			# if local_rows set, only take top X rows from each data frame 
+			if local_rows is not None:
+				df = df.head(local_rows)
+
 			# append it to list 
 			dfs.append(df)
 
@@ -930,7 +938,7 @@ class parseArgs():
 			["help", "out=", "in=", "network=", "reps=", "shp=",
 			"len_col=", "id_col=", "split_samples", "max_keep=", 
 			"awsum=", "list=", "threads=", "edge_agg=", "varFile=",
-			"allShapes", "report_all", "noPlot"])
+			"allShapes", "report_all", "noPlot", "only_best"])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
@@ -947,6 +955,7 @@ class parseArgs():
 		self.shapefile=None
 		self.hof_max=None
 		self.only_keep=False
+		self.only_best=False
 		self.awsum=0.95
 		self.split_samples=False
 		self.length_col="LENGTH_KM"
@@ -997,6 +1006,8 @@ class parseArgs():
 				self.split_samples=True
 			elif opt == "only_keep":
 				self.only_keep=True
+			elif opt == "only_nest":
+				self.only_best=True
 			elif opt=="report_all":
 				self.report_all=True
 			elif opt == "id_col" or opt=="c":
@@ -1038,6 +1049,7 @@ Optional Arguments:
 -t,--procs	: Number of parallel processors
 -a,--awsum	: Cumulative Akaike weight threshold to retain top N models [default=0.95]
 --only_keep	: Only retain models where column "keep"=True
+--only_best	: Only retain best model from each input
 --split_samples	: Do not check for overlap in sample names, instead treating all as unique
 -X,--noPlot	: Turn off plotting
 -m,--max_keep	: Maximum models to keep (default = all models)
