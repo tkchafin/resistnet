@@ -1006,7 +1006,7 @@ class parseArgs():
 				self.split_samples=True
 			elif opt == "only_keep":
 				self.only_keep=True
-			elif opt == "only_nest":
+			elif opt == "only_best":
 				self.only_best=True
 			elif opt=="report_all":
 				self.report_all=True
