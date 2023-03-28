@@ -938,7 +938,8 @@ class parseArgs():
 			["help", "out=", "in=", "network=", "reps=", "shp=",
 			"len_col=", "id_col=", "split_samples", "max_keep=", 
 			"awsum=", "list=", "threads=", "edge_agg=", "varFile=",
-			"allShapes", "report_all", "noPlot", "only_best"])
+			"allShapes", "report_all", "noPlot", "only_best", 
+			"only_keep"])
 		except getopt.GetoptError as err:
 			print(err)
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
