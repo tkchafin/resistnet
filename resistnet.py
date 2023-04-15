@@ -628,6 +628,8 @@ def load_data(p, proc_num):
 
 	# make sure df is sorted the same as names
 	predictors = predictors.loc[names]
+	if not check_dataframe_columns(predictors):
+		sys.exit()
 
 	points = readPointCoords(params.coords)
 	# make sure points are snapped to the network
@@ -690,6 +692,18 @@ def load_data(p, proc_num):
 		df.to_csv(dtout, sep="\t", index=False)
 
 	#print(points_names)
+
+def check_dataframe_columns(df):
+	for col in df.columns:
+		unique_values = df[col].dropna().unique()
+		
+		if len(unique_values) == 0 or (len(unique_values) == 1 and np.isnan(unique_values[0])):
+			print(f"Column '{col}' has all NaN values.")
+			return False
+		elif len(unique_values) == 1:
+			print(f"Column '{col}' has all the same value: {unique_values[0]}")
+			return False
+	return True
 
 def getPairwisePathweights(graph, points, attributes):
 
@@ -762,8 +776,8 @@ def nx_to_df(G):
 	return(df)
 
 def unique(sequence):
-    seen = set()
-    return [x for x in sequence if not (x in seen or seen.add(x))]
+	seen = set()
+	return [x for x in sequence if not (x in seen or seen.add(x))]
 
 def checkFormatGenMat(mat, points, agg_method="ARITH"):
 	order = [item for sublist in list(points.values()) for item in sublist]
