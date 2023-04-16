@@ -60,7 +60,8 @@ class hallOfFame():
 		else:
 			if popDF['fitness'].max() > self.min_fitness:
 				subset=popDF[popDF.fitness > self.min_fitness]
-				self.data = self.data.append(subset, ignore_index=True)
+				self.data = pd.concat([self.data, subset], ignore_index=True)
+				#self.data = self.data.append(subset, ignore_index=True)
 				self.data = self.data.sort_values('fitness', ascending=False)
 				self.data = self.data.drop_duplicates(keep='first', ignore_index=True)
 				self.data = self.data.reset_index(drop=True)
