@@ -628,7 +628,7 @@ def load_data(p, proc_num):
 
 	# make sure df is sorted the same as names
 	predictors = predictors.loc[names]
-	predictors = scrub_bad_columns(predictors, verbose=True)
+	predictors, params.variables = scrub_bad_columns(predictors, params.variables, verbose=True)
 
 	points = readPointCoords(params.coords)
 	# make sure points are snapped to the network
@@ -704,7 +704,7 @@ def check_dataframe_columns(df):
 			return False
 	return True
 
-def scrub_bad_columns(df, verbose=False):
+def scrub_bad_columns(df, variables, verbose=False):
     bad_columns = []
     
     for col in df.columns:
@@ -721,8 +721,9 @@ def scrub_bad_columns(df, verbose=False):
     
     # Remove bad columns from the data frame and the predictors list
     cleaned_df = df.drop(bad_columns, axis=1)
+    cleaned_variables = [v for v in variables if v not in bad_columns]
 
-    return cleaned_df
+    return cleaned_df, cleaned_variables
 
 def getPairwisePathweights(graph, points, attributes):
 
