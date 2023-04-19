@@ -628,8 +628,7 @@ def load_data(p, proc_num):
 
 	# make sure df is sorted the same as names
 	predictors = predictors.loc[names]
-	if not check_dataframe_columns(predictors):
-		predictors = scrub_bad_columns(predictors, verbose=False)
+	predictors = scrub_bad_columns(predictors, verbose=True)
 
 	points = readPointCoords(params.coords)
 	# make sure points are snapped to the network
@@ -708,7 +707,7 @@ def check_dataframe_columns(df):
 def scrub_bad_columns(df, verbose=False):
     bad_columns = []
     
-    for col in df:
+    for col in df.columns:
         unique_values = df[col].dropna().unique()
         
         if len(unique_values) == 0 or (len(unique_values) == 1 and np.isnan(unique_values[0])):
