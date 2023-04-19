@@ -629,7 +629,7 @@ def load_data(p, proc_num):
 	# make sure df is sorted the same as names
 	predictors = predictors.loc[names]
 	if not check_dataframe_columns(predictors):
-		sys.exit()
+		df, predictors = scrub_bad_columns(df, predictors, verbose=False)
 
 	points = readPointCoords(params.coords)
 	# make sure points are snapped to the network
@@ -704,6 +704,27 @@ def check_dataframe_columns(df):
 			print(f"Column '{col}' has all the same value: {unique_values[0]}")
 			return False
 	return True
+
+def scrub_bad_columns(df, predictors, verbose=False):
+    bad_columns = []
+    
+    for col in predictors:
+        unique_values = df[col].dropna().unique()
+        
+        if len(unique_values) == 0 or (len(unique_values) == 1 and np.isnan(unique_values[0])):
+            if verbose:
+                print(f"Column '{col}' has all NaN values.")
+            bad_columns.append(col)
+        elif len(unique_values) == 1:
+            if verbose:
+                print(f"Column '{col}' has all the same value: {unique_values[0]}")
+            bad_columns.append(col)
+    
+    # Remove bad columns from the data frame and the predictors list
+    cleaned_df = df.drop(bad_columns, axis=1)
+    cleaned_predictors = [col for col in predictors if col not in bad_columns]
+    
+    return cleaned_df, cleaned_predictors
 
 def getPairwisePathweights(graph, points, attributes):
 
