@@ -69,9 +69,10 @@ def main():
     # read coordinates 
     if params.coords is None:
         coords = read_and_concat_files(params.paths, ".coords", index_column=index_col)
-        coords = coords.drop_duplicates(subset=["Lat", "Lon"], keep='first')
     else:
-        coords = pd.read_csv(params.coords, sep="\t", header=0).drop_duplicates()
+        coords = pd.read_csv(params.coords, sep="\t", header=0)
+
+    coords = coords.drop_duplicates(subset=["Lat", "Lon"], keep='first')
 
     coords.to_csv(params.out+".coords", 
         header=True, 
@@ -490,7 +491,11 @@ def load_data(p, proc_num):
         index_col="Sample"
 
     # read coordinates 
-    cdf = read_and_concat_files(params.paths, ".coords", index_column=index_col)
+    if params.coords is None:
+        cdf = read_and_concat_files(params.paths, ".coords", index_column=index_col)
+    else:
+        cdf = pd.read_csv(params.coords, sep="\t", header=0)
+
     cdf = cdf.drop_duplicates(subset=["Lat", "Lon"], keep='first')
     cdf['Lat'] = cdf['Lat'].astype(float)
     cdf['Lon'] = cdf['Lon'].astype(float)
