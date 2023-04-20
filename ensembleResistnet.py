@@ -67,7 +67,7 @@ def main():
         params.network = str(params.out) + ".subgraph.net"
 
     # read coordinates 
-    if params.coords is not None:
+    if params.coords is None:
         coords = read_and_concat_files(params.paths, ".coords", index_column=index_col)
         coords = coords.drop_duplicates(subset=["Lat", "Lon"], keep='first')
     else:
