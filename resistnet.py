@@ -5,6 +5,7 @@ import math
 import random
 import getopt
 import pickle
+import pyogrio
 import momepy
 import scipy as sp
 import numpy as np
@@ -486,7 +487,8 @@ def read_network(network, shapefile):
 	else:
 		print("Building network from shapefile:",shapefile)
 		print("WARNING: This can take a while with very large files!")
-		rivers = gpd.read_file(shapefile)
+		rivers = pyogrio.read_dataframe(shapefile)
+		#rivers = gpd.read_file(shapefile)
 		G=momepy.gdf_to_nx(rivers, approach="primal", directed=False, multigraph=False)
 		#G=nx.Graph(nx.read_shp(shapefile, simplify=True, strict=True).to_undirected())
 	return(G)
