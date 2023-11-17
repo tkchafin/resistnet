@@ -15,41 +15,41 @@ https://github.com/wpeterman/ResistanceGA/tree/3be50a6fa5515fe23953fca39135c5b34
 
 #rescales all columns in a pandas object between m and M, where M > m >= 0
 def rescaleCols(df, m, M):
-	df -= df.min()
-	df /= df.max()
-	return((df*(M-m))+m)
+    df -= df.min()
+    df /= df.max()
+    return((df*(M-m))+m)
 
 def ricker(dat, shape, ceiling):
-	#R: parm[3]*r*exp(-1*r/parm[2])+1
-	#parm[2] = shape
-	#parm[3] = ceiling
-	return(ceiling*dat*np.exp(-1*dat/shape)+1)
+    #R: parm[3]*r*exp(-1*r/parm[2])+1
+    #parm[2] = shape
+    #parm[3] = ceiling
+    return(ceiling*dat*np.exp(-1*dat/shape)+1)
 
 def invRicker(dat, shape, ceiling):
-	return((-1*ceiling)*dat*np.exp(-1*dat/shape)-1)
-	
+    return((-1*ceiling)*dat*np.exp(-1*dat/shape)-1)
+    
 def revInvRicker(dat, shape, ceiling):
-	d = invRicker(dat, shape, ceiling)
-	return(rescaleCols((-1*d), min(d), max(d)))
-	#return(invRicker((-1*dat), shape, ceiling))
+    d = invRicker(dat, shape, ceiling)
+    return(rescaleCols((-1*d), min(d), max(d)))
+    #return(invRicker((-1*dat), shape, ceiling))
 
 def revRicker(dat, shape, ceiling):
-	d = rescaleCols((-1*dat), min(dat), max(dat))
-	return(ricker(d, shape, ceiling))
+    d = rescaleCols((-1*dat), min(dat), max(dat))
+    return(ricker(d, shape, ceiling))
 
 def monomolecular(dat, shape, ceiling):
-	return(ceiling*(1-np.exp(-1*dat/shape))+1)
-	
+    return(ceiling*(1-np.exp(-1*dat/shape))+1)
+    
 def invMonomolecular(dat, shape, ceiling):
-	d = ceiling*np.exp(-1*dat/shape)
-	return((d-min(d))+1)
+    d = ceiling*np.exp(-1*dat/shape)
+    return((d-min(d))+1)
 
 def revInvMonomolecular(dat, shape, ceiling):
-	d = rescaleCols((-1*dat), min(dat), max(dat))
-	return(invMonomolecular(d, shape, ceiling))
+    d = rescaleCols((-1*dat), min(dat), max(dat))
+    return(invMonomolecular(d, shape, ceiling))
 
 def revMonomolecular(dat, shape, ceiling):
-	d = rescaleCols((-1*dat), min(dat), max(dat))
-	return(monomolecular(d, shape, ceiling))
+    d = rescaleCols((-1*dat), min(dat), max(dat))
+    return(monomolecular(d, shape, ceiling))
 
-	
+    

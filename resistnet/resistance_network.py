@@ -582,39 +582,41 @@ class ResistanceNetwork:
                 #otherwise continue building current edge
                 continue
 
-class ResistanceNetworkWorker(ResistanceNetwork):
-    def __init__(self, network, pop_agg, reachid_col, length_col, 
-                 variables, agg_opts, fitmetric, posWeight, fixWeight, 
-                 allShapes, fixShape, min_weight, max_shape, inc, point_coords, 
-                 points_names, points_snapped, points_labels, predictors, edge_order, 
-                 gendist):
-        self.network = network
-        self.pop_agg = pop_agg
-        self.reachid_col = reachid_col
-        self.length_col = length_col
-        self.output_prefix = None
-        self.verbose = False
-        self.variables = variables
-        self.agg_opts = agg_opts
-
-        self.fitmetric = fitmetric
-        self.posWeight = posWeight
-        self.fixWeight = fixWeight
-        self.fixShape = fixShape
-        self.allShapes = allShapes
-        self.min_weight = min_weight
-        self.max_shape = max_shape
-
-        self._inc = inc
-        self._G = None
-        self._K = self.read_network()
-        self._point_coords = point_coords
-        self._points_names = points_names
-        self._points_snapped = points_snapped
-        self._points_labels = points_labels
-        self._predictors = predictors
-        self._edge_order = edge_order
-        self._gendist = gendist
+    def transform(self, dat, transformation, shape):
+        d=dat
+        if transformation <= 0:
+            pass
+        elif transformation == 1:
+            d=trans.ricker(dat, shape, 10)
+        elif transformation == 2:
+            if self.allShapes:
+                d=trans.revRicker(dat, shape, 10)
+            else:
+                d=trans.ricker(dat, shape, 10)
+        elif transformation == 3:
+            if self.allShapes:
+                d=trans.invRicker(dat, shape, 10)
+            else:
+                d=trans.revInvRicker(dat, shape, 10)
+        elif transformation == 4:
+            d=trans.revInvRicker(dat, shape, 10)
+        elif transformation == 5:
+            d=trans.monomolecular(dat, shape, 10)
+        elif transformation == 6:
+            if self.allShapes:
+                d=trans.revMonomolecular(dat, shape, 10)
+            else:
+                d=trans.monomolecular(dat, shape, 10)
+        elif transformation == 7:
+            if self.allShapes:
+                d=trans.invMonomolecular(dat, shape, 10)
+            else:
+                d=trans.revInvMonomolecular(dat, shape, 10)
+        elif transformation == 8:
+            d=trans.revInvMonomolecular(dat, shape, 10)
+        else:
+            print("WARNING: Invalid transformation type. Returning un-transformed data.")
+        return(trans.rescaleCols(d, 0, 10))
 
     #evaluate given a model 
     def evaluate(self, individual):
@@ -655,42 +657,6 @@ class ResistanceNetworkWorker(ResistanceNetwork):
 
         #return fitness value
         return(fitness, res)
-    
-    def transform(self, dat, transformation, shape):
-        d=dat
-        if transformation <= 0:
-            pass
-        elif transformation == 1:
-            d=trans.ricker(dat, shape, 10)
-        elif transformation == 2:
-            if self.allShapes:
-                d=trans.revRicker(dat, shape, 10)
-            else:
-                d=trans.ricker(dat, shape, 10)
-        elif transformation == 3:
-            if self.allShapes:
-                d=trans.invRicker(dat, shape, 10)
-            else:
-                d=trans.revInvRicker(dat, shape, 10)
-        elif transformation == 4:
-            d=trans.revInvRicker(dat, shape, 10)
-        elif transformation == 5:
-            d=trans.monomolecular(dat, shape, 10)
-        elif transformation == 6:
-            if self.allShapes:
-                d=trans.revMonomolecular(dat, shape, 10)
-            else:
-                d=trans.monomolecular(dat, shape, 10)
-        elif transformation == 7:
-            if self.allShapes:
-                d=trans.invMonomolecular(dat, shape, 10)
-            else:
-                d=trans.revInvMonomolecular(dat, shape, 10)
-        elif transformation == 8:
-            d=trans.revInvMonomolecular(dat, shape, 10)
-        else:
-            print("WARNING: Invalid transformation type. Returning un-transformed data.")
-        return(trans.rescaleCols(d, 0, 10))
 
     def model_output(self, model):
         first=True
@@ -714,5 +680,40 @@ class ResistanceNetworkWorker(ResistanceNetwork):
         r=rd.effectiveResistanceMatrix(self._points_snapped, self._inc, multi)
 
         return(r, multi)
+
+class ResistanceNetworkWorker(ResistanceNetwork):
+    def __init__(self, network, pop_agg, reachid_col, length_col, 
+                 variables, agg_opts, fitmetric, posWeight, fixWeight, 
+                 allShapes, fixShape, min_weight, max_shape, inc, point_coords, 
+                 points_names, points_snapped, points_labels, predictors, edge_order, 
+                 gendist):
+        self.network = network
+        self.pop_agg = pop_agg
+        self.reachid_col = reachid_col
+        self.length_col = length_col
+        self.output_prefix = None
+        self.verbose = False
+        self.variables = variables
+        self.agg_opts = agg_opts
+
+        self.fitmetric = fitmetric
+        self.posWeight = posWeight
+        self.fixWeight = fixWeight
+        self.fixShape = fixShape
+        self.allShapes = allShapes
+        self.min_weight = min_weight
+        self.max_shape = max_shape
+
+        self._inc = inc
+        self._G = None
+        self._K = self.read_network()
+        self._point_coords = point_coords
+        self._points_names = points_names
+        self._points_snapped = points_snapped
+        self._points_labels = points_labels
+        self._predictors = predictors
+        self._edge_order = edge_order
+        self._gendist = gendist
+
 
 
