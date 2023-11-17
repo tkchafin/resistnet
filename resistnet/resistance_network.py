@@ -247,6 +247,54 @@ class ResistanceNetwork:
             return self.subgraph
 
 
+    def evaluate_null_model(self, oname=None):
+        """
+        Evaluate the null model by constructing a resistance vector using the self.dist_col
+        and aggregating using SUM. It then uses parsePairwise to evaluate the model and 
+        extracts relevant metrics.
+        """
+        # Extract and aggregate self.dist_col
+        df = utils.nx_to_df(self._K)
+        if self.minimize:
+            id_col = "EDGE_ID"
+        else:
+            id_col = self.reachid_col
+            df["EDGE_ID"] = df[id_col]
+
+        # Aggregate using SUM for self.dist_col
+        grouped = df.groupby('EDGE_ID')
+        agg_fun = lambda x: x.sum()
+        aggregated_dist = grouped.agg({self.length_col: agg_fun})[self.length_col]
+
+        # Sort the aggregated_dist in the same order as self._edge_order 
+        aggregated_dist = aggregated_dist.reindex(self._edge_order)
+
+        # Ensure the aggregated_dist is in the correct format
+        if not isinstance(aggregated_dist, pd.Series):
+            print("Aggregation of length_col did not result in a proper Series.")
+            return None
+
+        # Evaluate model using parsePairwise
+        _, res = rd.parsePairwise(self._points_snapped, self._inc, aggregated_dist, self._gendist)
+
+        # Extract relevant metrics
+        metrics = res.copy()
+        metrics["aic"] = -1 * metrics["aic"]
+        metrics["aic_null"] = -1 * metrics["aic_null"]
+        first_row = metrics.iloc[0]
+        formatted_table = pd.DataFrame({
+            "loglik": [first_row["loglik"], first_row["loglik_null"]],
+            "aic": [first_row["aic"], first_row["aic_null"]],
+            "r2m": [first_row["r2m"], np.nan],  
+            "delta_aic_null": [first_row["delta_aic_null"], np.nan]  
+        }, index=["distance_only", "null"])
+
+        if oname:
+            formatted_table.to_csv(f"{oname}.Null-Model.tsv", sep="\t")
+
+        return formatted_table
+
+
     def output_and_plot_model(self, oname, mat_r, edge_r, plot=True):
         """
         Outputs model results to files and plots the resistance network and pairwise models.

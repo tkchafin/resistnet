@@ -53,8 +53,8 @@ class parseArgs():
 		self.maxGens=500
 		self.tournsize=10
 		self.cxpb=0.5
-		self.mutpb=0.2
-		self.indpb=0.1
+		self.mutpb=0.5
+		self.indpb=0.5
 		self.burnin=0
 		self.max_hof_size=100
 		self.out="output"
@@ -255,8 +255,8 @@ Genetic Algorithm Options:
 	-G,--maxGen	: Maximum number of generations [default = 500]
 	-s,--size	: Manually set population size to <-p int>
 			    NOTE: By default, #params * 15
-	-m,--mutpb	: Probability of mutation per trait [default=0.2]
-	--indpb	: Probability of mutation per individual [default=0.1]
+	-m,--mutpb	: Probability of mutation per trait [default=0.5]
+	--indpb	: Probability of mutation per individual [default=0.5]
 	--cxpb	: Probability of being chosen for cross-over [default=0.5]
 	-T,--tSize	: Tournament size [default=10]
 	--posWeight	: Constrain parameter weights to between 0.0-1.0

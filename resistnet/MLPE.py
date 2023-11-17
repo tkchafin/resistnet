@@ -61,11 +61,13 @@ MLPE <- function(ID, ZZ, REML=FALSE) {
 	full<-summary(MODs$full)
 	null<-summary(MODs$null)
 	loglik<-c(full$logLik[[1]])
+    null_loglik<-c(null$logLik[[1]])
 	r2<-c(MuMIn:::r.squaredGLMM(MODs$full)[[1]])
 	aic<-c(full$AICtab[[1]])
+    null_aic<-c(null$AICtab[[1]])
 	deltaAIC<-c(null$AICtab[[1]]-full$AICtab[[1]])
-	df<-data.frame(loglik, r2, -1*aic, deltaAIC)
-	colnames(df) <- c("loglik", "r2m", "aic", "delta_aic_null")
+	df<-data.frame(loglik, r2, -1*aic, deltaAIC, null_loglik, -1*null_aic)
+	colnames(df) <- c("loglik", "r2m", "aic", "delta_aic_null", "loglik_null", "aic_null")
   # return model
   return(df)
 }

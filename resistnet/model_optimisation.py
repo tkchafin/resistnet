@@ -72,7 +72,7 @@ class ModelRunner:
 
 
     def run_ga(self, maxgens=1, fitmetric="aic", burnin=0, deltaB=None, 
-               deltaB_perc=0.001, indpb=0.1, mutpb=0.2, cxpb=0.5, nFail=50,
+               deltaB_perc=0.001, indpb=0.5, mutpb=0.5, cxpb=0.5, nFail=50,
                popsize=None, maxpopsize=1000, posWeight=False, fixWeight=False, 
                fixShape=False, allShapes=False, min_weight=0.0, max_shape=None, 
                max_hof_size=100, tournsize=10, awsum=0.95, only_keep=True, 
@@ -253,6 +253,14 @@ class ModelRunner:
         # # Get results for best models and model-averaged
         self.model_average(out, plot) 
 
+        # evaluate the null model 
+        null = self.resistance_network.evaluate_null_model(out)
+        if verbose:
+            print()
+            print("Evaluating null model...")
+            with pd.option_context('display.max_rows', None, 'display.max_columns', None): 
+                print(null)
+
         # df = pd.DataFrame(self.gendist, columns=list(self.points_names.values()), index=list(self.points_names.values()))
         # df.to_csv(f"{params.out}.genDistMat.tsv", sep="\t", header=True, index=True)
 
@@ -271,6 +279,7 @@ class ModelRunner:
             mod_num+=1
 
         if self.verbose:
+            print()
             print("Model-averaging across",mod_num,"resistance models...")
 
         # evaluate models in parallel
@@ -464,8 +473,11 @@ class ModelRunner:
                 if task == "END":
                     break
                 elif task == "evaluate":
-                    fitness, res = worker.evaluate(data) 
-                    result_queue.put((id, fitness, res))
+                    fitness, res = worker.evaluate(data)
+                    if res:
+                        result_queue.put((id, fitness, res[0:4]))
+                    else:
+                        result_queue.put((id, fitness, None))
                 elif task == "output":
                     r, multi = worker.model_output(data) 
                     result_queue.put((id, r, multi))
