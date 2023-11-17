@@ -225,8 +225,6 @@ Input options:
 
 General options:
 	--seed	: Random number seed (default=taken from clock time)
-	--minimize	: Minimize input graph
-	--dist_col	: Optional attribute representing edge-wise distance, e.g., "fittedD"
 	--reachid_col	: Attribute name representing primary key in shapefile [default="REACH_ID"]
 	--length_col	: Attribute name giving length in kilometers [default="LENGTH_KM"]
 	-t,--procs	: Number of parallel processors
@@ -235,8 +233,7 @@ General options:
 	-h,--help	: Displays help menu
 
 Aggregation options:
-	--edge_agg	: Method to use when combining variable values across segments (e.g., with --minimize)
-	--efit_agg	: Method to use to aggregate variable used for calculating edge-wise fit [default=SUM]
+	--edge_agg	: Method to use when combining variable values across segments 
 	--pop_agg	: Method to use to combine genetic distances for populations mapping to same node
 		All of these can take the following options:
 		  ARITH		: [default] Use arithmetic mean
@@ -258,8 +255,8 @@ Genetic Algorithm Options:
 	-G,--maxGen	: Maximum number of generations [default = 500]
 	-s,--size	: Manually set population size to <-p int>
 			    NOTE: By default, #params * 15
-	-m,--mutpb	: Probability of mutation per individual [default=0.2]
-	--indpb	: Probability of mutation per trait [default=0.1]
+	-m,--mutpb	: Probability of mutation per trait [default=0.2]
+	--indpb	: Probability of mutation per individual [default=0.1]
 	--cxpb	: Probability of being chosen for cross-over [default=0.5]
 	-T,--tSize	: Tournament size [default=10]
 	--posWeight	: Constrain parameter weights to between 0.0-1.0
@@ -288,7 +285,6 @@ Model optimization/ selection options:
 			    NOTE: Case-insensitive
 	-b,--burn	: Number of generations for pre-burnin [default=0]
 	--max_hof_size	: Maximum individuals to track in the Hall of Fame [default=100]
-	--null	: Output null (population-only) model metrics ***NOT IMPLEMENTED***
 
 Multi-model inference options:
 	-a,--awsum	: Cumulative Akaike weight threshold to retain top N models [default=0.95]

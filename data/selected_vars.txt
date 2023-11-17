@@ -1,2 +1,4 @@
-LENGTH_KM	SUM
+run_mm_cyr	ARITH
 tmp_dc_cyr	ARITH
+dor_pc_pva	ARITH
+sgr_dk_rav	ARITH
