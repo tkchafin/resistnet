@@ -277,7 +277,7 @@ class ModelRunner:
         self.model_average(out, plot) 
 
         # evaluate the null model (if genetic distances present)
-        if self.resistance_network._gendist:
+        if self.resistance_network._gendist is not None:
             null = self.resistance_network.evaluate_null_model(out)
             if verbose:
                 print()

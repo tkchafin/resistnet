@@ -323,7 +323,7 @@ class ResistanceNetwork:
             self.plot_resistance_network(edf, oname)
             
             # Plot pairwise model
-            if self._gendist:
+            if self._gendist is not None:
                 self.plot_pairwise_model(mat_r, oname, partition=False)
 
 
