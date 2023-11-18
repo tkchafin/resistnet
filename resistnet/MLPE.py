@@ -85,6 +85,19 @@ MLPE <- function(ID, ZZ, REML=FALSE) {
 	return(mlpe_res)	
 	#print(mlpe_res)
 
+
+def ZZ_mat_(pops, id):
+	zz = np.zeros(shape=(pops,id.shape[0]))
+	for i in range(0, pops):
+		#print(i)
+		for j in range(0, id.shape[0]):
+			#if ID row j contains pop i+1, set zz[j, i] to 1
+			if i+1 in list(id.iloc[j]):
+				#print("  ",j)
+				zz[i,j]=1
+	return(zz)
+
+
 # def testSM():
 # 	x = np.array([2.6407333, 0.6583007, 1.9629121, 0.8529997, 2.2592001, 2.9629032, 2.0796441, 2.4179196, 0.2154603, 2.5016938])
 # 	y = np.array([3.6407333, 1.6583007, 1.5629121, 0.4529997, 2.0592001, 2.0629032, 2.9796441, 3.1179196, 1.2154603, 1.5016938])
@@ -141,15 +154,4 @@ MLPE <- function(ID, ZZ, REML=FALSE) {
 # 	names = ["pop2"]
 # 	vcs = VCSpec(names, [colnames], [mats])
 # 	return(vcs)
-
-def ZZ_mat_(pops, id):
-	zz = np.zeros(shape=(pops,id.shape[0]))
-	for i in range(0, pops):
-		#print(i)
-		for j in range(0, id.shape[0]):
-			#if ID row j contains pop i+1, set zz[j, i] to 1
-			if i+1 in list(id.iloc[j]):
-				#print("  ",j)
-				zz[i,j]=1
-	return(zz)
 

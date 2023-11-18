@@ -21,7 +21,7 @@ class parseArgs():
 			self.display_help("\nExiting because getopt returned non-zero exit status.")
 		#Default values for params
 		#Input params
-		self.prefix="out3"
+		self.prefix="out"
 		self.dist_col=None
 		self.variables = None
 		self.agg_opts = dict()
@@ -214,7 +214,7 @@ class parseArgs():
 			print()
 			print(message)
 		print ("\nresistnet.py\n")
-		print("Author: Tyler K Chafin, Biomathematics and Statistics Scotland")
+		print("Author: Tyler K Chafin")
 		print ("Contact: tyler.chafin@bioss.ac.uk")
 		print ("Description: Genetic algorithm to optimize resistance models on networks")
 		print("""
