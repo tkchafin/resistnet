@@ -218,6 +218,29 @@ class ModelRunner:
             self.terminate_workers()
 
 
+    def build_ensemble(self, bests, awsum = 0.95, only_keep = True, out=None, threads=1, verbose=True):
+
+        try:
+            self.awsum = awsum 
+            self.only_keep = only_keep
+            self.verbose = verbose
+            self.bests = bests 
+            self.report_all = False 
+
+            # initialise workers 
+            self.start_workers(threads)
+
+            # comput ensemble model
+            self.run_output(out, verbose, plot=True)
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            traceback.print_exc()
+
+        finally:
+            # terminate processes 
+            self.terminate_workers()
+
     def run_output(self, out=None, verbose=True, plot=True):
 
         # Various calculations and print/write operations
@@ -246,20 +269,21 @@ class ModelRunner:
             self.bests.writeModelSummary(out)
 
         # Writing log of fitnesses
-        if out:
+        if out and len(self.logger) > 0:
             logDF = pd.DataFrame(self.logger, columns=["Generation", "Worst", "Best", "Mean", "Stdev"])
             logDF.to_csv(f"{out}.FitnessLog.tsv", sep="\t", header=True, index=False)
 
         # # Get results for best models and model-averaged
         self.model_average(out, plot) 
 
-        # evaluate the null model 
-        null = self.resistance_network.evaluate_null_model(out)
-        if verbose:
-            print()
-            print("Evaluating null model...")
-            with pd.option_context('display.max_rows', None, 'display.max_columns', None): 
-                print(null)
+        # evaluate the null model (if genetic distances present)
+        if self.resistance_network._gendist:
+            null = self.resistance_network.evaluate_null_model(out)
+            if verbose:
+                print()
+                print("Evaluating null model...")
+                with pd.option_context('display.max_rows', None, 'display.max_columns', None): 
+                    print(null)
 
         # df = pd.DataFrame(self.gendist, columns=list(self.points_names.values()), index=list(self.points_names.values()))
         # df.to_csv(f"{params.out}.genDistMat.tsv", sep="\t", header=True, index=True)

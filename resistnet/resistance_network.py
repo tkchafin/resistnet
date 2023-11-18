@@ -78,7 +78,8 @@ class ResistanceNetwork:
         self.build_incidence_matrix(self.reachid_col, out=self.output_prefix)
 
         # parse input genetic distance matrix
-        self.parse_input_gen_mat(out=self.output_prefix)
+        if self.inmat is not None:
+            self.parse_input_gen_mat(out=self.output_prefix)
 
 
     def initialize_predictors(self):
@@ -322,7 +323,8 @@ class ResistanceNetwork:
             self.plot_resistance_network(edf, oname)
             
             # Plot pairwise model
-            self.plot_pairwise_model(mat_r, oname, partition=False)
+            if self._gendist:
+                self.plot_pairwise_model(mat_r, oname, partition=False)
 
 
     def plot_resistance_network(self, resistance_values, oname):
