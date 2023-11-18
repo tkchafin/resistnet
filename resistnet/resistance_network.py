@@ -1,6 +1,8 @@
 import os 
 import sys 
 
+os.environ['USE_PYGEOS'] = '0'
+
 from multiprocessing import Process, Queue
 from functools import partial
 import random
@@ -51,6 +53,9 @@ class ResistanceNetwork:
         self.minimize = minimize
         self.variables = variables
         self.agg_opts = agg_opts
+
+        self.minimized_subgraph = None
+        self.subgraph = None
 
         self._inc = None
         self._G = None
@@ -168,7 +173,7 @@ class ResistanceNetwork:
             if out:
                 # Calculate the great circle distance
                 snapDists[name] = great_circle((row['lat'], row['long']), (node[1], node[0])).km
-                self._point_coords[name] = node
+            self._point_coords[name] = node
 
         if self.verbose:
             print("Read", str(len(self._point_coords.keys())), "points.")
@@ -716,4 +721,136 @@ class ResistanceNetworkWorker(ResistanceNetwork):
         self._gendist = gendist
 
 
+class SimResistanceNetwork(ResistanceNetwork):
+    def __init__(self, network, reachid_col, length_col, verbose=False):
+        self.network = network
+        self.reachid_col = reachid_col
+        self.length_col = length_col
+        self.verbose = verbose
+        self.minimize = False
+        self._inc = None
+        self._G = None
+        self._K = None
+        self._point_coords = None
+        self._points_names = None
+        self._points_snapped = None
+        self._points_labels = None
+        self._predictors = None
+        self._edge_order = None
+        self._gendist = None
+
+        self.read_network()
+
+    def format_sampled_points(self, samples):
+        self._point_coords = SortedDict()
+        self._points_snapped = SortedDict()
+        for i in samples.keys():
+            self._point_coords[samples[i]] = i
+            self._points_snapped[i] = samples[i]
+        self._points_names = self._points_snapped.copy()
+        self._points_labels = self._points_snapped.copy()
+
+
+    def clear_sim(self):
+        self._inc = None
+        self._K = None
+        self._point_coords = None
+        self._points_names = None
+        self._points_snapped = None
+        self._points_labels = None
+        self._predictors = None
+        self._edge_order = None
+        self._gendist = None
+
+    def simulate_resistance(self, vars):
+        # read attributes from graph
+        df = utils.nx_to_df(self._K)
+        if self.minimize:
+            id_col="EDGE_ID"
+        else:
+            id_col=self.reachid_col
+            df["EDGE_ID"] = df[id_col]
+
+        # save edge order
+        self._edge_order = df.index
+
+        # rescale vars 
+        predictors=trans.rescaleCols(df[vars['VAR']], 0, 10)
+
+        # generate composite resistance
+        multi = None
+        first = True
+        for i, variable in enumerate(predictors.columns):
+            tr_type = vars[vars['VAR'] == variable]['TRANSFORM'].item()
+            tr_shape = vars[vars['VAR'] == variable]['SHAPE'].item()
+            wgt = vars[vars['VAR'] == variable]['WEIGHT'].item()
+            var = self.transform(predictors[variable], tr_type, tr_shape)
+            if first:
+                multi = var * wgt
+                first = False
+            else:
+                multi += var * wgt
+        
+        return(multi)
+
+    def write_points(self, oname, points):
+        d = {"Sample": [], "Lat": [], "Lon": []}
+        for p in points:
+            d["Sample"].append(points[p])
+            d["Lat"].append(p[1])
+            d["Lon"].append(p[0])
+        df = pd.DataFrame(d)
+        df.to_csv(oname+".coords", 
+        header=True, 
+        index=False, 
+        quoting=None,
+        sep="\t")
+
+
+    def simulate(self, spec_file, num_reps, num_samples, out):
+
+        verbose = self.verbose 
+        self.verbose = False
+        # read specifications file
+        vars = pd.read_csv(spec_file, header=0, delimiter="\t")
+
+        if verbose:
+            print(f"Starting simulation with {num_reps} replicates and {num_samples} samples each.")
+
+        for r in range(1, num_reps + 1):
+            if verbose:
+                print(f"Simulating replicate {r}/{num_reps}")
+
+            base = out + "_" + str(r)
+
+            # sample random points
+            samples = utils.sample_nodes(self._G, num_samples)
+            self.format_sampled_points(samples)
+            
+            # compute subgraph 
+            self._K = self.parse_subgraph_from_points()
+            self._K = self.annotate_edges()
+
+            # simulate composite resistance 
+            multi = self.simulate_resistance(vars)
+
+            # build incidence matrix 
+            self.build_incidence_matrix(self.reachid_col, out=None)
+
+            # compute resistance matrix 
+            res = rd.effectiveResistanceMatrix(self._points_snapped, self._inc, multi)
+            res = trans.rescaleCols(res, 0, 1)
+
+            # write outputs
+            out_mat = f"{base}.ResistanceMatrix.tsv"
+            utils.write_matrix(out_mat, res, list(self._points_labels.values()))
+            self.write_points(base, self._points_labels)
+
+            # clear simulation 
+            self.clear_sim()
+
+            if verbose:
+                print(f"Replicate {r} completed and outputs written.")
+
+        self.verbose = verbose
 

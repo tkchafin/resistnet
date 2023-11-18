@@ -6,6 +6,7 @@ import numpy as np
 import networkx as nx
 import pickle
 import math
+import random
 import itertools
 from sortedcontainers import SortedDict
 
@@ -151,3 +152,12 @@ def to_from_(pops):
 	frm[pops-2] = t
 	df = pd.DataFrame({"pop1" : to, "pop2" : frm})
 	return(df)
+
+def sample_nodes(G, samples):
+    ret=SortedDict()
+    nodes = random.sample(list(G.nodes), samples)
+    i=1
+    for s in nodes:
+        ret[s] = i
+        i+=1
+    return(ret)

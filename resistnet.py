@@ -25,7 +25,7 @@ def main():
     random.seed(params.seed)
 
     #########################################################
-    # Step 1: Parsing shapefile
+    # Step 1: Initialise network data 
     #########################################################
 
     # Initialize the ResistanceNetwork object
