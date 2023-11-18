@@ -10,7 +10,7 @@ from multiprocessing import Process, Queue
 from deap import base, creator, tools
 
 from resistnet.resistance_network import ResistanceNetworkWorker
-import resistnet.hall_of_fame as hof
+from resistnet.hall_of_fame import HallOfFame
 import resistnet.utils as utils
 
 class ModelRunner:
@@ -396,7 +396,7 @@ class ModelRunner:
             pop_list.append(ind_list)
         
         # init Hall of Fame 
-        self.bests = hof.hallOfFame(
+        self.bests = HallOfFame(
             self.resistance_network._predictors.columns, 
             self.max_hof_size, 
             pop_list)

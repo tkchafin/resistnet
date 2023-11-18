@@ -23,9 +23,6 @@ def snap_to_node(graph, pos):
     Raises:
         ValueError: If 'graph' or 'pos' is not in the expected format or empty.
     """
-    if not graph.nodes() or not pos:
-        raise ValueError("Invalid graph or position data.")
-
     nodes = np.array(graph.nodes())
     node_pos = np.argmin(np.sum((nodes - pos) ** 2, axis=1))
     return tuple(nodes[node_pos])
@@ -57,8 +54,8 @@ def check_dataframe_columns(df):
 
     for col in df.columns:
         unique_values = df[col].dropna().unique()
-
-        if len(unique_values) == 0:
+        if (len(unique_values) == 0 or
+            (len(unique_values) == 1 and np.isnan(unique_values[0]))):
             print(f"Column '{col}' has all NaN values.")
             return False
         elif len(unique_values) == 1:
@@ -403,11 +400,18 @@ def to_from_(pops):
         pandas.DataFrame: A DataFrame with two columns 'pop1' and 'pop2'
                           representing population pairs.
     """
-    to, frm = list(), list()
-    for ia, ib in itertools.combinations(range(1, pops + 1), 2):
+    to = list()
+    frm = list()
+
+    for ia, ib in itertools.combinations(range(1, pops+1), 2):
         to.append(ia)
         frm.append(ib)
-    to[-1], frm[-1] = frm[-1], to[-1]  # Swap the last elements
+
+    t = to[pops-2]
+    tt = frm[pops-2]
+    to[pops-2] = tt
+    frm[pops-2] = t
+
     return pd.DataFrame({"pop1": to, "pop2": frm})
 
 

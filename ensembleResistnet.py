@@ -12,7 +12,7 @@ import pandas as pd
 from resistnet.params import parseArgs
 from resistnet.resistance_network import ResistanceNetwork
 from resistnet.model_optimisation import ModelRunner
-from resistnet.hall_of_fame import hallOfFame
+from resistnet.hall_of_fame import HallOfFame
 
 def main():
 
@@ -56,7 +56,7 @@ def main():
     if params.hof_max is not None:
         hofs = hofs.head(params.hof_max)
     hofs["keep"] = False
-    bests = hallOfFame.from_dataframe(hofs)
+    bests = HallOfFame.from_dataframe(hofs)
 
     # get list of variables 
     variables = bests.get_variables()
