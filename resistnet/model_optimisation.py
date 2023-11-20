@@ -342,7 +342,6 @@ class ModelRunner:
         self.resistance_network.output_and_plot_model(oname, matrix_avg, edge_avg)
 
 
-
     @staticmethod
     def update_fails(best, current_best, fails, deltaB, deltaB_perc, minimize=False):
         cur=current_best

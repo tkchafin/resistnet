@@ -55,7 +55,7 @@ def check_dataframe_columns(df):
     for col in df.columns:
         unique_values = df[col].dropna().unique()
         if (len(unique_values) == 0 or
-            (len(unique_values) == 1 and np.isnan(unique_values[0]))):
+                (len(unique_values) == 1 and np.isnan(unique_values[0]))):
             print(f"Column '{col}' has all NaN values.")
             return False
         elif len(unique_values) == 1:

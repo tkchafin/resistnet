@@ -327,16 +327,21 @@ class HallOfFame:
         # Selecting the subset of data based on 'keep' column
         sub = self.data if ignore_keep else self.data[self.data.keep == "True"]
 
-        # Compute sum of weights for each variable
+        # Prepare data for concatenation
+        rows = []
         for v in self.variables:
             sum_weights = (sub[v] * sub["akaike_weight"]).sum()
-            self.rvi = self.rvi.append(
-                {"variable": v, "RVI": sum_weights}, ignore_index=True
-            )
+            rows.append({"variable": v, "RVI": sum_weights})
+
+        # Concatenate all rows into the DataFrame
+        self.rvi = pd.concat(
+            [self.rvi, pd.DataFrame(rows)], ignore_index=True
+        )
 
         # Sorting and resetting index
         self.rvi = self.rvi.sort_values(
-            "RVI", ascending=False).reset_index(drop=True)
+            "RVI", ascending=False
+        ).reset_index(drop=True)
 
     def get_best_model(self):
         """
@@ -385,17 +390,20 @@ class HallOfFame:
         # Selecting the subset of data based on 'keep' column or ignoring it
         sub = self.data if ignore_keep else self.data[self.data.keep == "True"]
 
-        # Compute sum of weights for each variable
+        # Prepare data for concatenation
+        rows = []
         for v in self.variables:
             weight_col = f"{v}_weight"
             sum_weights = (sub[weight_col] * sub["akaike_weight"]).sum()
-            self.maw = self.maw.append(
-                {"variable": v, "MAW": sum_weights}, ignore_index=True
-            )
+            rows.append({"variable": v, "MAW": sum_weights})
+
+        # Concatenate all rows into the DataFrame
+        self.maw = pd.concat([self.maw, pd.DataFrame(rows)], ignore_index=True)
 
         # Sorting and resetting index
         self.maw = self.maw.sort_values(
-            "MAW", ascending=False).reset_index(drop=True)
+            "MAW", ascending=False
+        ).reset_index(drop=True)
 
     def cleanHOF(self):
         """
