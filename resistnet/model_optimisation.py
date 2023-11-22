@@ -1,6 +1,5 @@
-import os 
-import sys 
-
+import os
+import sys
 import traceback
 import random
 import pandas as pd
@@ -14,7 +13,33 @@ from resistnet.hall_of_fame import HallOfFame
 import resistnet.utils as utils
 
 class ModelRunner:
+    """
+    Class to handle running the genetic algorithm for optimizing a ResistNet model.
+
+    Attributes:
+        seed (int): Seed for random number generator.
+        resistance_network (ResistanceNetworkWorker): An instance of ResistanceNetworkWorker.
+        verbose (bool): Flag to control verbosity of output.
+        task_queue (Queue): Queue for tasks.
+        result_queue (Queue): Queue for results.
+        workers (list): List of worker processes.
+        bests (HallOfFame): Hall of fame for best models.
+        toolbox (deap.base.Toolbox): Toolbox for genetic algorithm.
+        logger (list): List to store logging information.
+        Various other GA parameters.
+    """
+
     def __init__(self, resistance_network, seed=1234, verbose=True):
+        """
+        Initializes a ModelRunner with a given resistance network, seed, and
+        verbosity.
+
+        Args:
+            resistance_network (ResistanceNetworkWorker): The resistance
+                                                          network to optimize.
+            seed (int): Seed for random number generator.
+            verbose (bool): Flag to control verbosity of output.
+        """
         self.seed = seed
         self.resistance_network = resistance_network
         self.verbose = verbose
@@ -22,9 +47,9 @@ class ModelRunner:
         self.task_queue = Queue()
         self.result_queue = Queue()
         self.workers = []
-        self.bests = None # model hall of fame
+        self.bests = None  # model hall of fame
         self.toolbox = None
-        self.logger=list()
+        self.logger = list()
 
         self.cxpb = None
         self.mutpb = None
@@ -44,17 +69,16 @@ class ModelRunner:
         self.only_keep = None
         self.report_all = None
 
-
     def initialize_ga(self):
-
-        # init toolbox 
+        """
+        Initializes the genetic algorithm components and population.
+        """
         self.toolbox = base.Toolbox()
 
-        # Initialise the DEAP GA components
+        # Initialize the DEAP GA components
         creator.create("FitnessMax", base.Fitness, weights=(1.0,))
         creator.create("Individual", list, fitness=creator.FitnessMax)
 
-        # Register GA attributes and type variables
         if self.verbose:
             print("Initializing genetic algorithm parameters...\n")
         self.init_ga_attributes()
@@ -65,53 +89,123 @@ class ModelRunner:
             popsize = self.popsize
         if popsize > self.maxpopsize:
             popsize = self.maxpopsize
-        
+
         if self.verbose:
             print("Establishing a population of size:", str(popsize))
         self.population = self.toolbox.population(n=popsize)
 
+    def set_ga_parameters(self, mutpb, cxpb, indpb, popsize, maxpopsize,
+                          posWeight, fixWeight, fixShape, allShapes,
+                          min_weight, max_shape, max_hof_size, tournsize,
+                          fitmetric, awsum, only_keep, verbose, report_all):
+        """
+        Sets the genetic algorithm parameters.
 
-    def run_ga(self, maxgens=1, fitmetric="aic", burnin=0, deltaB=None, 
+        Args:
+            mutpb (float): Probability of mutation per trait.
+            cxpb (float): Probability of being chosen for crossover.
+            indpb (float): Probability of mutation per individual.
+            popsize (int): Population size.
+            maxpopsize (int): Maximum population size.
+            posWeight (bool): Constrain parameter weights to between 0.0-1.0.
+            fixWeight (bool): Constrain parameter weights to 1.0 (i.e., 
+                              unweighted).
+            fixShape (bool): Turn off feature transformation.
+            allShapes (bool): Allow inverse and reverse transformations.
+            min_weight (float): Minimum allowable weight.
+            max_shape (float): Maximum shape value.
+            max_hof_size (int): Maximum Hall of Fame size.
+            tournsize (int): Tournament size.
+            fitmetric (str): Fitness metric to be used.
+            awsum (float): Cumulative Akaike weight threshold to retain top N
+                           models.
+            only_keep (bool): Only retain models where column "keep"=True.
+            verbose (bool): Flag to control verbosity of output.
+            report_all (bool): Flag to generate full outputs for all retained
+                               models.
+        """
+        self.mutpb = mutpb
+        self.cxpb = cxpb
+        self.indpb = indpb
+        self.popsize = popsize
+        self.maxpopsize = maxpopsize
+        self.posWeight = posWeight
+        self.fixWeight = fixWeight
+        self.fixShape = fixShape
+        self.allShapes = allShapes
+        self.min_weight = min_weight
+        self.max_shape = max_shape
+        self.max_hof_size = max_hof_size
+        self.tournsize = tournsize
+        self.fitmetric = fitmetric
+        self.awsum = awsum
+        self.only_keep = only_keep
+        self.verbose = verbose
+        self.report_all = report_all
+
+    def run_ga(self, maxgens=1, fitmetric="aic", burnin=0, deltaB=None,
                deltaB_perc=0.001, indpb=0.5, mutpb=0.5, cxpb=0.5, nFail=50,
-               popsize=None, maxpopsize=1000, posWeight=False, fixWeight=False, 
-               fixShape=False, allShapes=False, min_weight=0.0, max_shape=None, 
-               max_hof_size=100, tournsize=10, awsum=0.95, only_keep=True, 
+               popsize=None, maxpopsize=1000, posWeight=False, fixWeight=False,
+               fixShape=False, allShapes=False, min_weight=0.0, max_shape=None,
+               max_hof_size=100, tournsize=10, awsum=0.95, only_keep=True,
                out=None, plot=True, verbose=True, report_all=False, threads=1):
+        """
+        Runs the genetic algorithm for optimizing the ResistNet model.
 
+        Args:
+            maxgens (int): Maximum number of generations.
+            fitmetric (str): Fitness metric to be used.
+            burnin (int): Number of initial generations to ignore for
+                          convergence check.
+            deltaB (float): Absolute threshold change in fitness for
+                            convergence.
+            deltaB_perc (float): Relative threshold change in fitness for
+                                 convergence.
+            indpb (float): Probability of mutation per individual.
+            mutpb (float): Probability of mutation per trait.
+            cxpb (float): Probability of being chosen for crossover.
+            nFail (int): Number of generations failing to improve to stop
+                         optimization.
+            popsize (int): Population size.
+            maxpopsize (int): Maximum population size.
+            posWeight (bool): Constrain parameter weights to between 0.0-1.0.
+            fixWeight (bool): Constrain parameter weights to 1.0 (i.e.,
+                              unweighted).
+            fixShape (bool): Turn off feature transformation.
+            allShapes (bool): Allow inverse and reverse transformations.
+            min_weight (float): Minimum allowable weight.
+            max_shape (float): Maximum shape value.
+            max_hof_size (int): Maximum Hall of Fame size.
+            tournsize (int): Tournament size.
+            awsum (float): Cumulative Akaike weight threshold to retain top N
+                           models.
+            only_keep (bool): Only retain models where column "keep"=True.
+            out (str): Output file prefix.
+            plot (bool): Flag to control plotting.
+            verbose (bool): Flag to control verbosity of output.
+            report_all (bool): Generate full outputs for all retained models.
+            threads (int): Number of parallel processors.
+
+        Raises:
+            Exception: Any exception encountered during the genetic algorithm
+                       run.
+        """
         try:
-            self.mutpb = mutpb
-            self.cxpb = cxpb 
-            self.indpb=indpb
-            self.popsize = popsize
-            self.maxpopsize = maxpopsize
-            self.posWeight = posWeight
-            self.fixWeight = fixWeight
-            self.fixShape = fixShape
-            self.allShapes = allShapes
-            self.min_weight = min_weight
-            self.max_shape = max_shape
-            self.max_hof_size = max_hof_size
-            self.tournsize = tournsize
-            self.fitmetric = fitmetric
-            self.awsum = awsum 
-            self.only_keep = only_keep
-            self.verbose = verbose
-            self.report_all = report_all
-            self.logger = list()
+            # Set GA parameters
+            self.set_ga_parameters(mutpb, cxpb, indpb, popsize, maxpopsize,
+                                   posWeight, fixWeight, fixShape, allShapes,
+                                   min_weight, max_shape, max_hof_size,
+                                   tournsize, fitmetric, awsum, only_keep,
+                                   verbose, report_all)
 
-            # initialise DEAP GA components 
+            # Initialize GA components and worker pool
             self.initialize_ga()
-
-            # init worker pool 
             self.start_workers(threads)
 
-            # initialise population of models 
+            # Initialize population and set up GA run parameters
             self.initialise_population()
-
-            # Parameters for genetic algorithm
-            cxpb, indpb = self.cxpb, self.indpb  # Crossover and mutation probabilities
-            fails = 0
-            current_best = None
+            cxpb, indpb = self.cxpb, self.indpb
+            fails, current_best = 0, None
 
             # Run for maxgens generations
             for g in range(1, maxgens + 1):
@@ -119,7 +213,9 @@ class ModelRunner:
                     print("-- Generation %i --" % g)
 
                 # Select the next generation individuals
-                offspring = self.toolbox.select(self.population, len(self.population))
+                offspring = self.toolbox.select(
+                    self.population, len(self.population)
+                )
                 # Clone the selected individuals
                 offspring = list(map(self.toolbox.clone, offspring))
 
@@ -136,7 +232,9 @@ class ModelRunner:
                         del mutant.fitness.values
 
                 # Evaluate the individuals with an invalid fitness
-                invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+                invalid_ind = [
+                    ind for ind in offspring if not ind.fitness.valid
+                ]
                 for ind_index, ind in enumerate(invalid_ind):
                     self.task_queue.put(('evaluate', ind_index, list(ind)))
 
@@ -160,29 +258,36 @@ class ModelRunner:
                 # Evaluate for stopping criteria after burn-in period
                 if g > burnin:
                     if fitmetric == "AIC":
-                        fits = [-element for element in fits]  # Convert to negative if AIC
+                        fits = [-element for element in fits]
                         worst = max(fits)
                         best = min(fits)
                         if current_best is None:
                             current_best = best
                         else:
-                            current_best, fails = self.update_fails(best, current_best, fails, deltaB, deltaB_perc, minimize=True)
+                            current_best, fails = self.update_fails(
+                                best, current_best, fails, deltaB, deltaB_perc,
+                                minimize=True)
                     else:
                         worst = min(fits)
                         best = max(fits)
                         if current_best is None:
                             current_best = best
                         else:
-                            current_best, fails = self.update_fails(best, current_best, fails, deltaB, deltaB_perc, minimize=False)
-
+                            current_best, fails = self.update_fails(
+                                best, current_best, fails, deltaB,
+                                deltaB_perc, minimize=False
+                            )
 
                     length = len(self.population)
-                    if length > 0 and all(isinstance(fit, (int, float)) for fit in fits):
+                    if length > 0 and all(isinstance(
+                            fit, (int, float)) for fit in fits
+                    ):
                         mean = sum(fits) / length
                         sum2 = sum(x * x for x in fits)
                         variance = sum2 / length - mean**2
 
-                        # Check for negative variance due to floating-point arithmetic issues
+                        # Check for negative variance due to floating-point
+                        # arithmetic issues
                         std = (abs(variance) ** 0.5) if variance >= 0 else 0
                     else:
                         mean = float('nan')
@@ -199,11 +304,18 @@ class ModelRunner:
                     # Check for stopping conditions
                     if g >= maxgens or fails > nFail:
                         if self.verbose:
-                            print("Stopping optimization after", g, "generations.")
+                            print(
+                                "Stopping optimization after",
+                                g, "generations."
+                            )
                             if g >= maxgens:
                                 print("Reason: Exceeded maxGens")
                             elif fails > nFail:
-                                print("Reason: More than", nFail, "generations since finding better solution.")
+                                print(
+                                    "Reason: More than",
+                                    nFail,
+                                    "generations failed to improve"
+                                )
                         break
 
             # output results 
@@ -214,9 +326,8 @@ class ModelRunner:
             traceback.print_exc()
 
         finally:
-            # terminate processes 
+            # Terminate worker processes
             self.terminate_workers()
-
 
     def build_ensemble(self, bests, awsum = 0.95, only_keep = True, out=None, threads=1, verbose=True):
 

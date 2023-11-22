@@ -1,89 +1,81 @@
 import sys
-import os
-
 import getopt
-
 from resistnet.resistance_network import SimResistanceNetwork
 
+
 def main():
-    params = parseArgs()
+    params = ParseArgs()
 
-    #########################################################
     # Step 1: Read network
-    #########################################################
-
     sim_engine = SimResistanceNetwork(
         network=params.network,
         reachid_col=params.id_col,
         length_col=params.length_col,
-        verbose = True
+        verbose=True
     )
 
-    #########################################################
     # Step 2: Write simulated outputs
-    #########################################################
-
     sim_engine.simulate(
-        spec_file = params.input,
-        num_reps = params.reps,
-        num_samples = params.samples,
-        out = params.out
+        spec_file=params.input,
+        num_reps=params.reps,
+        num_samples=params.samples,
+        out=params.out
     )
 
 
-#Object to parse command-line arguments
-class parseArgs():
+class ParseArgs:
     def __init__(self):
-        #Define options
+        # Define options
         try:
-            options, remainder = getopt.getopt(sys.argv[1:], 'ho:i:n:s:r:l:c:', \
-            ["help", "out=", "in=", "network=", "reps=", "samples=",
-            "len_col=", "id_col="])
+            options, _ = getopt.getopt(
+                sys.argv[1:], 'ho:i:n:s:r:l:c:',
+                ["help", "out=", "in=", "network=", "reps=", "samples=",
+                 "len_col=", "id_col="]
+            )
         except getopt.GetoptError as err:
             print(err)
-            self.display_help("\nExiting because getopt returned non-zero exit status.")
-        #Default values for params
-        #Input params
-        self.input=None
-        self.out="sim"
-        self.network=None
-        self.reps=1
-        self.samples=50
-        self.length_col="LENGTH_KM"
-        self.id_col="EDGE_ID"
+            self.display_help(
+                "\nExiting because getopt returned non-zero exit status."
+            )
 
+        # Default values for params
+        self.input = None
+        self.out = "sim"
+        self.network = None
+        self.reps = 1
+        self.samples = 50
+        self.length_col = "LENGTH_KM"
+        self.id_col = "EDGE_ID"
 
-        #First pass to see if help menu was called
-        for o, a in options:
-            if o in ("-h", "-help", "--help"):
+        # First pass to see if help menu was called
+        for o, _ in options:
+            if o in ("-h", "--help"):
                 self.display_help("Exiting because help menu was called.")
 
-        #Second pass to set all args.
+        # Second pass to set all args.
         for opt, arg_raw in options:
-            arg = arg_raw.replace(" ","")
-            arg = arg.strip()
-            opt = opt.replace("-","")
-            #print(opt,arg)
-            if opt == "h" or opt == "help":
+            arg = arg_raw.strip()
+            opt = opt.lstrip('-')
+            if opt in ("h", "help"):
                 continue
-            elif opt=="in" or opt=="i":
-                self.input=arg
-            elif opt=="out" or opt=="o":
-                self.out=arg
-            elif opt == "network" or opt=="n":
-                self.network=arg
-            elif opt == "samples" or opt=="s":
-                self.samples=int(arg)
-            elif opt == "reps" or opt=="r":
-                self.reps=int(arg)
-            elif opt == "id_col" or opt=="c":
-                self.id_col=arg
-            elif opt == "l" or opt=="len_col":
-                self.length_col=arg
+            elif opt in ("in", "i"):
+                self.input = arg
+            elif opt in ("out", "o"):
+                self.out = arg
+            elif opt in ("network", "n"):
+                self.network = arg
+            elif opt in ("samples", "s"):
+                self.samples = int(arg)
+            elif opt in ("reps", "r"):
+                self.reps = int(arg)
+            elif opt in ("id_col", "c"):
+                self.id_col = arg
+            elif opt in ("len_col", "l"):
+                self.length_col = arg
             else:
-                assert False, "Unhandled option %r"%opt
+                assert False, f"Unhandled option {opt!r}"
 
-        #Check manditory options are set
+        # Check mandatory options are set
         if not self.input:
             self.display_help("No input table provided.")
         if not self.network:
@@ -92,23 +84,23 @@ class parseArgs():
     def display_help(self, message=None):
         if message is not None:
             print()
-            print (message)
-        print ("\nsimResistnet.py\n")
+            print(message)
+        print("\nsimResistnet.py\n")
         print("Author: Tyler Chafin")
-        print ("Description: Simulate data on a given network for validating resistnet")
+        print("Description: Simulate data on a given network")
         print("""
 Arguments:
--n,--network    : Input network (pickle'd networkx output)
--i,--in        : Table giving information on which variables to use to generate resistnet input
--r,--reps    : Number of replicates
--s,--samples    : Number of random nodes to sample
--l,--len_col    : Attribute in network corresponding to edge length (def=LENGTH_KM)
--c,--id_col    : Attribute in network corresponding to edge ID (def=EDGE_ID)
--o,--out    : Output file name (default=sim)
+    -n, --network: Input network (pickle'd networkx output)
+    -i, --in: Table giving variables to use to generate resistnet input
+    -r, --reps: Number of replicates
+    -s, --samples: Number of random nodes to sample
+    -l, --len_col: Edge length attribute (def=LENGTH_KM)
+    -c, --id_col: Reach ID attribute (def=EDGE_ID)
+    -o, --out: Output file name (default=sim)
 """)
-        print()
         sys.exit()
 
-#Call main function
+
+# Call main function
 if __name__ == '__main__':
     main()

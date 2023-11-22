@@ -22,7 +22,7 @@ import resistnet.resist_dist as rd
 
 class ResistanceNetwork:
     """
-    A class to represent a resistance network.
+    A class to represent a resistance network and associated data
 
     Attributes:
         network (NetworkX graph): The network graph.
@@ -37,7 +37,7 @@ class ResistanceNetwork:
         verbose (bool): Flag to enable verbose output. Defaults to True.
         minimize (bool): Flag to minimize subgraph. Defaults to False.
         agg_opts (dict): Aggregation options.
-    
+
     Methods:
         initialize_network(): Initializes the network.
         initialize_predictors(): Initializes predictors.

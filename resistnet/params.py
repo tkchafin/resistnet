@@ -8,7 +8,7 @@ class parseArgs():
 
     Attributes:
         Various attributes for command-line options and their default values.
-    
+
     Methods:
         display_help(message=None): Prints the help message and exits
     """
@@ -16,7 +16,7 @@ class parseArgs():
         # Define options
         try:
             options, r = getopt.getopt(
-                sys.argv[1:], 
+                sys.argv[1:],
                 'hp:g:s:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:V:Aa:o:Xj:n:',
                 ["shp=", "help", "input=", "prefix=", "genmat=", "shapefile=",
                  "seed=", "procs=", "maxPop=", "maxpop=", "maxgen=", "maxGen=",
@@ -27,7 +27,7 @@ class parseArgs():
                  "noPlot", "out=", "keep_all", "minWeight=", "max_hof_size=",
                  "posWeight", "fixWeight", "allShapes", "efit_agg=", "coords=",
                  "length_col=", "reachid_col=", "minimize", "network=",
-                 "fixShape"
+                 "fixShape", "max_gens=", "max_gen=", "max_pop="
                  ]
             )
         except getopt.GetoptError as err:
@@ -117,9 +117,9 @@ class parseArgs():
                 self.seed = int(arg)
             elif opt == 't' or opt == 'procs':
                 self.GA_procs = int(arg)
-            elif opt in ('P', 'maxPop', 'maxpop'):
+            elif opt in ('P', 'maxPop', 'maxpop', "max_pop"):
                 self.maxpopsize = int(arg)
-            elif opt in ("G", "maxGen", "maxgen"):
+            elif opt in ("G", "maxGen", "maxgen", "max_gen", "max_gens"):
                 self.maxGens = int(arg)
             elif opt in ("popsize", "size"):
                 self.popsize = int(arg)
@@ -252,7 +252,8 @@ class parseArgs():
         Displays the help message and exits the program.
 
         Args:
-            message (str, optional): An additional message to print before the help message.
+            message (str, optional): An additional message to print before the
+                                     help message.
         """
         if message is not None:
             print()
@@ -265,7 +266,7 @@ class parseArgs():
             "\nInput options:\n"
             "    -g, --genmat: Genetic distance matrix\n"
             "    -s, --shp: Path to shapefile, geodatabase, or GPKG file\n"
-            "    -c, --coords: Input .tsv file containing sample coordinates\n\n"
+            "    -c, --coords: Input tsv containing sample coordinates\n\n"
 
             "General options:\n"
             "    --seed: Random number seed (default=taken from clock time)\n"
@@ -278,23 +279,23 @@ class parseArgs():
 
             "Aggregation options:\n"
             "    --edge_agg: Method for combining variables across segments\n"
-            "    --pop_agg: Method to combine genetic distances in populations\n"
-            "        Options: ARITH (-metic mean), MEDIAN, HARM (-monic mean),\n"
-            "        ADJHARM (adjusted HARM, see docs), GEOM (geometric mean),\n"
-            "        MIN, MAX, FIRST, SD (standard deviation), VAR (variance),\n"
-            "        SUM (simple sum), CV (coefficient of variation = SD/MEAN).\n\n"
+            "    --pop_agg: Method to combine population genetic distances\n"
+            "      Options: ARITH (-metic mean), MEDIAN, HARM (-monic mean),\n"
+            "      ADJHARM (adjusted HARM, see docs), GEOM (geometric mean),\n"
+            "      MIN, MAX, FIRST, SD (standard deviation), VAR (variance),\n"
+            "      SUM (simple sum), CV (coefficient of variation = SD/MEAN)\n"
 
-            "Genetic Algorithm Options:\n"
+            "\nGenetic Algorithm Options:\n"
             "    -P, --maxPop: Maximum population size [default = 100]\n"
             "    -G, --maxGen: Maximum number of generations [default = 500]\n"
             "    -s, --size: Manually set population size to <-p int>,\n"
             "        NOTE: By default, #params * 15\n"
-            "    -m, --mutpb: Probability of mutation per trait [default=0.5]\n"
-            "    --indpb: Probability of mutation per individual [default=0.5]\n"
-            "    --cxpb: Probability of being chosen for cross-over [default=0.5]\n"
+            "    -m, --mutpb: Mutation probability per trait [default=0.5]\n"
+            "    --indpb: Mutation probability per individual [default=0.5]\n"
+            "    --cxpb: Cross-over probability [default=0.5]\n"
             "    -T, --tSize: Tournament size [default=10]\n"
             "    --posWeight: Constrain parameter weights to between 0.0-1.0\n"
-            "    --minWeight: Sets a minimum allowable weight (req. --posWeight)\n"
+            "    --minWeight: Sets minimum allowable weight (w/--posWeight)\n"
             "    --fixWeight: Constrain parameter weights to 1.0\n"
             "    --fixShape: Turn off feature transformation\n"
             "    --allShapes: Allow inverse and reverse transformations\n"
@@ -302,22 +303,22 @@ class parseArgs():
 
             "Model optimization/selection options:\n"
             "    -v, --vars: Comma-separated list of variables to use\n"
-            "    -V, --varfile: Optional file with variables provided like so:\n"
+            "    -V, --varfile: Optional file with variables provided as:\n"
             "        var1 \\t <Optional aggregator function>\n"
             "        var2 \\t <Optional aggregator function>\n"
             "        ...\n"
             "    -F, --nfail: Number of failed gens to stop optimization\n"
-            "    -d, --delt: Threshold absolute change in fitness [default=0.0]\n"
-            "    -D, --deltP: Threshold as decimal percentage [default=0.001]\n"
+            "    -d, --delt: Threshold absolute change in fitness [def.=0.0]\n"
+            "    -D, --deltP: Threshold as decimal percentage [def.=0.001]\n"
             "    -f, --fit: Fitness metric used to evaluate models\n"
             "        Options: aic (default), loglik (log-likelihood),\n"
-            "        r2m (marginal R^2), delta (Change in AIC versus null model)\n"
+            "        r2m (marginal R^2), delta (Change in AIC vs null model)\n"
             "        NOTE: Case-insensitive\n"
-            "    -b, --burn: Number of generations for pre-burnin [default=0]\n"
+            "    -b, --burn: Number of generations for pre-burnin [def.=0]\n"
             "    --max_hof_size: Maximum models retained [default=100]\n\n"
 
             "Multi-model inference options:\n"
-            "    -a, --awsum: Cumulative Akaike weight threshold [default=0.95]\n"
+            "    -a, --awsum: Cumulative Akaike weight threshold [def.=0.95]\n"
             "    --report_all: Plot outputs for all retained models\n\n"
         )
         print()
