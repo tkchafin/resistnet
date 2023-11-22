@@ -64,7 +64,7 @@ class ModelRunner:
         self.max_hof_size = None
         self.tournsize = None
         self.fitmetric = None
-        self.awsum = None 
+        self.awsum = None
         self.only_keep = None
         self.report_all = None
 
@@ -107,7 +107,7 @@ class ModelRunner:
             popsize (int): Population size.
             maxpopsize (int): Maximum population size.
             posWeight (bool): Constrain parameter weights to between 0.0-1.0.
-            fixWeight (bool): Constrain parameter weights to 1.0 (i.e., 
+            fixWeight (bool): Constrain parameter weights to 1.0 (i.e.,
                               unweighted).
             fixShape (bool): Turn off feature transformation.
             allShapes (bool): Allow inverse and reverse transformations.
@@ -317,7 +317,7 @@ class ModelRunner:
                                 )
                         break
 
-            # output results 
+            # output results
             self.run_output(out, verbose, plot)
 
         except Exception as e:
@@ -409,7 +409,7 @@ class ModelRunner:
             )
 
         # Get results for best models and model-averaged
-        self.model_average(out, plot) 
+        self.model_average(out, plot)
 
         # Evaluate the null model (if genetic distances present)
         if self.resistance_network._gendist is not None:

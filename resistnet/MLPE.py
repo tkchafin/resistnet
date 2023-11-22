@@ -1,133 +1,137 @@
-import sys
 import numpy as np
 import pandas as pd
-#import statsmodels.api as sm
-#import statsmodels.formula.api as smf
-#import statsmodels.regression.mixed_linear_model as mlm
-#from statsmodels.tools.sm_exceptions import ConvergenceWarning
-#from statsmodels.regression.mixed_linear_model import VCSpec
-import rpy2
 import rpy2.robjects as ro
+import resistnet.utils as utils
 from rpy2.robjects import pandas2ri
 from rpy2.robjects.conversion import localconverter
-from rpy2.robjects.packages import importr
 
-import resistnet.utils as utils
 
-#input should be two matrices: 
 def MLPE_R(X, Y, scale=True):
-	x = utils.get_lower_tri(X)
-	y = utils.get_lower_tri(Y)
+    """
+    Perform Mixed Linear Model Pedigree Estimate (MLPE) using R libraries.
 
-	#make ID table
-	npop=X.shape[0]
-	ID = utils.to_from_(npop) #nrow(matrix)
-	#print(ID)
-	
-	#make ZZ matrix
-	ZZ = pd.DataFrame(ZZ_mat_(npop, ID))
-	#print(ZZ)
+    Args:
+        X: The first matrix for MLPE analysis.
+        Y: The second matrix for MLPE analysis.
+        scale (bool): If True, scales the Y matrix.
 
-	#center and scale y
-	if scale==True:
-		y = (y-np.mean(y))/np.std(y)
-	#print(y)
-	#add x and y to data
-	ID["x"] = x
-	ID["y"] = y
-	#print(ID)
-	
-	stuff="""
-library(Matrix)
-library(lme4)
-library(MuMIn)
+    Returns:
+        The result of the MLPE analysis.
+    """
+    x = utils.get_lower_tri(X)
+    y = utils.get_lower_tri(Y)
 
-MLPE <- function(ID, ZZ, REML=FALSE) {
-  #print(ZZ)
-	ZZ<-Matrix(data.matrix(ZZ), sparse=TRUE)
-	#print(ZZ)
-	# prepare model
-  mod_list <- list('full'=lme4:::lFormula(y ~ x + (1 | pop1), data = ID, REML = FALSE),
-                   "null"=lme4:::lFormula(y ~ 1 + (1 | pop1), data = ID, REML = FALSE))
-  MODs <- lapply(mod_list, function(x) {
-    x$reTrms$Zt <- ZZ
-    # fit model
-    dfun <- do.call(lme4:::mkLmerDevfun, x)
-    opt <- lme4:::optimizeLmer(dfun)
-    MOD <- (lme4:::mkMerMod(environment(dfun), opt, x$reTrms, fr = x$fr))
-    #print(MOD)
-  })
-	models<-c("full")
-	full<-summary(MODs$full)
-	null<-summary(MODs$null)
-	loglik<-c(full$logLik[[1]])
-    null_loglik<-c(null$logLik[[1]])
-	r2<-c(MuMIn:::r.squaredGLMM(MODs$full)[[1]])
-	aic<-c(full$AICtab[[1]])
-    null_aic<-c(null$AICtab[[1]])
-	deltaAIC<-c(null$AICtab[[1]]-full$AICtab[[1]])
-	df<-data.frame(loglik, r2, -1*aic, deltaAIC, null_loglik, -1*null_aic)
-	colnames(df) <- c("loglik", "r2m", "aic", "delta_aic_null", "loglik_null", "aic_null")
-  # return model
-  return(df)
-}
-	"""
-	
-	r=ro.r
-	r['options'](warn=-1)
-	r(stuff)
-	#r['source']("riverscape/resistanceGA_MLPE.R")
-		
-	mlpe=ro.globalenv['MLPE']
-	with localconverter(ro.default_converter + pandas2ri.converter):
-		mlpe_res=mlpe(ID, ZZ)
-	#print(mlpe_res)
-	return(mlpe_res)	
-	#print(mlpe_res)
+    # Make ID table
+    npop = X.shape[0]
+    ID = utils.to_from_(npop)
+
+    # Make ZZ matrix
+    ZZ = pd.DataFrame(ZZ_mat_(npop, ID))
+
+    # Center and scale y
+    if scale:
+        y = (y - np.mean(y)) / np.std(y)
+
+    # Add x and y to data
+    ID["x"] = x
+    ID["y"] = y
+
+    stuff = """
+    library(Matrix)
+    library(lme4)
+    library(MuMIn)
+    MLPE <- function(ID, ZZ, REML=FALSE) {
+        ZZ <- Matrix(data.matrix(ZZ), sparse=TRUE)
+        mod_list <- list('full'=lme4:::lFormula(y ~ x + (1 | pop1),
+        data = ID, REML = FALSE),
+                         "null"=lme4:::lFormula(y ~ 1 + (1 | pop1),
+                         data = ID, REML = FALSE))
+        MODs <- lapply(mod_list, function(x) {
+            x$reTrms$Zt <- ZZ
+            dfun <- do.call(lme4:::mkLmerDevfun, x)
+            opt <- lme4:::optimizeLmer(dfun)
+            MOD <- (lme4:::mkMerMod(environment(dfun),
+            opt, x$reTrms, fr = x$fr))
+        })
+        full <- summary(MODs$full)
+        null <- summary(MODs$null)
+        loglik <- c(full$logLik[[1]])
+        null_loglik <- c(null$logLik[[1]])
+        r2 <- c(MuMIn:::r.squaredGLMM(MODs$full)[[1]])
+        aic <- c(full$AICtab[[1]])
+        null_aic <- c(null$AICtab[[1]])
+        deltaAIC <- c(null$AICtab[[1]] - full$AICtab[[1]])
+        df <- data.frame(loglik, r2, -1*aic, deltaAIC,
+        null_loglik, -1*null_aic)
+        colnames(df) <- c("loglik", "r2m", "aic",
+        "delta_aic_null", "loglik_null", "aic_null")
+        return(df)
+    }
+    """
+
+    r = ro.r
+    r['options'](warn=-1)
+    r(stuff)
+    mlpe = ro.globalenv['MLPE']
+    with localconverter(ro.default_converter + pandas2ri.converter):
+        mlpe_res = mlpe(ID, ZZ)
+
+    return mlpe_res
 
 
 def ZZ_mat_(pops, id):
-	zz = np.zeros(shape=(pops,id.shape[0]))
-	for i in range(0, pops):
-		#print(i)
-		for j in range(0, id.shape[0]):
-			#if ID row j contains pop i+1, set zz[j, i] to 1
-			if i+1 in list(id.iloc[j]):
-				#print("  ",j)
-				zz[i,j]=1
-	return(zz)
+    """
+    Create a matrix for ZZ calculations.
 
+    Args:
+        pops: The number of populations.
+        id: The ID dataframe.
+
+    Returns:
+        The calculated ZZ matrix.
+    """
+    zz = np.zeros((pops, id.shape[0]))
+    for i in range(pops):
+        for j in range(id.shape[0]):
+            # If ID row j contains pop i+1, set zz[j, i] to 1
+            if i + 1 in list(id.iloc[j]):
+                zz[i, j] = 1
+    return zz
 
 # def testSM():
-# 	x = np.array([2.6407333, 0.6583007, 1.9629121, 0.8529997, 2.2592001, 2.9629032, 2.0796441, 2.4179196, 0.2154603, 2.5016938])
-# 	y = np.array([3.6407333, 1.6583007, 1.5629121, 0.4529997, 2.0592001, 2.0629032, 2.9796441, 3.1179196, 1.2154603, 1.5016938])
-	
+# 	x = np.array([2.6407333, 0.6583007, 1.9629121, 0.8529997, 2.2592001,
+# 2.9629032, 2.0796441, 2.4179196, 0.2154603, 2.5016938])
+# 	y = np.array([3.6407333, 1.6583007, 1.5629121, 0.4529997,
+# 2.0592001, 2.0629032, 2.9796441, 3.1179196, 1.2154603, 1.5016938])
+
 # 	#make ID table
 # 	ID = to_from_(5) #nrow(matrix)
 # 	print(ID)
-	
+
 # 	#make ZZ matrix
 # 	ZZ = ZZ_mat_(5, ID)
 # 	print(ZZ)
-	
+
 # 	#center and scale x and y
 # 	x = (x-np.mean(x))/np.std(x)
 # 	y = (y-np.mean(y))/np.std(y)
-	
+
 # 	#add x and y to data
 # 	ID["x"] = x
 # 	ID["y"] = y
 # 	print(ID)
-	
+
 # 	#get matrix describing random effects structure
 # 	vcs = getVCM(ID)
-	
+
 # 	#fit mixed model
 # 	#equivalent to lme4 y ~ x + (1|pop1)
 # 	#how do incorporate the 'ZZ' part??
 # 	model = smf.mixedlm("y ~ x", data=ID, groups="pop1")
-# 	#model = mlm.MixedLM(endog=ID["y"].to_numpy(), exog=ID["x"].to_numpy(), groups=ID["pop1"].to_numpy(), exog_re=ZZ)
-# 	#model = mlm.MixedLM(endog=ID["y"].to_numpy(), exog=ID["x"].to_numpy(), groups=ID["pop1"].to_numpy(), exog_vc=vcs)
+# 	#model = mlm.MixedLM(endog=ID["y"].to_numpy(), exog=ID["x"].to_numpy(),
+# groups=ID["pop1"].to_numpy(), exog_re=ZZ)
+# 	#model = mlm.MixedLM(endog=ID["y"].to_numpy(), exog=ID["x"].to_numpy(),
+# groups=ID["pop1"].to_numpy(), exog_vc=vcs)
 # 	model_fit = model.fit()
 # 	print(model)
 # 	print(model_fit)
@@ -154,4 +158,3 @@ def ZZ_mat_(pops, id):
 # 	names = ["pop2"]
 # 	vcs = VCSpec(names, [colnames], [mats])
 # 	return(vcs)
-

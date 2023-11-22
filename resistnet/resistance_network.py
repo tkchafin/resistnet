@@ -310,8 +310,8 @@ class ResistanceNetwork:
         for p in self._points_snapped.keys():
             self._points_snapped[p] = index
             index += 1
-        
-        # write table mapping labels to points 
+
+        # write table mapping labels to points
         # pick first site for each in points_names as final name
         ol = list()
         self._points_labels = self._points_names.copy()
@@ -373,7 +373,7 @@ class ResistanceNetwork:
                 pickle.dump(
                     self.subgraph, f, pickle.HIGHEST_PROTOCOL
                 )
-            
+
             min_out = f"{out}.minimalSubgraph.net"
             with open(min_out, 'wb') as f:
                 pickle.dump(
@@ -641,7 +641,7 @@ class ResistanceNetwork:
 
             # Draw and save the network plot
             nx.draw_networkx(
-                Kmin, pos, with_labels=False, node_color=color_map, 
+                Kmin, pos, with_labels=False, node_color=color_map,
                 node_size=50
             )
             network_plot = f"{out}.minimalSubgraph.pdf"
@@ -927,7 +927,7 @@ class ResistanceNetwork:
                 extension = [dat[id_col]]
             else:
                 extension = dat[id_col]
-            
+
             # Extend the current edge's id_col with the determined extension
             curr_edge[id_col].extend(extension)
             curr_edge[len_col] += float(dat[len_col])
@@ -1301,7 +1301,7 @@ class SimResistanceNetwork(ResistanceNetwork):
             num_samples (int): Number of samples per replicate.
             out (str): Output filename prefix for the simulation results.
         """
-        verbose = self.verbose 
+        verbose = self.verbose
         self.verbose = False
 
         # Read specifications file
