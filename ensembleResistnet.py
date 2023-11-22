@@ -1,163 +1,158 @@
 import sys
 import os
-
-os.environ['USE_PYGEOS'] = '0'
-
-from datetime import datetime
 import random
+from datetime import datetime
 import getopt
 import glob
 import pandas as pd
-
-from resistnet.params import parseArgs
 from resistnet.resistance_network import ResistanceNetwork
 from resistnet.model_optimisation import ModelRunner
 from resistnet.hall_of_fame import HallOfFame
 
+# Set environment variable
+os.environ['USE_PYGEOS'] = '0'
+
+
 def main():
+    """
+    Main function to run the resistnet application.
+    """
+    # Step 0: Read/format input args
+    params = ParseArgs()
 
-    #########################################################
-    # Step 0: Read/ format input args
-    #########################################################
-
-    params = parseArgs()
-
-    #seed random number generator
-    #random.seed(params.seed)
+    # Seed random number generator
     if not params.seed:
-        params.seed=datetime.now().timestamp()
+        params.seed = datetime.now().timestamp()
     random.seed(params.seed)
 
-    # check if paths provided as list or directory 
+    # Check if paths provided as list or directory
     params.paths = None
     if params.input:
         params.paths = params.input
     elif params.input_list:
         params.paths = params.input_list
-    
-    print(params.paths)
 
-    #########################################################
-    # Step 1: Collect models 
-    #########################################################
+    # Step 1: Collect models
+    # Read models
+    local_rows = 1 if params.only_best else None
+    hofs = read_and_concat_files(
+        params.paths, ".HallOfFame.tsv", local_rows=local_rows
+    )
 
-    # read models 
-    if params.only_best:
-        local_rows=1
-    else:
-        local_rows=None
-    hofs = read_and_concat_files(params.paths, ".HallOfFame.tsv", local_rows=local_rows)
     if (hofs['fitness'] == hofs['aic']).all():
-        hofs["fitness"] = hofs["fitness"]*-1
-    hofs["aic"] = hofs["aic"]*-1
-    hofs.sort_values(by='fitness', ascending=False, inplace=True, ignore_index=True)
+        hofs["fitness"] = hofs["fitness"] * -1
+    hofs["aic"] = hofs["aic"] * -1
+    hofs.sort_values(
+        by='fitness', ascending=False, inplace=True, ignore_index=True
+    )
+
     if params.only_keep:
-        hofs = hofs[hofs['keep'] == True]
+        hofs = hofs[hofs['keep'] is True]
     if params.hof_max is not None:
         hofs = hofs.head(params.hof_max)
+
     hofs["keep"] = False
     bests = HallOfFame.from_dataframe(hofs)
 
-    # get list of variables 
+    # Get list of variables
     variables = bests.get_variables()
     agg_opts = get_agg_opts(variables, params.varFile, params.edge_agg)
 
-    #########################################################
-    # Step 2: Build network data 
-    #########################################################
+    # Step 2: Build network data
+    # Check if samples should be split for each input
+    index_col = "sample" if params.split_samples else None
 
-    # check if samples should be split for each input 
-    index_col=None
-    if params.split_samples:
-        index_col="sample"
-
-    # read coordinates 
-    # if coordinates not provided, collate those from the runs 
+    # Read coordinates
+    # If coordinates not provided, collate those from the runs
     if not params.coords:
-        coords = read_and_concat_files(params.paths, ".pointCoords.txt", index_column=index_col)
+        coords = read_and_concat_files(
+            params.paths, ".pointCoords.txt", index_column=index_col
+        )
         coords.columns = ["sample", "lat", "long"]
         coords = coords.drop_duplicates(subset=["lat", "long"], keep='first')
-        coords.to_csv(params.out+".coords", 
-            header=True, 
-            index=False, 
-            quoting=None,
-            sep="\t")
-        params.coords=params.out+".coords"
+        coords.to_csv(params.out + ".coords",
+                      header=True,
+                      index=False,
+                      quoting=None,
+                      sep="\t")
+        params.coords = params.out + ".coords"
 
-
-    # get network 
+    # Get network
     network = ResistanceNetwork(
-        network = params.network,
-        shapefile = params.shapefile,
-        coords = params.coords,
-        variables = variables, 
-        agg_opts = agg_opts,
-        inmat = None,
+        network=params.network,
+        shapefile=params.shapefile,
+        coords=params.coords,
+        variables=variables,
+        agg_opts=agg_opts,
+        inmat=None,
         reachid_col=params.reachid_col,
         length_col=params.length_col,
-        out = params.out, 
+        out=params.out,
         verbose=True
     )
 
-
-    # #########################################################
-    # # Step 3: Set up ModelRunner 
-    # #########################################################
-
+    # Step 3: Set up ModelRunner
     runner = ModelRunner(
         resistance_network=network,
-        seed = params.seed,
+        seed=params.seed,
+        verbose=True
+    )
+
+    # Step 4: Build ensemble model
+    runner.build_ensemble(
+        bests=bests,
+        awsum=params.awsum,
+        only_keep=params.only_keep,
+        out=params.out,
+        threads=params.GA_procs,
         verbose=True
     )
 
 
-    # #########################################################
-    # # Step 4: Build ensemble model 
-    # #########################################################
+def read_and_concat_files(
+        paths, extension, index_column=None, local_rows=None):
+    """
+    Reads and concatenates files from given paths with a specific extension.
 
-    runner.build_ensemble(
-        bests = bests,
-        awsum = params.awsum, 
-        only_keep = params.only_keep,
-        out = params.out,
-        threads = params.GA_procs, 
-        verbose = True)
+    Args:
+        paths (str or list): A string or a list of paths to search for files.
+        extension (str): The file extension to search for.
+        index_column (str, optional): Column name to append file index to.
+                                      Defaults to None.
+        local_rows (int, optional): Number of rows to read from each file.
+                                    Defaults to None.
 
-
-def read_and_concat_files(paths, extension, index_column=None, local_rows=None):
-    # Ensure paths is a list, even if a single string is provided
+    Returns:
+        pandas.DataFrame: A DataFrame concatenated from all read files.
+    """
+    # Ensure paths is a list
     if isinstance(paths, str):
         paths = [paths]
-    
-    # Initialize an empty list to store the DataFrames
-    dfs = []
 
-    # Loop through all paths in the input list
-    i=0
+    dfs = []  # List to store DataFrames
+
+    i = 0
     for path in paths:
-        # Use glob to find all files with the specified extension
+        # Use glob to find files with specified extension
         if os.path.isdir(path):
             pattern = os.path.join(path, f"*{extension}")
         else:
             pattern = f"{path}*{extension}"
         for file_path in glob.glob(pattern):
-            # Read the file into a DataFrame 
             df = pd.read_csv(file_path, sep="\t", header=0)
 
-            # Add file index to the specified column if index_column is provided
+            # Append file index to specified column if provided
             if index_column is not None and index_column in df.columns:
                 df[index_column] = df[index_column].astype(str) + f"_{i}"
-            
-            # if local_rows set, only take top X rows from each data frame 
+
+            # Take top rows if local_rows is set
             if local_rows is not None:
                 df = df.head(local_rows)
 
-            # append it to list 
             dfs.append(df)
+            i += 1
 
-            i+=1
-
-    # Concatenate all the DataFrames in the list
+    # Concatenate all DataFrames
     merged_df = pd.concat(dfs, ignore_index=True)
     merged_df = merged_df.drop_duplicates()
 
@@ -165,165 +160,224 @@ def read_and_concat_files(paths, extension, index_column=None, local_rows=None):
 
 
 def get_agg_opts(variables, varFile=None, edge_agg="ARITH"):
-    agg_opts = dict()
+    """
+    Generates a dictionary of aggregation options for given variables.
+
+    Args:
+        variables (list): List of variable names.
+        varFile (str, optional): Path to a file containing variable and
+                                 aggregation method pairs. Defaults to None.
+        edge_agg (str, optional): Default aggregation method. Defaults to
+                                  "ARITH".
+
+    Returns:
+        dict: A dictionary mapping each variable to its aggregation method.
+    """
+    agg_opts = {}
+
     if varFile is not None:
         with open(varFile) as fp:
             for line in fp:
-                line=line.strip()
-                stuff=line.split("\t")
-                if len(stuff) < 2:
-                    agg_opts[stuff[0]]=edge_agg
-                else:
-                    agg_opts[stuff[0]]=stuff[1]
+                line = line.strip()
+                parts = line.split("\t")
+                agg_opts[parts[0]] = parts[1] if len(parts) > 1 else edge_agg
     else:
         for v in variables:
-            agg_opts[v]=edge_agg
-    return agg_opts 
+            agg_opts[v] = edge_agg
+
+    return agg_opts
 
 
-#Object to parse command-line arguments
-class parseArgs():
+class ParseArgs:
+    """
+    Class to parse command-line arguments for ensembleResistnet application.
+
+    Attributes are set based on the provided command-line arguments.
+    """
+
     def __init__(self):
-        #Define options
+        """
+        Initializes the ParseArgs object by parsing command-line arguments.
+        """
         try:
-            options, remainder = getopt.getopt(sys.argv[1:], 'ho:i:n:s:r:l:c:m:a:L:t:V:XC:', \
-            ["help", "out=", "in=", "network=", "reps=", "shp=",
-            "len_col=", "id_col=", "split_samples", "max_keep=", 
-            "awsum=", "list=", "threads=", "edge_agg=", "varFile=",
-            "allShapes", "report_all", "noPlot", "only_best", 
-            "only_keep", "coords="])
+            options, _ = getopt.getopt(
+                sys.argv[1:], 'ho:i:n:s:r:l:c:m:a:L:t:V:XC:',
+                ["help", "out=", "in=", "network=", "reps=", "shp=",
+                 "len_col=", "id_col=", "split_samples", "max_keep=",
+                 "awsum=", "list=", "threads=", "edge_agg=", "varFile=",
+                 "allShapes", "report_all", "noPlot", "only_best",
+                 "only_keep", "coords=", "seed="]
+            )
+
         except getopt.GetoptError as err:
             print(err)
-            self.display_help("\nExiting because getopt returned non-zero exit status.")
-        #Default values for params
-        #Input params
-        self.input=None
-        self.input_list=None
-        self.out="sim"
+            self.display_help(
+                "\nExiting because getopt returned non-zero exit status."
+            )
+        
+        # set defaults 
+        self.set_default_values()
+
+        # parse arguments 
+        self.set_arguments(options)
+
+        # check mandatory settings
+        self.check_mandatory_options()
+
+    def set_default_values(self):
+        """ Sets the default values for all the parameters. """
+        self.input = None
+        self.input_list = None
+        self.out = "sim"
         self.variables = None
-        self.edge_agg="ARITH"
+        self.edge_agg = "ARITH"
         self.agg_opts = dict()
-        self.varFile=None
-        self.network=None
-        self.shapefile=None
-        self.hof_max=None
-        self.only_keep=False
-        self.only_best=False
-        self.awsum=0.95
-        self.split_samples=False
-        self.length_col="LENGTH_KM"
-        self.dist_col=None
-        self.reachid_col="HYRIV_ID"
-        self.recalc_aic=False #not used currently 
+        self.varFile = None
+        self.network = None
+        self.shapefile = None
+        self.hof_max = None
+        self.only_keep = False
+        self.only_best = False
+        self.awsum = 0.95
+        self.split_samples = False
+        self.length_col = "LENGTH_KM"
+        self.dist_col = None
+        self.reachid_col = "HYRIV_ID"
+        self.seed = None
         self.paths = None
         self.seed = None
         self.GA_procs = 1
-        self.minimize=False
-        self.allShapes=False
-        self.report_all=False
-        self.plot=True
-        self.coords=None
+        self.minimize = False
+        self.allShapes = False
+        self.report_all = False
+        self.plot = True
+        self.coords = None
 
-
-        #First pass to see if help menu was called
-        for o, a in options:
-            if o in ("-h", "-help", "--help"):
-                self.display_help("Exiting because help menu was called.")
-
-        #Second pass to set all args.
-        for opt, arg_raw in options:
-            arg = arg_raw.replace(" ","")
-            arg = arg.strip()
-            opt = opt.replace("-","")
-            #print(opt,arg)
-            if opt == "h" or opt == "help":
-                continue
-            elif opt=="in" or opt=="i":
-                self.input=arg
-            elif opt=="X" or opt=="noPlot":
-                self.plot=False
-            elif opt=="list" or opt=="L":
-                self.input_list=arg.split(",")
-            elif opt=="out" or opt=="o":
-                self.out=arg
-            elif opt=='t' or opt=='procs':
-                self.GA_procs=int(arg)
-            elif opt == "network" or opt=="n":
-                self.network=arg
-            elif opt=='s' or opt=='shp':
-                self.shapefile = arg
-            elif opt == "awsum" or opt=="a":
-                self.awsum=float(arg)
-            elif opt == "max_keep" or opt=="m":
-                self.hof_max=int(arg)
-            elif opt == "split_samples":
-                self.split_samples=True
-            elif opt == "only_keep":
-                self.only_keep=True
-            elif opt == "only_best":
-                self.only_best=True
-            elif opt=="report_all":
-                self.report_all=True
-            elif opt == "C" or opt == "coords":    
-                self.coords = arg
-            elif opt == "id_col" or opt=="c":
-                self.reachid_col=arg
-            elif opt == "l" or opt=="len_col":
-                self.length_col=arg
-            elif opt=="edge_agg":
-                self.edge_agg = arg.upper()
-                if self.edge_agg not in ["HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX", "MIN", "SUM", "FIRST", "SD", "VAR", "CV"]:
-                    self.display_help("Invalid option "+str(arg).upper()+" for option <--edge_agg>")
-            elif opt=="V" or opt=="varFile":
-                self.varFile=arg
-            elif opt=="allShapes":
-                self.allShapes=True
-            else:
-                assert False, "Unhandled option %r"%opt
-
-        #Check manditory options are set
+    def check_mandatory_options(self):
+        """ Checks if mandatory options are set """
         if not self.input and not self.input_list:
             self.display_help("No input table provided.")
         if not self.network and not self.shapefile:
             self.display_help("No network provided.")
 
+    def set_arguments(self, options):
+        """
+        Sets the arguments for the class based on provided options from command
+        line.
+
+        Args:
+            options (list of tuples): Command line options and their values.
+        """
+
+        # First pass to see if help menu was called
+        for opt, _ in options:
+            if opt in ("-h", "--help"):
+                self.display_help("Exiting because help menu was called.")
+
+        for opt, arg_raw in options:
+            arg = arg_raw.strip()
+            opt = opt.replace("-", "")
+
+            if opt in ("h", "help"):
+                continue
+            elif opt in ("in", "i"):
+                self.input = arg
+            elif opt in ("X", "noPlot"):
+                self.plot = False
+            elif opt in ("list", "L"):
+                self.input_list = arg.split(",")
+            elif opt in ("out", "o"):
+                self.out = arg
+            elif opt in ("t", "procs"):
+                self.GA_procs = int(arg)
+            elif opt in ("seed"):
+                self.seed = int(arg)
+            elif opt in ("network", "n"):
+                self.network = arg
+            elif opt in ("s", "shp"):
+                self.shapefile = arg
+            elif opt in ("awsum", "a"):
+                self.awsum = float(arg)
+            elif opt in ("max_keep", "m"):
+                self.hof_max = int(arg)
+            elif opt == "split_samples":
+                self.split_samples = True
+            elif opt == "only_keep":
+                self.only_keep = True
+            elif opt == "only_best":
+                self.only_best = True
+            elif opt == "report_all":
+                self.report_all = True
+            elif opt in ("C", "coords"):
+                self.coords = arg
+            elif opt in ("id_col", "c"):
+                self.reachid_col = arg
+            elif opt in ("l", "len_col"):
+                self.length_col = arg
+            elif opt == "edge_agg":
+                self.edge_agg = arg.upper()
+                if self.edge_agg not in (
+                    "HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX",
+                    "MIN", "SUM", "FIRST", "SD", "VAR", "CV"
+                ):
+                    self.display_help(
+                        "Invalid option " + str(arg).upper() +
+                        " for option <--edge_agg>"
+                    )
+            elif opt in ("V", "varFile"):
+                self.varFile = arg
+            elif opt == "allShapes":
+                self.allShapes = True
+            else:
+                assert False, f"Unhandled option {opt!r}"
+
     def display_help(self, message=None):
+        """
+        Displays the help message for the command-line interface.
+
+        Args:
+            message (str, optional): An additional message to print before the
+                                     help message.
+        """
         if message is not None:
             print()
-            print (message)
-        print ("\nensembleResistnet.py\n")
-        print("Author: Tyler Chafin")
-        print ("Description: Utility script for model-averaging across a collection of RestistNet outputs")
-        print("""
-Arguments:
--s,--shp    : Path to shapefile containing cleaned, contiguous stream reaches
--n,--network    : Input network (pickle'd networkx output; should include all sites)
--i,--in        : Directory containing resistnet outputs
--L,--list    : Alternatively, provide a comma-separated list of model output prexifes (without spaces)
--C,--coords  : Static coordinates, if used .coords files will not be read using the -L/--list prefixes
+            print(message)
 
-Optional Arguments:
--t,--procs    : Number of parallel processors
--a,--awsum    : Cumulative Akaike weight threshold to retain top N models [default=0.95]
---only_keep    : Only retain models where column "keep"=True
---only_best    : Only retain best model from each input
---split_samples    : Do not check for overlap in sample names, instead treating all as unique
--X,--noPlot    : Turn off plotting
--m,--max_keep    : Maximum models to keep (default = all models)
--l,--len_col    : Attribute in network corresponding to edge length (def=LENGTH_KM)
--c,--id_col    : Attribute in network corresponding to edge ID (def=EDGE_ID)
--o,--out    : Output file prefix (default=ensemble)
---report_all    : Plot per-stream resistance and generate full outputs for all retained models
---allShapes    : Allow inverse and reverse transformations
--V,--varfile    : Optional file with variables provided like so:
-          var1 \t <Optional aggregator function>
-          var2 \t <Optional aggregator function>
-          ...
-          ...
-""")
+        print("\nensembleResistnet.py\n")
+        print("Utility for model-averaging across ResistNet outputs")
+
+        print(
+            "\nArguments:\n"
+            "-s, --shp: Path to shapefile\n"
+            "-n, --network: Input network\n"
+            "-i, --in: Directory containing resistnet outputs\n"
+            "-L, --list: Optional comma-separated prefixes (no spaces)\n"
+            "-C, --coords: Optional static coordinates file\n\n"
+
+            "Optional Arguments:\n"
+            "-t, --procs: Number of parallel processors\n"
+            "--seed: RNG seed\n"
+            "-a, --awsum: Cumulative Akaike weight threshold [default=0.95]\n"
+            "--only_keep: Only retain models where column 'keep'=True\n"
+            "--only_best: Only retain best model from each input\n"
+            "--split_samples: Treat all samples as unique\n"
+            "-X, --noPlot: Turn off plotting\n"
+            "-m, --max_keep: Maximum models to keep (default = all models)\n"
+            "-l, --len_col: Edge length attribute (def=LENGTH_KM)\n"
+            "-c, --id_col: Reach ID attribute (def=EDGE_ID)\n"
+            "-o, --out: Output file prefix (default=ensemble)\n"
+            "--report_all: Plot full outputs for all retained models\n"
+            "--allShapes: Allow inverse and reverse transformations\n"
+            "-V, --varfile: Optional file with variables provided like so:\n"
+            "          var1 \t <Optional aggregator function>\n"
+            "          var2 \t <Optional aggregator function>\n"
+            "          ...\n"
+        )
+
         print()
         sys.exit()
 
-#Call main function
+
+# Main script execution
 if __name__ == '__main__':
     main()
