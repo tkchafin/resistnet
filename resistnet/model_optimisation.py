@@ -1,5 +1,3 @@
-import os
-import sys
 import traceback
 import random
 import pandas as pd
@@ -7,18 +5,19 @@ import numpy as np
 from queue import Empty
 from multiprocessing import Process, Queue
 from deap import base, creator, tools
-
 from resistnet.resistance_network import ResistanceNetworkWorker
 from resistnet.hall_of_fame import HallOfFame
-import resistnet.utils as utils
+
 
 class ModelRunner:
     """
-    Class to handle running the genetic algorithm for optimizing a ResistNet model.
+    Class to handle running the genetic algorithm for optimizing a ResistNet
+    model.
 
     Attributes:
         seed (int): Seed for random number generator.
-        resistance_network (ResistanceNetworkWorker): An instance of ResistanceNetworkWorker.
+        resistance_network (ResistanceNetworkWorker): An instance of
+                                                      ResistanceNetworkWorker.
         verbose (bool): Flag to control verbosity of output.
         task_queue (Queue): Queue for tasks.
         result_queue (Queue): Queue for results.
@@ -329,19 +328,30 @@ class ModelRunner:
             # Terminate worker processes
             self.terminate_workers()
 
-    def build_ensemble(self, bests, awsum = 0.95, only_keep = True, out=None, threads=1, verbose=True):
+    def build_ensemble(self, bests, awsum=0.95, only_keep=True, out=None,
+                       threads=1, verbose=True):
+        """
+        Builds the ensemble model from the best models.
 
+        Args:
+            bests: Best models.
+            awsum (float): The Akaike weight sum threshold.
+            only_keep (bool): Flag to keep only certain models.
+            out: Output parameter.
+            threads (int): Number of parallel threads.
+            verbose (bool): Verbose output flag.
+        """
         try:
-            self.awsum = awsum 
+            self.awsum = awsum
             self.only_keep = only_keep
             self.verbose = verbose
-            self.bests = bests 
-            self.report_all = False 
+            self.bests = bests
+            self.report_all = False
 
-            # initialise workers 
+            # Initialise workers
             self.start_workers(threads)
 
-            # comput ensemble model
+            # Compute ensemble model
             self.run_output(out, verbose, plot=True)
 
         except Exception as e:
@@ -349,11 +359,18 @@ class ModelRunner:
             traceback.print_exc()
 
         finally:
-            # terminate processes 
+            # Terminate processes
             self.terminate_workers()
 
     def run_output(self, out=None, verbose=True, plot=True):
+        """
+        Runs the output routine for the model.
 
+        Args:
+            out: Output parameter.
+            verbose (bool): Verbose output flag.
+            plot (bool): Flag to enable or disable plotting.
+        """
         # Various calculations and print/write operations
         self.bests.delta_aic()
         self.bests.akaike_weights()
@@ -366,7 +383,7 @@ class ModelRunner:
             self.bests.printHOF()
             self.bests.printRVI()
             self.bests.printMAW()
-        
+
         if out:
             self.bests.writeMAW(out)
             self.bests.writeRVI(out)
@@ -381,92 +398,123 @@ class ModelRunner:
 
         # Writing log of fitnesses
         if out and len(self.logger) > 0:
-            logDF = pd.DataFrame(self.logger, columns=["Generation", "Worst", "Best", "Mean", "Stdev"])
-            logDF.to_csv(f"{out}.FitnessLog.tsv", sep="\t", header=True, index=False)
+            logDF = pd.DataFrame(self.logger,
+                                 columns=[
+                                     "Generation", "Worst", "Best", "Mean",
+                                     "Stdev"
+                                     ]
+                                 )
+            logDF.to_csv(
+                f"{out}.FitnessLog.tsv", sep="\t", header=True, index=False
+            )
 
-        # # Get results for best models and model-averaged
+        # Get results for best models and model-averaged
         self.model_average(out, plot) 
 
-        # evaluate the null model (if genetic distances present)
+        # Evaluate the null model (if genetic distances present)
         if self.resistance_network._gendist is not None:
             null = self.resistance_network.evaluate_null_model(out)
             if verbose:
-                print()
-                print("Evaluating null model...")
-                with pd.option_context('display.max_rows', None, 'display.max_columns', None): 
+                print("\nEvaluating null model...")
+                with pd.option_context(
+                    'display.max_rows', None, 'display.max_columns', None
+                ):
                     print(null)
 
-        # df = pd.DataFrame(self.gendist, columns=list(self.points_names.values()), index=list(self.points_names.values()))
-        # df.to_csv(f"{params.out}.genDistMat.tsv", sep="\t", header=True, index=True)
-
-
     def model_average(self, out="", plot=True):
-        #build model list and run Circuitscape on each model
-        models=list()
-        mod_num=0
-        weights=dict()
+        """
+        Performs model averaging on a set of resistance models.
+
+        Args:
+            out (str): Output file base name.
+            plot (bool): Flag to enable or disable plotting.
+        """
+        # Build model list and run Circuitscape on each model
+        models = []
+        mod_num = 0
+        weights = {}
         hof = self.bests.getHOF(only_keep=self.only_keep)
         for _, row in hof.iterrows():
-            n=len(self.resistance_network._predictors.columns)*4
-            model_string = row.iloc[1:n+1].to_list()
+            n = len(self.resistance_network._predictors.columns) * 4
+            model_string = row.iloc[1:n + 1].to_list()
             models.append([mod_num, model_string])
-            weights[mod_num]=row["akaike_weight"]
-            mod_num+=1
+            weights[mod_num] = row["akaike_weight"]
+            mod_num += 1
 
         if self.verbose:
-            print()
-            print("Model-averaging across",mod_num,"resistance models...")
+            print("\nModel-averaging across", mod_num, "resistance models...")
 
-        # evaluate models in parallel
+        # Evaluate models in parallel
         for model in models:
             self.task_queue.put(('output', model[0], model[1]))
 
-        # retrieve model results 
+        # Retrieve model results
         model_results = []
         for _ in range(len(models)):
             mod_num, result, multi = self.result_queue.get()
             model_results.append([mod_num, result, multi])
 
-        # model averaging w/ akaike_weights
-        edge_avg=None
-        matrix_avg=np.zeros(shape=(len(self.resistance_network._points_labels), len(self.resistance_network._points_labels)))
+        # Model averaging with Akaike weights
+        edge_avg = None
+        matrix_avg = np.zeros(
+            shape=(len(self.resistance_network._points_labels),
+                   len(self.resistance_network._points_labels))
+            )
 
         for m in model_results:
-            model_num=m[0]
-            matrix_r=m[1]
-            edge_r=m[2]
+            model_num = m[0]
+            matrix_r = m[1]
+            edge_r = m[2]
 
-            # get weighted contributions to av model
+            # Get weighted contributions to average model
             weight = hof.iloc[model_num]["akaike_weight"]
             if edge_avg is None:
-                edge_avg=(edge_r*weight)
+                edge_avg = edge_r * weight
             else:
-                edge_avg = np.add(edge_avg, (edge_r*weight))
-            matrix_avg += (matrix_r*weight)
+                edge_avg = np.add(edge_avg, edge_r * weight)
+            matrix_avg += matrix_r * weight
 
             if self.report_all:
-                oname=str(out)+".Model-"+str(model_num)
-                self.resistance_network.output_and_plot_model(oname, matrix_r, edge_r)
+                oname = f"{out}.Model-{model_num}"
+                self.resistance_network.output_and_plot_model(
+                    oname, matrix_r, edge_r
+                )
 
-
-        oname=str(out) + ".Model-Average"
-        self.resistance_network.output_and_plot_model(oname, matrix_avg, edge_avg)
-
+        oname = f"{out}.Model-Average"
+        self.resistance_network.output_and_plot_model(
+            oname, matrix_avg, edge_avg
+        )
 
     @staticmethod
-    def update_fails(best, current_best, fails, deltaB, deltaB_perc, minimize=False):
-        cur=current_best
-        f=fails
-        threshold_1=current_best
-        threshold_2=current_best
+    def update_fails(best, current_best, fails, delta_b, delta_b_perc,
+                     minimize=False):
+        """
+        Updates the fail count based on the best and current best fitness
+        scores.
 
-        if minimize is True:
+        Args:
+            best: The best fitness score.
+            current_best: The current best fitness score.
+            fails: The current fail count.
+            delta_b: Absolute improvement threshold.
+            delta_b_perc: Percentage improvement threshold.
+            minimize (bool): Flag indicating minimization or maximization.
+
+        Returns:
+            Tuple containing updated current best fitness score and fail count.
+        """
+        cur = current_best
+        f = fails
+        threshold_1 = current_best
+        threshold_2 = current_best
+
+        if minimize:
             if best < current_best:
                 cur = best
-            if deltaB is not None:
-                threshold_1=current_best-deltaB
-            if deltaB_perc is not None:
-                threshold_2=current_best-(current_best*deltaB_perc)
+            if delta_b is not None:
+                threshold_1 = current_best - delta_b
+            if delta_b_perc is not None:
+                threshold_2 = current_best - (current_best * delta_b_perc)
             if best >= threshold_1 or best >= threshold_2:
                 f += 1
             else:
@@ -474,75 +522,88 @@ class ModelRunner:
         else:
             if best > current_best:
                 cur = best
-            if deltaB is not None:
-                threshold_1=current_best+deltaB
-            if deltaB_perc is not None:
-                threshold_2=current_best+(current_best*deltaB_perc)
+            if delta_b is not None:
+                threshold_1 = current_best + delta_b
+            if delta_b_perc is not None:
+                threshold_2 = current_best + (current_best * delta_b_perc)
             if best <= threshold_1 or best <= threshold_2:
                 f += 1
             else:
                 f = 0
-        return(cur, f)
-    
+        return cur, f
 
     def initialise_population(self):
+        """
+        Initialises the population by distributing tasks for evaluation and
+        processing the fitness results.
+        """
         # Distribute tasks for evaluation
         for ind_index, ind in enumerate(self.population):
-            # Send index and individual data
             self.task_queue.put(('evaluate', ind_index, list(ind)))
 
         # Collect fitness results and process them
         pop_list = []
         for _ in range(len(self.population)):
             ind_index, fitness, res = self.result_queue.get()
-
-            # Update individual fitness
             self.population[ind_index].fitness.values = [fitness]
-
-            # Process and append to pop_list
             ind_list = [fitness] + list(self.population[ind_index])
             if res is not None:
                 ind_list.extend(res)
             pop_list.append(ind_list)
-        
-        # init Hall of Fame 
+
+        # Initialize Hall of Fame
         self.bests = HallOfFame(
-            self.resistance_network._predictors.columns, 
-            self.max_hof_size, 
+            self.resistance_network._predictors.columns,
+            self.max_hof_size,
             pop_list)
 
-
     def init_ga_attributes(self):
+        """
+        Initializes the genetic algorithm's attributes and registers necessary
+        functions with the toolbox.
+        """
         # Register attributes
         self.toolbox.register("feature_sel", random.randint, 0, 1)
         if self.posWeight:
-            self.toolbox.register("feature_weight", random.uniform, self.min_weight, 1.0)
+            self.toolbox.register(
+                "feature_weight", random.uniform, self.min_weight, 1.0
+            )
         if self.fixWeight:
             self.toolbox.register("feature_weight", random.uniform, 1.0, 1.0)
         if not self.fixWeight and not self.posWeight:
             self.toolbox.register("feature_weight", random.uniform, -1.0, 1.0)
         if not self.fixShape:
             self.toolbox.register("feature_transform", random.randint, 0, 8)
-            self.toolbox.register("feature_shape", random.randint, 1, self.max_shape)
+            self.toolbox.register(
+                "feature_shape", random.randint, 1, self.max_shape
+            )
         else:
             self.toolbox.register("feature_transform", random.randint, 0, 0)
             self.toolbox.register("feature_shape", random.randint, 1, 1)
-        self.toolbox.register("individual", 
-                         tools.initCycle, 
-                         creator.Individual,
-                            (self.toolbox.feature_sel, 
-                             self.toolbox.feature_weight, 
-                             self.toolbox.feature_transform, 
-                             self.toolbox.feature_shape), 
-                         n=len(self.resistance_network.variables))
-        self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
+
+        self.toolbox.register(
+            "individual",
+            tools.initCycle,
+            creator.Individual,
+            (self.toolbox.feature_sel, self.toolbox.feature_weight,
+                self.toolbox.feature_transform,
+                self.toolbox.feature_shape),
+            n=len(self.resistance_network.variables)
+        )
+        self.toolbox.register(
+            "population", tools.initRepeat, list, self.toolbox.individual
+        )
         self.toolbox.register("evaluate", lambda ind: ind)
         self.toolbox.register("mate", tools.cxTwoPoint)
         self.toolbox.register("mutate", self.mutate)
-        self.toolbox.register("select", tools.selTournament, tournsize=self.tournsize)
-
+        self.toolbox.register(
+            "select", tools.selTournament, tournsize=self.tournsize
+        )
 
     def terminate_workers(self):
+        """
+        Terminates all worker processes.
+        """
         # Send a termination signal to each worker
         for _ in self.workers:
             self.task_queue.put(("END", None, None))
@@ -552,13 +613,18 @@ class ModelRunner:
             worker.join()
 
         if self.verbose:
-            print()
-            print("All worker processes have been terminated.")
-
+            print("\nAll worker processes have been terminated.")
 
     def start_workers(self, threads):
+        """
+        Starts worker processes for parallel task execution.
+
+        Args:
+            threads (int): The number of worker threads to start.
+        """
         if self.verbose:
             print()
+
         for i in range(threads):
             worker_seed = self.seed + i
             if self.verbose:
@@ -580,25 +646,37 @@ class ModelRunner:
                 'predictors': self.resistance_network._predictors,
                 'edge_order': self.resistance_network._edge_order,
                 'gendist': self.resistance_network._gendist,
-                "fitmetric" : self.fitmetric, 
-                "posWeight" : self.posWeight,
-                "fixWeight" : self.fixWeight,
-                "allShapes" : self.allShapes,
-                "fixShape" : self.fixShape,
-                "min_weight" : self.min_weight,
-                "max_shape" : self.max_shape
+                "fitmetric": self.fitmetric,
+                "posWeight": self.posWeight,
+                "fixWeight": self.fixWeight,
+                "allShapes": self.allShapes,
+                "fixShape": self.fixShape,
+                "min_weight": self.min_weight,
+                "max_shape": self.max_shape
             }
-            worker_process = Process(target=self.worker_task, 
-                                 args=(self.task_queue, self.result_queue, worker_args, worker_seed))
+            worker_process = Process(
+                target=self.worker_task,
+                args=(self.task_queue, self.result_queue, worker_args,
+                      worker_seed)
+            )
             worker_process.start()
             self.workers.append(worker_process)
 
         if self.verbose:
             print()
 
-
     @staticmethod
     def worker_task(task_queue, result_queue, worker_args, seed):
+        """
+        Static method to handle worker tasks for parallel processing.
+
+        Args:
+            task_queue (Queue): The queue from which tasks are retrieved.
+            result_queue (Queue): The queue to which results are put.
+            worker_args (dict): Arguments required for creating a worker
+                                instance.
+            seed (int): The seed value for random number generation.
+        """
         random.seed(seed)
         worker = ResistanceNetworkWorker(**worker_args)
         while True:
@@ -613,7 +691,7 @@ class ModelRunner:
                     else:
                         result_queue.put((id, fitness, None))
                 elif task == "output":
-                    r, multi = worker.model_output(data) 
+                    r, multi = worker.model_output(data)
                     result_queue.put((id, r, multi))
             except Empty:
                 continue
@@ -621,10 +699,14 @@ class ModelRunner:
     def mutate(self, individual):
         """
         Custom mutation function for an individual.
-        :param individual: An individual to be mutated.
-        :return: A tuple containing the mutated individual.
+
+        Args:
+            individual: An individual to be mutated.
+
+        Returns:
+            A tuple containing the mutated individual.
         """
-        length = len(individual) // 4  # number of covariates 
+        length = len(individual) // 4  # number of covariates
         for i in range(length):
             if random.random() < self.mutpb:
                 individual[i * 4] = self.toolbox.feature_sel()
@@ -635,5 +717,3 @@ class ModelRunner:
             if random.random() < self.mutpb:
                 individual[i * 4 + 3] = self.toolbox.feature_shape()
         return individual,
-
-
