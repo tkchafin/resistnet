@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import sys
 import getopt
 from resistnet.resistance_network import SimResistanceNetwork
