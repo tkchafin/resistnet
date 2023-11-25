@@ -1,14 +1,11 @@
-import sys
 import numpy as np
 import scipy.stats
+import pandas as pd
 
 
 def aggregateDist(stuff, method):
     """
     Aggregate distances using a specified method.
-
-    This function aggregates an array of distances using various statistical
-    methods like harmonic mean, arithmetic mean, geometric mean, median, etc.
 
     Args:
         stuff: A numpy array or list of distances.
@@ -18,14 +15,30 @@ def aggregateDist(stuff, method):
         The aggregated distance value based on the specified method.
 
     Raises:
-        SystemExit: If 'HARM' method encounters a zero distance.
+        ValueError: For invalid input types, zero values in 'HARM',
+                    unsupported methods, or other issues with the input data.
     """
+    # Validate input types
+    if not isinstance(stuff, (list, np.ndarray, pd.Series)):
+        raise ValueError("Input 'stuff' must be a list or numpy array.")
+    if not isinstance(method, str):
+        raise ValueError("Input 'method' must be a string.")
+
     try:
         if method == "HARM":
+            if 0 in stuff:
+                raise ValueError(
+                    "Zero values found. Harmonic mean cannot be calculated. \
+                        Try 'ADJHARM'."
+                )
             return scipy.stats.hmean(stuff)
         elif method == "ARITH":
             return np.mean(stuff)
         elif method == "GEOM":
+            if any(x < 0 for x in stuff):
+                raise ValueError(
+                    "Negative values cannot be used for geometric mean"
+                )
             return scipy.stats.mstats.gmean(stuff)
         elif method == "MEDIAN":
             return np.median(stuff)
@@ -40,17 +53,22 @@ def aggregateDist(stuff, method):
         elif method == "VAR":
             return np.var(stuff)
         elif method == "FIRST":
+            if len(stuff) == 0:
+                raise ValueError("Input 'stuff' is empty.")
             return stuff.flat[0]
         elif method == "CV":
             mean = np.mean(stuff)
             return np.std(stuff) / mean if mean != 0 else 0.0
         elif method == "SUM":
             return np.sum(stuff)
+        else:
+            raise ValueError(f"Unsupported aggregation method: {method}")
+
     except ValueError as e:
-        print(e)
-        print("ERROR (DivideByZero): Harmonic mean cannot be calculated using "
-              "a zero distance. Try recomputing using the \"ADJHARM\" option.")
-        sys.exit(1)
+        raise ValueError(f"Error in aggregateDist: {e}")
+
+    except Exception as e:
+        raise ValueError(f"Unexpected error: {e}")
 
 
 def adjustedHarmonicMean(stuff):

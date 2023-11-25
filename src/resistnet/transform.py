@@ -12,40 +12,36 @@ GitHub: https://github.com/wpeterman/ResistanceGA
 
 
 def rescaleCols(df, m, M):
-    """
-    Rescale all columns in a pandas DataFrame between m and M, where M > m >= 0
-
-    Args:
-        df: A pandas DataFrame.
-        m: The minimum value of the range to scale to.
-        M: The maximum value of the range to scale to.
-
-    Returns:
-        pandas.DataFrame: The rescaled DataFrame.
-
-    Raises:
-        ValueError: If 'm' or 'M' is not a numeric value or if M <= m.
-        TypeError: If 'df' is not a pandas DataFrame.
-    """
-    if not isinstance(df, pd.DataFrame):
-        raise TypeError("Input 'df' must be a pandas DataFrame.")
+    if not isinstance(df, (pd.DataFrame, pd.Series)):
+        raise TypeError("Input 'df' must be a pandas DataFrame or Series.")
 
     if not (isinstance(m, (int, float)) and isinstance(M, (int, float))):
         raise ValueError("'m' and 'M' must be numeric values.")
 
     if M <= m:
         raise ValueError(
-            "The maximum value 'M' must be greater than the minimum value 'm'."
-        )
+            "The maximum value M must be greater than the minimum value m."
+            )
 
-    if df.empty:
-        raise ValueError("DataFrame is empty.")
+    # Convert Series to DataFrame for uniform processing
+    series = False
+    if isinstance(df, pd.Series):
+        series = True
+        df = df.to_frame()
 
+    # Check for empty input
+    if df.empty or df.size == 0:
+        raise ValueError("Input is empty.")
+
+    # Perform rescaling
     rescaled_df = df.copy()
     rescaled_df -= rescaled_df.min()
     rescaled_df /= rescaled_df.max()
     rescaled_df = (rescaled_df * (M - m)) + m
 
+    # Convert back to Series if the original input was a Series
+    if series:
+        return rescaled_df.iloc[:, 0]
     return rescaled_df
 
 
@@ -245,9 +241,9 @@ def validate_arguments(dat, shape, ceiling):
         ValueError: If 'shape' or 'ceiling' is not a numeric value, or if
                     'shape' is zero.
     """
-    if not isinstance(dat, (np.ndarray, list, tuple)):
+    if not isinstance(dat, (pd.Series)):
         raise TypeError(
-            "Input 'dat' must be a numeric array or similar iterable."
+            "Input 'dat' must be a pd.Series"
         )
 
     if not (isinstance(shape, (int, float)) and

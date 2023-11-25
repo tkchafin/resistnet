@@ -11,6 +11,13 @@ from sortedcontainers import SortedDict
 
 
 @pytest.fixture
+def pickle_network_path():
+    base_path = os.path.dirname(resistnet.__file__)
+    file_path = os.path.join(base_path, 'data', 'test.network')
+    return file_path
+
+
+@pytest.fixture
 def points_file_path():
     base_path = os.path.dirname(resistnet.__file__)
     file_path = os.path.join(base_path, 'data', 'test.pointCoords.txt')
@@ -157,7 +164,7 @@ def test_read_points_table_success(points_file_path):
     assert len(result) > 0  # Assuming the file is not empty
 
 
-# Define different cases of invalid file contents
+# Define different cases fo read_points_table error checking
 @pytest.mark.parametrize("file_contents", [
     ("sample\tlatitude\n1\t2.5"),  # Missing 'long' column
     ("lat\tlong\n2.5\t3.5"),       # Missing 'sample' column
@@ -174,3 +181,207 @@ def test_read_points_table_failure(file_contents):
         with pytest.raises(ValueError) as exc_info:
             utils.read_points_table(tmp.name)
         assert "Missing required columns" in str(exc_info.value)
+
+
+# test read_points_flatten
+def test_read_points_flatten(points_file_path):
+    # Read and flatten points data
+    flattened_data = utils.read_points_flatten(points_file_path)
+
+    # Verify that the result is a SortedDict
+    assert isinstance(flattened_data, SortedDict)
+
+    # Check if keys are tuples of coordinates and values are lists of samples
+    for key, value in flattened_data.items():
+        assert isinstance(key, tuple) and len(key) == 2
+        assert all(isinstance(item, str) for item in value)
+
+
+# test unique
+def test_unique():
+    sequence = [1, 2, 2, 3, 1, 4, 5, 4]
+    expected_result = [1, 2, 3, 4, 5]
+
+    result = utils.unique(sequence)
+    assert result == expected_result
+
+    # Test with different types of sequences (strings, etc.)
+    sequence_str = ['a', 'b', 'a', 'c', 'b']
+    expected_result_str = ['a', 'b', 'c']
+    assert utils.unique(sequence_str) == expected_result_str
+
+    # Test with empty sequence
+    assert utils.unique([]) == []
+
+
+# test nx_to_df 
+def test_nx_to_df(sample_graph):
+    # Convert the sample graph to DataFrame
+    df = utils.nx_to_df(sample_graph)
+
+    # Check if the result is a DataFrame
+    assert isinstance(df, pd.DataFrame)
+
+    # Verify DataFrame columns
+    expected_columns = {'left', 'right', 'EDGE_ID', 'Resistance'}
+    assert set(df.columns) == expected_columns
+
+
+# test find_pait
+def test_find_pair():
+    lst = [1, 2, 3, 4, 5]
+
+    # Check for pairs that are consecutive
+    assert utils.find_pair(lst, 1, 2) is True
+    assert utils.find_pair(lst, 3, 4) is True
+
+    # Check order irrelevance
+    assert utils.find_pair(lst, 4, 3) is True
+
+    # Check for pairs that are not consecutive
+    assert utils.find_pair(lst, 1, 3) is False
+
+    # Check for elements not in list
+    assert utils.find_pair(lst, 6, 7) is False
+
+
+# test read_pickle_network
+def test_read_pickle_network(pickle_network_path):
+    # Read the network from the pickle file
+    graph = utils.read_pickle_network(pickle_network_path)
+
+    # Check if the result is a NetworkX Graph
+    assert isinstance(graph, nx.Graph)
+
+    # Verify that the graph is undirected
+    assert not graph.is_directed()
+
+    # Check that all nodes are tuples (likely representing coordinates)
+    assert all(isinstance(node, tuple) for node in graph.nodes)
+
+    # Check that edges have the required attributes
+    if len(graph.edges) > 0:
+        u, v = next(iter(graph.edges))
+        assert 'HYRIV_ID' in graph[u][v]
+        assert 'LENGTH_KM' in graph[u][v]
+
+
+# Define test cases
+@pytest.mark.parametrize("data, variables, expected_result, \
+                         expected_vars, expected_exception", [
+    # Test with columns containing NaNs and single unique values
+    (
+        pd.DataFrame({
+            'A': [1, 1, 1], 'B': [np.nan, np.nan, np.nan], 'C': [1, 2, 3]
+        }),
+        ['A', 'B', 'C'],
+        pd.DataFrame({'C': [1, 2, 3]}),
+        ['C'],
+        None
+    ),
+    # Test with valid columns
+    (
+        pd.DataFrame({'A': [1, 2, 1], 'B': [3, 4, 5]}),
+        ['A', 'B'],
+        pd.DataFrame({'A': [1, 2, 1], 'B': [3, 4, 5]}),
+        ['A', 'B'],
+        None
+    ),
+    # Valid columns but invalid variables
+    (
+        pd.DataFrame({'A': [1, 2, 1], 'B': [3, 4, 5]}),
+        ['D', 'E'],
+        None,
+        None,
+        ValueError
+    ),
+    # Valid variables but all columns fail
+    (
+        pd.DataFrame({'A': [1, 1, 1], 'B': [1, 1, 1]}),
+        ['A', 'B'],
+        None,
+        None,
+        ValueError
+    ),
+    # Test with empty DataFrame (should raise ValueError)
+    (
+        pd.DataFrame(),
+        [],
+        None,
+        None,
+        ValueError
+    )
+])
+def test_scrub_bad_columns(
+        data, variables, expected_result, expected_vars, expected_exception):
+    if expected_exception:
+        # Check if the function raises the expected exception
+        with pytest.raises(expected_exception):
+            utils.scrub_bad_columns(data, variables)
+    else:
+        # Call the scrub_bad_columns function
+        cleaned_df, cleaned_variables = utils.scrub_bad_columns(
+            data, variables
+        )
+
+        # Assert the cleaned DataFrame and variables list
+        pd.testing.assert_frame_equal(cleaned_df, expected_result)
+        assert cleaned_variables == expected_vars
+
+
+# Define test cases
+@pytest.mark.parametrize("data, expected_result", [
+    # DataFrame with valid columns
+    (
+        pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]}),
+        True
+    ),
+    # DataFrame with a column containing only NaN values
+    (
+        pd.DataFrame({'A': [1, 2, 3], 'B': [np.nan, np.nan, np.nan]}),
+        False
+    ),
+    # DataFrame with a column containing a single unique value
+    (
+        pd.DataFrame({'A': [1, 1, 1], 'B': [2, 3, 4]}),
+        False
+    ),
+    # Test with empty DataFrame (should raise ValueError)
+    (
+        pd.DataFrame(),
+        ValueError
+    )
+])
+def test_check_dataframe_columns(data, expected_result):
+    if expected_result is ValueError:
+        # Check if the function raises the expected exception
+        with pytest.raises(ValueError):
+            utils.check_dataframe_columns(data)
+    else:
+        # Call the check_dataframe_columns function
+        result = utils.check_dataframe_columns(data)
+
+        # Assert the result
+        assert result == expected_result
+
+
+def test_snap_to_node(sample_graph):
+    # Test with positions that exactly match node coordinates
+    for node in sample_graph.nodes:
+        closest_node = utils.snap_to_node(sample_graph, node)
+        assert closest_node == node
+
+    # Test with slightly shifted positions
+    for node in sample_graph.nodes:
+        shifted_pos = tuple(np.array(node) + np.random.normal(0, 0.01, 2))
+        closest_node = utils.snap_to_node(sample_graph, shifted_pos)
+        assert closest_node == node
+
+    # Test with empty graph (should raise ValueError)
+    empty_graph = nx.Graph()
+    with pytest.raises(ValueError):
+        utils.snap_to_node(empty_graph, (0, 0))
+
+    # Test with invalid position (should raise ValueError)
+    with pytest.raises(ValueError):
+        utils.snap_to_node(sample_graph, "invalid_pos")

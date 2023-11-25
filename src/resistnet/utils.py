@@ -23,8 +23,19 @@ def snap_to_node(graph, pos):
     Raises:
         ValueError: If 'graph' or 'pos' is not in the expected format or empty.
     """
-    nodes = np.array(graph.nodes())
-    node_pos = np.argmin(np.sum((nodes - pos) ** 2, axis=1))
+    # Check if 'graph' is a NetworkX graph and not empty
+    if not isinstance(graph, nx.Graph) or not graph:
+        raise ValueError("Invalid graph or graph is empty.")
+
+    # Check if 'pos' is a tuple with two numeric values
+    if not isinstance(pos, tuple) or \
+            len(pos) != 2 or not \
+            all(isinstance(coord, (int, float)) for coord in pos):
+        raise ValueError("Position must be a tuple of two numeric values.")
+
+    # Convert graph nodes to a numpy array and find the closest node
+    nodes = np.array(list(graph.nodes()))
+    node_pos = np.argmin(np.sum((nodes - np.array(pos)) ** 2, axis=1))
     return tuple(nodes[node_pos])
 
 
@@ -88,12 +99,17 @@ def scrub_bad_columns(df, variables, verbose=False):
                variables.
 
     Raises:
-        ValueError: If 'df' or 'variables' is not in the expected format or
-                    empty.
+        ValueError: If 'df', 'variables', or outputs not in the expected
+                    format or empty.
     """
+    if not isinstance(variables, list):
+        raise ValueError("Invalid variables list.")
     if df.empty or not isinstance(df, pd.DataFrame):
         raise ValueError("Invalid DataFrame.")
-    if not variables or not isinstance(variables, list):
+
+    # check variables are present
+    variables = [v for v in variables if v in df.columns]
+    if not variables:
         raise ValueError("Invalid variables list.")
 
     bad_columns = []
@@ -117,6 +133,19 @@ def scrub_bad_columns(df, variables, verbose=False):
     # Remove bad columns from the DataFrame and the variables list
     cleaned_df = df.drop(bad_columns, axis=1)
     cleaned_variables = [v for v in variables if v not in bad_columns]
+
+    # Check if the cleaned DataFrame is empty
+    if cleaned_df.empty:
+        raise ValueError(
+            "All columns were removed; resulting DataFrame is empty."
+        )
+
+    # Check if the cleaned variables list is empty
+    if not cleaned_variables:
+        raise ValueError(
+            "All specified variables were removed; \
+                resulting variables list is empty."
+        )
 
     return cleaned_df, cleaned_variables
 
