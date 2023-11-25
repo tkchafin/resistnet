@@ -12,7 +12,7 @@ def parsePairwise(points, inc_matrix, multi, gendist):
     Args:
         points (dict): A dictionary of points.
         inc_matrix (numpy.ndarray): The incidence matrix.
-        multi (list): List of edge resistances.
+        multi (pd.Series): List of edge resistances.
         gendist (float): The general distance.
 
     Returns:
@@ -31,11 +31,17 @@ def effectiveResistanceMatrix(points, inc_matrix, edge_resistance):
     Args:
         points (dict): A dictionary of points.
         inc_matrix (numpy.ndarray): The incidence matrix.
-        edge_resistance (list): List of edge resistances.
+        edge_resistance (pd.Series): List of edge resistances.
 
     Returns:
         numpy.ndarray: The effective resistance matrix.
     """
+    num_points = len(points)
+    if inc_matrix.shape[0] != (num_points * (num_points - 1)) // 2:
+        raise ValueError(
+            "Incorrect dimensions of inc_matrix for the given number of points"
+        )
+
     r = pd.DataFrame(
         columns=list(points.values()), index=list(points.values())
     )

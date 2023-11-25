@@ -615,7 +615,10 @@ class ResistanceNetwork:
         # Save the full subgraph if an output path is provided
         if out:
             net_out = f"{out}.subgraph.net"
-            nx.write_gpickle(K, net_out, pickle.HIGHEST_PROTOCOL)
+            with open(net_out, 'wb') as f:
+                pickle.dump(
+                    K, f, pickle.HIGHEST_PROTOCOL
+                )
 
         # Second pass: Simplify subgraph by merging redundant paths
         if self.verbose:
@@ -631,7 +634,10 @@ class ResistanceNetwork:
         # Save the minimal subgraph and plot if an output path is provided
         if out:
             net_out = f"{out}.minimalSubgraph.net"
-            nx.write_gpickle(Kmin, net_out, pickle.HIGHEST_PROTOCOL)
+            with open(net_out, 'wb') as f:
+                pickle.dump(
+                    Kmin, f, pickle.HIGHEST_PROTOCOL
+                )
 
             # Prepare node positions and colors for plotting
             pos = {n: n for n in Kmin.nodes}
@@ -1046,7 +1052,8 @@ class ResistanceNetwork:
             r, res = rd.parsePairwise(
                 self._points_snapped, self._inc, multi, self._gendist
             )
-            fitness = res[self.fitmetric][0]
+            # fitness = res[self.fitmetric][0]
+            fitness = res[self.fitmetric].iloc[0]
             res = list(res.iloc[0])
 
         # Return fitness value and results

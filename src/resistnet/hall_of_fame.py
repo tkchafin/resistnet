@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import warnings
 
 warnings.simplefilter("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 pd.options.mode.chained_assignment = None
 
 
@@ -67,7 +68,7 @@ class HallOfFame:
 
         Args:
             pop (list): A list of models to be considered for inclusion in the
-            hall of fame.
+                        hall of fame.
         """
         popDF = pd.DataFrame(pop, columns=self.data.columns)
         popDF = popDF[popDF.fitness > float("-inf")]
@@ -80,6 +81,9 @@ class HallOfFame:
         popDF = popDF.reset_index(drop=True)
         space = self.max_size - self.data.shape[0]
 
+        # Drop columns with all NA values before concatenation
+        popDF = popDF.dropna(axis=1, how='all')
+
         if space > 0:
             select_size = min(space, popDF.shape[0])
             self.data = pd.concat(
@@ -89,6 +93,7 @@ class HallOfFame:
         else:
             if popDF["fitness"].max() > self.min_fitness:
                 subset = popDF[popDF.fitness > self.min_fitness]
+                # Drop columns with all NA values before concatenation
                 self.data = pd.concat([self.data, subset], ignore_index=True)
                 self._update_data_frame()
                 if self.data.shape[0] > self.max_size:
