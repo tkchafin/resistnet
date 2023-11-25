@@ -1,0 +1,30 @@
+name: resistnet
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python>=3.8
+  - pip
+  - perl
+  - pytest
+  - numpy
+  - pandas>2
+  - matplotlib
+  - scikit-learn
+  - seaborn
+  - geopandas
+  - sortedcontainers
+  - momepy
+  - networkx>3
+  - pyogrio
+  - deap
+  - nlopt
+  - r-base
+  - r-tidyverse
+  - rpy2
+  - r-lme4
+  - r-matrix
+  - r-mumin
+  - pip:
+    - mantel
