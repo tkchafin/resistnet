@@ -11,7 +11,7 @@ from sortedcontainers import SortedDict
 
 def haversine(coord1, coord2):
     """
-    Calculate the great circle distance in kilometers between two points 
+    Calculate the great circle distance in kilometers between two points
     on the earth (specified as tuples of (latitude, longitude))
 
     Args:
