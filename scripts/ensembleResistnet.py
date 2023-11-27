@@ -215,11 +215,11 @@ class ParseArgs:
             self.display_help(
                 "\nExiting because getopt returned non-zero exit status."
             )
-        
-        # set defaults 
+
+        # set defaults
         self.set_default_values()
 
-        # parse arguments 
+        # parse arguments
         self.set_arguments(options)
 
         # check mandatory settings
