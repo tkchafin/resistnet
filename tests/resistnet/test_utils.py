@@ -46,6 +46,21 @@ def sample_graph():
     return G
 
 
+def test_haversine():
+    # Define two known points (Latitude, Longitude)
+    coord1 = (48.8566, 2.3522)  # Paris
+    coord2 = (51.5074, -0.1278)  # London
+
+    # Known distance between Paris and London in kilometers
+    known_distance = 344
+
+    # Calculate the distance using the haversine function
+    calculated_distance = utils.haversine(coord1, coord2)
+
+    # Assert that the calculated distance is close to the known distance
+    assert abs(calculated_distance - known_distance) < 1  # 1 km tolerance
+
+
 # Test for get_lower_tri
 def test_get_lower_tri():
     mat = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])

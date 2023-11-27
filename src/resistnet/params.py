@@ -18,16 +18,18 @@ class parseArgs():
             options, r = getopt.getopt(
                 sys.argv[1:],
                 'hp:g:s:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:V:Aa:o:Xj:n:',
-                ["shp=", "help", "input=", "prefix=", "genmat=", "shapefile=",
+                ["shp=", "help", "input=", "genmat=", "shapefile=",
                  "seed=", "procs=", "maxPop=", "maxpop=", "maxgen=", "maxGen=",
                  "size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=",
                  "nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=",
                  "metric=", "fitness=", "burn=", "dist_col=", "vars=",
                  "pop_agg=", "varfile=", "maxShape=", "awsum=", "report_all",
-                 "noPlot", "out=", "keep_all", "minWeight=", "max_hof_size=",
+                 "noPlot", "out=", "keep_all", "max_hof_size=", "max_shape=",
                  "posWeight", "fixWeight", "allShapes", "efit_agg=", "coords=",
                  "length_col=", "reachid_col=", "minimize", "network=",
-                 "fixShape", "max_gens=", "max_gen=", "max_pop="
+                 "fixShape", "max_gens=", "max_gen=", "max_pop=", "varFile=",
+                 "tournsize=", "tournSize=", "tSize=", "threads=",
+                 "minWeight=", "min_weight="
                  ]
             )
         except getopt.GetoptError as err:
@@ -37,14 +39,12 @@ class parseArgs():
             )
 
         # Default values for params
-        self.prefix = "out"
         self.dist_col = None
         self.variables = None
         self.agg_opts = dict()
         self.varFile = None
         self.minimize = False
         self.seed = None
-        self.installCS = False
         self.popsize = None
         self.length_col = "LENGTH_KM"
         self.reachid_col = "HYRIV_ID"
@@ -52,7 +52,6 @@ class parseArgs():
         self.edge_agg = "ARITH"
         self.efit_agg = "SUM"
         self.maxpopsize = 1000
-        self.cstype = "pairwise"
         self.fitmetric = "aic"
         self.network = None
         self.predicted = False
@@ -62,7 +61,6 @@ class parseArgs():
         self.coords = None
         self.cholmod = False
         self.GA_procs = 1
-        self.CS_procs = 1
         self.deltaB = None
         self.deltaB_perc = 0.001
         self.nfail = 50
@@ -84,13 +82,7 @@ class parseArgs():
         self.allShapes = False
         self.fixShape = False
         self.max_shape = 100
-
         self.min_weight = 0.0
-
-        self.only_keep = True
-        self.julia = "julia"
-        self.compiled_modules = True
-        self.sys_image = None
 
         # First pass to see if help menu was called
         for o, a in options:
@@ -101,9 +93,7 @@ class parseArgs():
         for opt, arg in options:
             arg = arg.strip()
             opt = opt.replace("-", "")
-            if opt in ('p', 'prefix'):
-                self.prefix = arg
-            elif opt in ('g', 'genmat'):
+            if opt in ('g', 'genmat'):
                 self.inmat = arg
             elif opt in ('s', 'shp'):
                 self.shapefile = arg
@@ -115,7 +105,7 @@ class parseArgs():
                 self.minimize = True
             elif opt == 'seed':
                 self.seed = int(arg)
-            elif opt == 't' or opt == 'procs':
+            elif opt in ("t", "provs", "threads"):
                 self.GA_procs = int(arg)
             elif opt in ('P', 'maxPop', 'maxpop', "max_pop"):
                 self.maxpopsize = int(arg)
@@ -123,8 +113,10 @@ class parseArgs():
                 self.maxGens = int(arg)
             elif opt in ("popsize", "size"):
                 self.popsize = int(arg)
-            elif opt == "minWeight":
+            elif opt in ("min_weight", "minWeight"):
                 self.min_weight = float(arg)
+            elif opt == "max_hof_size":
+                self.max_hof_size = int(arg)
             elif opt == "pop_agg":
                 self.pop_agg = arg.upper()
                 if self.pop_agg not in [
@@ -151,7 +143,7 @@ class parseArgs():
                 self.indpb = float(arg)
             elif opt == "cxpb":
                 self.cxpb = float(arg)
-            elif opt in ('T', 'tSize', 'tournSize'):
+            elif opt in ('T', 'tSize', 'tournSize', "tourn", "tournsize"):
                 self.tournsize = int(arg)
             elif opt in ('F', 'nfail', 'nFail'):
                 self.nfail = int(arg)
@@ -184,7 +176,7 @@ class parseArgs():
                 self.modavg = True
             elif opt in ('a', 'awsum'):
                 self.awsum = float(arg)
-            elif opt == "maxShape":
+            elif opt in ("max_shape", "maxShape"):
                 self.max_shape = float(arg)
             elif opt == "report_all":
                 self.report_all = True
@@ -243,8 +235,9 @@ class parseArgs():
         else:
             if self.variables is None:
                 self.display_help("No variables selected.")
-            for v in self.variables:
-                self.agg_opts[v] = self.edge_agg
+            else:
+                for v in self.variables:
+                    self.agg_opts[v] = self.edge_agg
 
         if not self.variables:
             self.display_help("No variables selected.")

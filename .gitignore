@@ -1,6 +1,7 @@
 out*
 out/
 out/*
+output*
 
 .snakemake/
 validaton/.snakemake/
