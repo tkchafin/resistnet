@@ -7,7 +7,6 @@ import itertools
 import pandas as pd
 import numpy as np
 from sortedcontainers import SortedDict
-from geopy.distance import great_circle
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pyogrio
@@ -272,9 +271,9 @@ class ResistanceNetwork:
 
             # Calculate and store the great circle distance if required
             if out:
-                snapDists[name] = great_circle(
+                snapDists[name] = utils.haversine(
                     (row['lat'], row['long']), (node[1], node[0])
-                ).km
+                )
 
             self._point_coords[name] = node
 

@@ -1,270 +1,49 @@
 # ResistNet
 Software for examining spatial patterns of diversity and differentiation in dendritic ecological networks (=DENs). Note that the contents of this directory are a work in progress.
 
-### Table of Contents:
-1. [Installation](#installation)
-    1. [Installation with conda](#conda)
-    2. [Installation with pyenv](#pyenv)
-    3. [Troubleshooting PyJulia](#pyjulia)
-    4. [Singlurity/ Docker](#sing)
-2. [Summary of Programs](#programs)
-3. [DistNet - Fitting distances to stream networks](#ast)
-    1. [Program Description](#ast_desc)
-        1. [StreamTree Background](#ast_background)
-    2. [Usage](#usage)
-        1. [Options and Help Menu](#ast_help)
-        2. [Input File](#ast_table)
-        3. [Shapefile format](#ast_input)
-        4. [Output files](#ast_output)
-        5. [Genetic Distance Methods](#gen)
-        6. [Defining Populations](#pops)
-    3. [Example Workflows](#ast_workflow)
-        1. [Single-marker dataset](#ast_example1)
-        2. [Large SNP datasets](#ast_example2)
-        3. [Microsatellites](#ast_example3)
-    4. [Runtimes and Benchmarking](#ast_benchmark)
-    5. [References](#ast_refs)
-4. [ResistNet - Optimizing effective resistance networks](#rscape)
-    1. [Program Description](#rscape_desc)
-        1. [Genetic Algorithms](#rscape_background)
-        2. [Resistance Models](#rscape_background2)
-    2. [Usage](#rscape_usage)
-        1. [Options and Help Menu](#rscape_help)
-        2. [Input Files](#rscape_inputs)
-        3. [Output files](#rscape_output)
-        4. [Parallel execution](#rscape_parallel)
-        5. [Genetic Algorithm Options](#rscape_ga)
-        6. [Model Selection/ Optimization](#rscape_model)
-        7. [Circuitscape Options](#rscape_cs)
-        8. [Model-averaging and multi-model importance](#rscape_modavg)
-    3. [Runtimes and Benchmarking](#rscape_benchmark)
-    4. [Example Workflows](#rscape_workflow)
-5. [Scripts and Other Tools](#tools)
+## Table of Contents:
+1. [Installation](#install)
+    1. [Installing from GitHub](#install_dev)
 
 
-### Installation <a name="installation"></a>
 
-Because of the number of dependencies, I recommend setting up a virtual environment to prevent any conflicts with your system Python environment.
+## Installation <a name="install"></a>
 
-If you are planning on using ResistNet, [PyJulia](https://pyjulia.readthedocs.io/en/latest/), which forms the necessary interface for Python to access Circuitscape (a Julia program), a complication is that PyJulia cannot use a Python distribution that is statically linked to libpython (such as that installed by Ubuntu or conda, or Debian-based Linux distributions).
+The simplest way to install the most recent release is using conda/mamba.
 
-To check if this is a problem, you can use the following commands on Linux and Mac. If nothing prints to the screen, your Python is statically linked and will require a workaround:
+With a conda installation, first create a new environment, and activate it:
 ```
-#get full path to python3
-which python3
-
-#on linux
-ldd </full/path/to/python3 | grep libpython
-
-#on Mac
-otools -L </full/path/to/python3> | grep libpython
+conda create -n resistnet python=3.10
+conda activate resistnet
 ```
 
-If something along the lines of "libpython3.7m.so.1.0 => /usr/lib/libpython3.7m.so.1.0 (0x00007f10ef116000)" printed out, you are good to go to install the dependencies using the pip or conda instructions below (depending on your system).
-
-These installation instructions should work in Linux (or Windows Linux subsystem) or Mac, although Mac users can substitute homebrew commands where suggested. Note that these instructions are also comprehensive, including steps such as compiling and installing R from source -- many users will likely already have R installed on their system, and thus can skip some steps.
-
-#### Installation using conda <a name="conda"></a>
-
-First, you need to set up a virtual environment:
+Then, install resistnet (note I use mamba here, but conda will work as well):
 ```
-conda create -n pyjulia conda-forge::python=3.6.6
+mamba install -c conda-forge -c bioconda -c ecoevoinfo resistnet
 ```
 
-Next, activate your environment and install dependencies:
+### Installation from GitHub
+
+To instead install the development version on GitHub, you first need to clone the repository:
 
 ```
-#activate environment
-conda activate pyjulia
-
-#install dependencies
-conda install -c conda-forge -c bioconda -c rmg julia pyjulia  numpy scipy networkx seaborn matplotlib pandas deap sortedcontainers julia geopy geopandas shapely scikit-learn r-base=4.0.3 r-essentials r-nloptr rpy2
-```
-
-Open Julia, and install the packages that we will be needing:
-
-```
-julia
-julia> using Pkg
-julia> Pkg.add("PyCall")
-julia> Pkg.add("Circuitscape")
-julia> exit()
-```
-
-If your Python is statically linked (see above ldd command), you will also need to create a custom Julia system image that you will pass to ResistNet:
-
-```
-python3 -m julia.sysimage sys.so
-```
-
-
-#### Installation using pyenv and manually compiled Julia/R <a name="pyenv"></a>
-
-First, clone the repository (if on Mac, you can also use [homebrew](https://brew.sh/):
-```
-#cloning the repository
-git clone https://github.com/pyenv/pyenv.git ~/.pyenv
-#Homebrew users can install like so:
-#brew install pyenv
-```
-
-Next, configure the environment:
-
-```
-#shouldn't be necessary for homebrew users
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
-echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
-echo -e 'if command -v pyenv 1>/dev/null 2>&1; then\n eval "$(pyenv init -)"\nfi' >> ~/.bashrc
-source ~/.bashrc
-```
-
-Verify the installation (this should output a list of available python versions):
-```
-pyenv install --list
-```
-
-Next, build python and install dependencies
-
-```
-#build python from scratch, enabling dynamic linking (needed for PyJulia to work)
-PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.6.6
-pyenv global 3.6.6
-
-#verify Python is not statically linked to libpython
-ldd ~/.pyenv/versions/3.6.6/bin/python3.6 | grep libpython
-#if nothing prints, something didn't work
-
-#check that the right python is in your path:
-which python3
-which pip3
-#output should be something like /home/USER/.pyenv/*/python3; if not, either add the correct path to .bashrc or use absolute path in the python3 and pip3 calls below
-
-#upgrade pip and make sure venv is installed
-pip3 install --upgrade pip
-```
-
-After Python finishes building, we can set up our python virtual environment:
-
-```
-#cd to the directory you want to build your virtual environment in. Here I will just use the home directory
-cd ~
-
-#make a directory to store python virtual environments in:
-mkdir python_venv
-cd python_venv
-
-#set up a virtual environment called 'riverscape':
-python3 -m venv riverscape
-
-#activate the riverscape venv so we can install packaged into it:
-source ./riverscape/bin/activate
-```
-
-If you do not have the [R](https://www.r-project.org/) and [Julia](https://julialang.org/) programming languages installed on you can install them directly into your new virtual environment like so. If on Mac you could use homebrew, or if on a Linux machine with root privileges you could use apt-get, but for the sake of completion I will here show how to compile them from source.
-
-```
-cd ~/python_venv/riverscape
-#go to https://julialang.org/downloads/ if you want a pre-compiled binary
-#NOTE: On a CentOS Linux HPC, I could only get the LTS v1.0.5 to work
-git clone git://github.com/JuliaLang/julia.git
-cd julia
-make
-ln -s ~/python_venv/riverscape/julia/bin/julia ~/python_venv/riverscape/bin/.
-
-#follow a similar set up for R, selecting a binary or source from https://cran.r-project.org/ depending on your system
-#here, I will be compiling it from source
-wget https://cran.r-project.org/src/base/R-4/R-4.0.2.tar.gz
-tar -xvzf R-4.0.2.tar.gz
-cd R-4.0.2
-./configure --prefix=/home/tkchafin/python_venv/riverscape/bin
-make
-make install
-```
-
-Open Julia, and install the packages that we will be needing:
-
-```
-julia
-julia> using Pkg
-julia> ENV["PYTHON"] = "/home/tkchafin/python_venv/riverscape/bin/python3" #whatever your path is
-julia> Pkg.add("PyCall")
-julia> Pkg.add("Circuitscape")
-julia> exit()
-```
-
-Finally, install the required Python dependencies:
-
-```
-#install dependencies
-pip3 install --upgrade pip
-pip3 install numpy scipy networkx seaborn matplotlib pandas deap sortedcontainers julia geopy geopandas shapely scikit-learn rpy2
-
-#installing rpy2 (Python-R interface) on Mac required that I provide a path to gcc compiler:
-#which gcc
-#this will output the path you need to set to 'CC' below
-#env CC=/usr/bin/gcc pip3 install rpy2
-```
-
-Install the necessary R packages:
-
-```
-#check R path is the right one
-which R
-#should be: ~/python_venv/riverscape/bin/R
-R
-#install R packages
-> install.packages("MuMIn")
-> install.packages("Matrix")
-> install.packages("lme4")
-```
-
-#### Troubleshooting PyJulia <a name="pyjulia"></a>
-
-As noted above, PyJulia won't work with statically-linked Python. There are several workarounds in the PyJulia [documentation](https://pyjulia.readthedocs.io/en/latest/troubleshooting.html).
-
-One of the easiest workarounds is to turn off the Julia compiled cache, which you can do by passing ResistNet the '--no_compiled_modules' (boolean) argument. This might slow down loading Julia a little bit, but is one of the fastest ways to get up and running if you are getting PyJulia errors.
-
-Another option is to create a custom Julia system image, which can be passed to ResistNet using the --sys_image argument:
-
-```
-python3 -m julia.sysimage sys.so
-```
-
-#### Using Singularity/ Docker <a name="sing"></a>
-
-With docker or singularity installed on your system, you can pull the pre-built container hosted on DockerHub. Note that instructions are only provided for docker.
-
-First, download the image:
-```
-docker pull tkchafin/resistnet
-```
-
-Note that the total image size is ~3GB as of this writing, so it may take a while with a slow connection.
-
-Then, simply run the container, mounting any local data directories containing your input files using the `-v $LOCALPATH:$MOUNTPATH` format, where *$LOCALPATH* is a file or directory on your local workstation that you want to access within the docker container, and *$MOUNTPATH* is the location to which it will be mounted.
-
-For example, to mount the local directory *data/*, you could launch docker like so:
-
-```
-docker run -v data/:/root/data -it tkchafin/resistnet
-```
-
-Once inside the container, you can pull the latest code like so:
-```
-cd /root
 git clone https://github.com/tkchafin/resistnet.git
+cd resistnet
 ```
 
-Alternatively, you could mount a local repository like so:
+Then, you can use the `environment.yml` file to install the dependencies via conda or mamba, and then activate the environment:
 
 ```
-docker run -v ~/data/:/root/data -v ~/local/src/resistnet:/root/resistnet -it tkchafin/resistnet
+mamba env create -f environment.yml
+mamba activate resistnet
 ```
 
-You can tell that you are "in" the docker container by the change in your terminal prompt, which should look something like:
+Then you can install `resistnet` using pip:
 ```
-root@6dc48428566c:/#
+pip install -e .
 ```
+
+
 
 ## ResistNet <a name="rscape"></a>
 ### Program description <a name="rscape_desc"></a>

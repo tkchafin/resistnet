@@ -2,11 +2,39 @@ import itertools
 import math
 import pickle
 import random
-
+from math import radians, cos, sin, asin, sqrt
 import networkx as nx
 import numpy as np
 import pandas as pd
 from sortedcontainers import SortedDict
+
+
+def haversine(coord1, coord2):
+    """
+    Calculate the great circle distance in kilometers between two points 
+    on the earth (specified as tuples of (latitude, longitude))
+
+    Args:
+    coord1 (tuple): (Latitude, Longitude) of point 1.
+    coord2 (tuple): (Latitude, Longitude) of point 2.
+
+    Returns:
+    float: Distance between the two points in kilometers.
+    """
+
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+
+    # Convert decimal degrees to radians
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+
+    # Haversine formula
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * asin(sqrt(a))
+    r = 6371  # Radius of Earth in kilometers
+    return c * r
 
 
 def snap_to_node(graph, pos):

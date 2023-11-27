@@ -1,0 +1,54 @@
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+
+package:
+  name: resistnet
+  version: "1.1.0"
+
+source:
+  path: ../ 
+
+requirements:
+  host:
+    - python >=3.10
+    - pip
+    - setuptools
+  run:
+  - python>=3.10
+  - pip
+  - perl
+  - pytest
+  - numpy
+  - pandas>2
+  - matplotlib
+  - scikit-learn
+  - seaborn
+  - geopandas
+  - sortedcontainers
+  - momepy
+  - networkx>3
+  - pyogrio
+  - deap
+  - nlopt
+  - r-base
+  - r-tidyverse
+  - rpy2
+  - r-lme4
+  - r-matrix
+  - r-mumin
+  - pip:
+    - mantel
+
+requirements:
+  host:
+    - python
+    - pip
+  run:
+    - python
+
+about:
+  home: "https://github.com/tkchafin/resistnet"
+  license: "GPLv3"
+  summary: "Package for optimising environmental resistance networks from genetic distances"

@@ -241,6 +241,8 @@ class parseArgs():
                         self.agg_opts[stuff[0]] = stuff[1]
             self.variables = list(self.agg_opts.keys())
         else:
+            if self.variables is None:
+                self.display_help("No variables selected.")
             for v in self.variables:
                 self.agg_opts[v] = self.edge_agg
 
