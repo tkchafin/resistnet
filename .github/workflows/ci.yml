@@ -1,0 +1,42 @@
+name: ResistNet CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup Miniconda
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        auto-update-conda: true
+        python-version: 3.10
+        environment-file: environment.yml
+        activate-environment: resistnet
+        use-mamba: true
+
+    - name: Cache Conda
+      uses: actions/cache@v2
+      with:
+        path: ~/conda_pkgs_dir
+        key: ${{ runner.os }}-conda-${{ hashFiles('environment.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-conda-
+
+    - name: Install Dependencies
+      run: |
+        conda env update --file environment.yml --name resistnet
+
+    - name: Install Package
+      run: |
+        conda activate resistnet
+        pip install -e .
+
+    - name: Lint with flake8
+      run: |
+        conda activate resistnet
+        flake8 src/resistnet
+        flake8 scripts/*.py
