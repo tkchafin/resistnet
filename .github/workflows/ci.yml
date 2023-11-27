@@ -26,11 +26,13 @@ jobs:
           ${{ runner.os }}-conda-
 
     - name: Install Package
+      shell: bash -l {0}
       run: |
         conda activate resistnet
         pip install -e .
 
     - name: Lint with flake8
+      shell: bash -l {0}
       run: |
         conda activate resistnet
         flake8 src/resistnet
