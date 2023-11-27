@@ -9,15 +9,8 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Setup Miniconda
-      uses: conda-incubator/setup-miniconda@v2
-      with:
-        auto-update-conda: true
-        environment-file: environment.yml
-        activate-environment: resistnet
-        use-mamba: true
-
-    - name: Cache Conda
+    - name: Check Cached Environment
+      id: cache-conda
       uses: actions/cache@v2
       with:
         path: ~/conda_pkgs_dir
@@ -25,7 +18,17 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-conda-
 
+    - name: Setup Miniconda
+      if: steps.cache-conda.outputs.cache-hit != 'true'
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        auto-update-conda: true
+        environment-file: environment.yml
+        activate-environment: resistnet
+        use-mamba: true
+
     - name: Install Package
+      if: steps.cache-conda.outputs.cache-hit != 'true'
       shell: bash -l {0}
       run: |
         conda activate resistnet
