@@ -25,10 +25,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-conda-
 
-    - name: Install Dependencies
-      run: |
-        conda env update --file environment.yml --name resistnet
-
     - name: Install Package
       run: |
         conda activate resistnet
