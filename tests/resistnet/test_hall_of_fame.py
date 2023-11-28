@@ -1,5 +1,6 @@
 import os
 import io
+import tempfile
 import contextlib
 import pytest
 import pandas as pd
@@ -49,6 +50,16 @@ def hall_of_fame_fixture():
 
     hall_of_fame = HallOfFame(variables, max_size, init_pop=fake_population)
     return hall_of_fame
+
+
+@pytest.fixture
+def hall_of_fame_fixture_complete(hall_of_fame_fixture):
+    hall_of_fame_fixture.delta_aic()
+    hall_of_fame_fixture.akaike_weights()
+    hall_of_fame_fixture.cumulative_akaike(0.95)
+    hall_of_fame_fixture.model_average_weights(ignore_keep=False)
+    hall_of_fame_fixture.relative_variable_importance(ignore_keep=False)
+    return hall_of_fame_fixture
 
 
 def test_hall_of_fame_initialization():
@@ -161,10 +172,208 @@ def test_akaike_weights(hall_of_fame_fixture):
 
 def test_cumulative_akaike(hall_of_fame_fixture):
     threshold = 0.8
-
     hall_of_fame_fixture.cumulative_akaike(threshold)
 
     assert "acc_akaike_weight" in hall_of_fame_fixture.data.columns, \
         "acc_akaike_weight column not added to data"
     assert "keep" in hall_of_fame_fixture.data.columns, \
         "keep column not added to data"
+
+
+def test_relative_variable_importance(hall_of_fame_fixture):
+    hall_of_fame_fixture.delta_aic()
+    hall_of_fame_fixture.akaike_weights()
+    hall_of_fame_fixture.cumulative_akaike(0.95)
+    hall_of_fame_fixture.relative_variable_importance(ignore_keep=False)
+
+    assert not hall_of_fame_fixture.rvi.empty, \
+        "RVI DataFrame should not be empty"
+    assert "variable" in hall_of_fame_fixture.rvi.columns, \
+        "RVI DataFrame should contain 'variable' column"
+    assert "RVI" in hall_of_fame_fixture.rvi.columns, \
+        "RVI DataFrame should contain 'RVI' column"
+
+
+def test_get_best_model(hall_of_fame_fixture):
+    best_model_df = hall_of_fame_fixture.get_best_model()
+
+    assert best_model_df is not None, "Best model DataFrame should not be None"
+    assert not best_model_df.empty, "Best model DataFrame should not be empty"
+    # Check if the returned DataFrame contains expected columns
+    for var in hall_of_fame_fixture.variables:
+        assert any(best_model_df["Variable"] == var), \
+            f"Best model should contain variable {var}"
+
+
+def test_model_average_weights(hall_of_fame_fixture):
+    hall_of_fame_fixture.delta_aic()
+    hall_of_fame_fixture.akaike_weights()
+    hall_of_fame_fixture.cumulative_akaike(0.95)
+    hall_of_fame_fixture.model_average_weights(ignore_keep=False)
+
+    assert not hall_of_fame_fixture.maw.empty, \
+        "MAW DataFrame should not be empty"
+    assert "variable" in hall_of_fame_fixture.maw.columns, \
+        "MAW DataFrame should contain 'variable' column"
+    assert "MAW" in hall_of_fame_fixture.maw.columns, \
+        "MAW DataFrame should contain 'MAW' column"
+
+
+def test_get_variables(hall_of_fame_fixture):
+    variables = hall_of_fame_fixture.get_variables()
+
+    assert isinstance(variables, list), "get_variables should return a list"
+    assert variables == hall_of_fame_fixture.variables, \
+        "Returned variables do not match the expected list"
+
+
+def test_get_best(hall_of_fame_fixture):
+    best_model = hall_of_fame_fixture.getBest()
+
+    assert isinstance(best_model, pd.DataFrame), \
+        "getBest should return a DataFrame"
+    assert not best_model.empty, "Best model DataFrame should not be empty"
+
+
+def test_get_rvi(hall_of_fame_fixture):
+    hall_of_fame_fixture.delta_aic()
+    hall_of_fame_fixture.akaike_weights()
+    hall_of_fame_fixture.cumulative_akaike(0.95)
+    hall_of_fame_fixture.relative_variable_importance(ignore_keep=False)
+    rvi_data = hall_of_fame_fixture.getRVI()
+
+    assert isinstance(rvi_data, pd.DataFrame), \
+        "getRVI should return a DataFrame"
+    assert not rvi_data.empty, "RVI DataFrame should not be empty"
+
+
+def test_get_maw(hall_of_fame_fixture):
+    hall_of_fame_fixture.delta_aic()
+    hall_of_fame_fixture.akaike_weights()
+    hall_of_fame_fixture.cumulative_akaike(0.95)
+    hall_of_fame_fixture.model_average_weights(ignore_keep=False)
+    maw_data = hall_of_fame_fixture.getMAW()
+
+    assert isinstance(maw_data, pd.DataFrame), \
+        "getMAW should return a DataFrame"
+    assert not maw_data.empty, "MAW DataFrame should not be empty"
+
+
+def test_get_hof(hall_of_fame_fixture):
+    hof_data = hall_of_fame_fixture.getHOF(only_keep=False)
+
+    assert isinstance(hof_data, pd.DataFrame), \
+        "getHOF should return a DataFrame"
+    assert not hof_data.empty, "Hall of Fame DataFrame should not be empty"
+
+
+def test_plot_icprofile(hall_of_fame_fixture_complete):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "test_ICprofile")
+        hall_of_fame_fixture_complete.plot_ICprofile(oname=filename)
+
+        assert os.path.isfile(f"{filename}.ICprofile.pdf"), \
+            "IC profile plot file was not created"
+        assert os.path.getsize(f"{filename}.ICprofile.pdf") > 0, \
+            "IC profile plot file is empty"
+
+
+def test_plot_metric_pw(hall_of_fame_fixture_complete):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "test_metricPW")
+        hall_of_fame_fixture_complete.plotMetricPW(oname=filename)
+
+        assert os.path.isfile(f"{filename}.pairPlot.pdf"), \
+            "Metric PW plot file was not created"
+        assert os.path.getsize(f"{filename}.pairPlot.pdf") > 0, \
+            "Metric PW plot file is empty"
+
+
+def test_plot_variable_importance(hall_of_fame_fixture_complete):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "test_varImportance")
+        hall_of_fame_fixture_complete.plotVariableImportance(oname=filename)
+
+        assert os.path.isfile(f"{filename}.varImportance.pdf"), \
+            "Variable importance plot file was not created"
+        assert os.path.getsize(f"{filename}.varImportance.pdf") > 0, \
+            "Variable importance plot file is empty"
+
+
+def test_plot_model_averaged_weights(hall_of_fame_fixture_complete):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "test_modavgWeights")
+        hall_of_fame_fixture_complete.plotModelAveragedWeights(oname=filename)
+
+        assert os.path.isfile(f"{filename}.modavgWeights.pdf"), \
+            "Model-averaged weights plot file was not created"
+        assert os.path.getsize(f"{filename}.modavgWeights.pdf") > 0, \
+            "Model-averaged weights plot file is empty"
+
+
+def test_write_model_summary(hall_of_fame_fixture_complete):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "test_HallOfFame")
+        hall_of_fame_fixture_complete.writeModelSummary(filename)
+
+        assert os.path.isfile(f"{filename}.HallOfFame.tsv"), \
+            "Model summary TSV file was not created"
+        assert os.path.getsize(f"{filename}.HallOfFame.tsv") > 0, \
+            "Model summary TSV file is empty"
+
+
+def test_write_maw(hall_of_fame_fixture_complete):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "test_modavgWeights")
+        hall_of_fame_fixture_complete.writeMAW(filename)
+
+        assert os.path.isfile(f"{filename}.modavgWeights.tsv"), \
+            "MAW TSV file was not created"
+        assert os.path.getsize(f"{filename}.modavgWeights.tsv") > 0, \
+            "MAW TSV file is empty"
+
+
+def test_write_maw_empty(hall_of_fame_fixture_complete):
+    hall_of_fame_fixture_complete.maw = None
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "test_modavgWeights")
+        hall_of_fame_fixture_complete.writeMAW(filename)
+
+        assert os.path.isfile(f"{filename}.modavgWeights.tsv"), \
+            "MAW TSV file was not created"
+        assert os.path.getsize(f"{filename}.modavgWeights.tsv") > 0, \
+            "MAW TSV file is empty"
+
+
+def test_write_rvi(hall_of_fame_fixture_complete):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "test_varImportance")
+        hall_of_fame_fixture_complete.writeRVI(filename)
+
+        assert os.path.isfile(f"{filename}.varImportance.tsv"), \
+            "RVI TSV file was not created"
+        assert os.path.getsize(f"{filename}.varImportance.tsv") > 0, \
+            "RVI TSV file is empty"
+
+
+def test_write_rvi_empty(hall_of_fame_fixture_complete):
+    hall_of_fame_fixture_complete.rvi = None
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "test_varImportance")
+        hall_of_fame_fixture_complete.writeRVI(filename)
+
+        assert os.path.isfile(f"{filename}.varImportance.tsv"), \
+            "RVI TSV file was not created"
+        assert os.path.getsize(f"{filename}.varImportance.tsv") > 0, \
+            "RVI TSV file is empty"
+
+
+def test_write_best(hall_of_fame_fixture_complete):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "test_bestModel")
+        hall_of_fame_fixture_complete.writeBest(filename)
+
+        assert os.path.isfile(f"{filename}.bestModel.tsv"), \
+            "Best model TSV file was not created"
+        assert os.path.getsize(f"{filename}.bestModel.tsv") > 0, \
+            "Best model TSV file is empty"

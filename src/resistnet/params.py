@@ -76,6 +76,7 @@ class parseArgs():
         self.modavg = True
         self.report_all = False
         self.plot = True
+        self.only_keep = True
 
         self.posWeight = False
         self.fixWeight = False
