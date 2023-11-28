@@ -29,3 +29,9 @@ jobs:
         conda activate resistnet
         flake8 src/resistnet
         flake8 scripts/*.py
+
+    - name: Run unit tests
+      shell: bash -l {0}
+      run: |
+        conda activate resistnet
+        pytest tests/
