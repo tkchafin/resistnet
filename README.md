@@ -4,8 +4,18 @@ Software for examining spatial patterns of diversity and differentiation in dend
 ## Table of Contents:
 1. [Installation](#install)
     1. [Installing from GitHub](#install_dev)
-
-
+2. [Program Description](#desc)
+    1. [Usage](#usage)
+    2. [Input Files](#inputs)
+    3. [Output Files](#outputs)
+3. [Tutorials](#start)
+    1. [Example Dataset](#example)
+    2. [Utility Scripts](#scripts)
+    3. [Integrating into workflows](#workflow)
+4. [Contributing](#contrib)
+    1. [Reporting Issues](#report)
+    2. [Making Changes](#changes)
+    3. [Unit Tests and CI](#testci)
 
 ## Installation <a name="install"></a>
 
@@ -45,7 +55,7 @@ pip install -e .
 
 
 
-## ResistNet <a name="rscape"></a>
+## Program Description <a name="desc"></a>
 ### Program description <a name="rscape_desc"></a>
 
 
@@ -279,36 +289,3 @@ Here, dedicating all 16 cores to <-T> parallelization, after ~3 minutes spend pa
 ### Example Workflows <a name="rscape_workflow"></a>
 
 ## Scripts and Tools
-
-#### Re-plotting StreamTree outputs
-
-The default $out.streamdByFittedD plot may not be exactly what you wanted. To prevent cluttering the help menu of the main program too much, we've provided a separate script for loading up autoStreamTree outputs to re-make the plot, which has some added options for customization: scripts/plotStreamTree.py
-
-'''
-$ python3 ./scripts/plotStreamTree -h
-plotStreamTree.py
-
-Author: Tyler K Chafin, University of Arkansas
-Contact: tkchafin@uark.edu
-Description: Script for re-plotting StreamTree results after running DistNet
-
-		-p,--prefix	: Prefix for autoStreamTree output
-		-m,--min	: Minimum genetic distance
-		-M,--max	: Maximum genetic distance
-		-c,--cmap	: Colormap (any valit matplotlib cmap value)
-			see: https://matplotlib.org/3.1.1/gallery/color/colormap_reference.html
-		-o,--out	: Output prefix (if not overwriting original)
-		-h,--help	: Displays this help menu)
-'''
-
-For example, to re-plot values with a distance ceiling of 0.2 and a viridis color scale:
-'''
-python3 ./scripts/plotStreamTree.py -p out2 -m 0.0 -M 0.2 -c "viridis"
-'''
-
-#### Clustering populations using any distance matrix
-
-For example, if you wanted to cluster individuals using their stream distances, I've provided a script called clusterPopsDB.py which will use a DBSCAN clustering algorithm to output a tab-delimited population map given any arbitrary distance matrix:
-'''
-$ python3 ./scripts/clusterPopsDB.py -h
-'''

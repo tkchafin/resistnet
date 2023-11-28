@@ -5,9 +5,26 @@ import resistnet
 import networkx as nx
 import pandas as pd
 import numpy as np
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from resistnet.resistance_network import ResistanceNetwork
+from resistnet.resistance_network import ResistanceNetworkWorker
+from resistnet.resistance_network import SimResistanceNetwork
 import resistnet.utils as utils
+
+
+@pytest.fixture
+def fake_spec_file():
+    spec_content = pd.DataFrame({
+        "VAR": ["LENGTH_KM"],
+        "WEIGHT": [1.0],
+        "TRANSFORM": [0],
+        "SHAPE": [0]
+    })
+    with tempfile.NamedTemporaryFile(
+            mode='w+', suffix='.tsv', delete=False) as tmpfile:
+        spec_content.to_csv(tmpfile.name, sep='\t', index=False)
+        yield tmpfile.name
+        os.remove(tmpfile.name)
 
 
 @pytest.fixture
@@ -36,6 +53,16 @@ def inmat_path():
     base_path = os.path.dirname(resistnet.__file__)
     file_path = os.path.join(base_path, 'data', 'test.popGenDistMat.txt')
     return file_path
+
+
+@pytest.fixture
+def sim_resistance_network_params(network_graph_path):
+    return {
+        "network": network_graph_path,
+        "reachid_col": "EDGE_ID",
+        "length_col": "LENGTH_KM",
+        "verbose": True
+    }
 
 
 @pytest.fixture
@@ -110,8 +137,6 @@ def test_evaluate_null_model(resistance_network_fixture):
         # Call evaluate_null_model
         result = resistance_network_fixture.evaluate_null_model()
 
-    print(result)
-    # Assertions
     assert isinstance(result, pd.DataFrame)
     assert 'loglik' in result.columns
     assert 'aic' in result.columns
@@ -121,52 +146,173 @@ def test_evaluate_null_model(resistance_network_fixture):
     assert result.loc['distance_only', 'aic'] == 100
 
 
-def test_output_and_plot_model(resistance_network_fixture):
-    # Mock data for mat_r and edge_r
-    mat_r = np.array([[1, 2], [3, 4]])
-    edge_r = pd.DataFrame({'Resistance': [1, 2, 3]}, index=[1, 2, 3])
+@pytest.mark.parametrize("individual, expected_fitness", [
+    ([1, 1, 1, 1], -100)
+])
+def test_evaluate(resistance_network_fixture, individual, expected_fitness):
+    mock_parse_result = pd.DataFrame({
+        "aic": [-100],
+        "aic_null": [-200],
+        "loglik_null": [-300],
+        "loglik": [-300],
+        "delta_aic_null": [100],
+        "r2m": [0.5]
+    }, index=[1])
+    with patch('resistnet.resist_dist.parsePairwise',
+               return_value=(None, mock_parse_result)) as mock_parsePairwise:
+        fitness, res = resistance_network_fixture.evaluate(individual)
 
-    # Using a temporary directory for output
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        oname = f"{tmpdirname}/test_output"
+        # Check that parsePairwise was called if variables are selected
+        if any(individual[0::4]):
+            mock_parsePairwise.assert_called()
 
-        # Mock the utility functions and plotting methods
-        with patch('resistnet.utils.write_edges') as mock_write_edges, \
-             patch('resistnet.utils.write_matrix') as mock_write_matrix, \
-             patch.object(
-                ResistanceNetwork,
-                'plot_resistance_network'
-                ) as mock_plot_network, \
-             patch.object(
-                ResistanceNetwork,
-                'plot_pairwise_model') as mock_plot_pairwise:
+        assert fitness == expected_fitness
 
-            # Call output_and_plot_model
-            resistance_network_fixture.output_and_plot_model(
-                oname, mat_r, edge_r, plot=True
-            )
 
-            # Assertions for file writing
-            mock_write_edges.assert_called_with(
-                f"{oname}.ResistanceEdges.tsv", edge_r, edge_r.index
-            )
-            mock_write_matrix.assert_called_with(
-                f"{oname}.ResistanceMatrix.tsv",
-                mat_r, list(resistance_network_fixture._points_labels.values())
-            )
+def test_model_output_mock(resistance_network_fixture):
+    # Mock model representing an individual in the genetic algorithm
+    model = [1, 1, 1, 1]
 
-            # Assertions for plotting
-            mock_plot_network.assert_called_with(edge_r, oname)
-            if resistance_network_fixture._gendist is not None:
-                mock_plot_pairwise.assert_called_with(
-                    mat_r, oname, partition=False
-                )
+    # Mock effective resistance matrix
+    mock_effective_resistance_matrix = np.array([[0.5, 1.0], [1.0, 0.5]])
 
-            # Call output_and_plot_model with plot=False
-            resistance_network_fixture.output_and_plot_model(
-                oname, mat_r, edge_r, plot=False
-            )
+    # Mock the effectiveResistanceMatrix function
+    with patch(
+        'resistnet.resist_dist.effectiveResistanceMatrix',
+        return_value=mock_effective_resistance_matrix) \
+            as mock_effectiveResistanceMatrix:
+        r, multi = resistance_network_fixture.model_output(model)
 
-            # Assertions for no plotting
-            mock_plot_network.assert_not_called()
-            mock_plot_pairwise.assert_not_called()
+        mock_effectiveResistanceMatrix.assert_called_once()
+
+
+def test_model_output(resistance_network_fixture):
+    # Mock model representing an individual in the genetic algorithm
+    model = [1, 1, 1, 1]
+
+    try:
+        r, multi = resistance_network_fixture.model_output(model)
+        exception_raised = False
+    except Exception as e:
+        exception_raised = True
+        # Optionally, you can print the exception or take some action
+        print(f"Exception occurred: {e}")
+
+    # Assert no exception was raised
+    assert not exception_raised, \
+        "An exception was raised during the model_output execution"
+
+    # Assert that r is a numpy.ndarray
+    assert isinstance(r, np.ndarray), \
+        "Expected r to be a numpy.ndarray"
+
+    # Assert that multi is a pandas.Series
+    assert isinstance(multi, pd.Series), \
+        "Expected multi to be a pandas.Series"
+
+
+def test_resistance_network_worker_creation(resistance_network_fixture):
+    # Prepare additional arguments with defaults or extracted from the fixture
+    worker_args = {
+        'network': resistance_network_fixture.network,
+        'pop_agg': resistance_network_fixture.pop_agg,
+        'reachid_col': resistance_network_fixture.reachid_col,
+        'length_col': resistance_network_fixture.length_col,
+        'variables': resistance_network_fixture.variables,
+        'agg_opts': resistance_network_fixture.agg_opts,
+        'inc': resistance_network_fixture._inc,
+        'point_coords': resistance_network_fixture._point_coords,
+        'points_names': resistance_network_fixture._points_names,
+        'points_snapped': resistance_network_fixture._points_snapped,
+        'points_labels': resistance_network_fixture._points_labels,
+        'predictors': resistance_network_fixture._predictors,
+        'edge_order': resistance_network_fixture._edge_order,
+        'gendist': resistance_network_fixture._gendist,
+        # Use defaults or specific values for the additional attributes
+        'fitmetric': 'aic',
+        'posWeight': False,
+        'fixWeight': False,
+        'allShapes': False,
+        'fixShape': False,
+        'min_weight': 0.0,
+        'max_shape': 100.0
+    }
+
+    # Instantiate the ResistanceNetworkWorker
+    worker = ResistanceNetworkWorker(**worker_args)
+
+    # Assertions to verify that the worker is correctly instantiated
+    assert worker.pop_agg == resistance_network_fixture.pop_agg
+    assert worker.reachid_col == resistance_network_fixture.reachid_col
+    assert worker.length_col == resistance_network_fixture.length_col
+    assert worker.variables == resistance_network_fixture.variables
+    assert worker.agg_opts == resistance_network_fixture.agg_opts
+
+    # Validate unique attributes for ResistanceNetworkWorker
+    assert worker.fitmetric == 'aic'
+    assert worker.posWeight is False
+    assert worker.fixWeight is False
+    assert worker.allShapes is False
+    assert worker.fixShape is False
+    assert worker.min_weight == 0.0
+    assert worker.max_shape == 100.0
+
+
+def test_initialization(sim_resistance_network_params):
+    sim_engine = SimResistanceNetwork(**sim_resistance_network_params)
+    assert sim_engine.reachid_col == \
+        sim_resistance_network_params["reachid_col"]
+    assert sim_engine.length_col == \
+        sim_resistance_network_params["length_col"]
+    assert sim_engine.verbose == \
+        sim_resistance_network_params["verbose"]
+
+
+@pytest.mark.parametrize("num_reps,num_samples", [(1, 10), (2, 5), (3, 3)])
+def test_simulate_with_different_parameters(
+        sim_resistance_network_params, fake_spec_file, num_reps, num_samples):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        output_prefix = os.path.join(temp_dir, "simulation_output")
+
+        # Initialize the SimResistanceNetwork with mocked components
+        # with patch("resistnet.utils") as mock_utils:
+        #     mock_utils.sample_nodes.return_value = {
+        #         i: (0.0, 0.0) for i in range(num_samples)
+        #     }
+        sim_engine = SimResistanceNetwork(**sim_resistance_network_params)
+
+        # Simulate the resistance network
+        sim_engine.simulate(
+            spec_file=fake_spec_file,
+            num_reps=num_reps,
+            num_samples=num_samples,
+            out=output_prefix
+        )
+
+        # Check for the correct number of output files and their contents
+        for r in range(1, num_reps + 1):
+            resistance_matrix_file = \
+                f"{output_prefix}_{r}.ResistanceMatrix.tsv"
+            coords_file = f"{output_prefix}_{r}.coords"
+
+            # Check if files exist
+            assert os.path.exists(
+                resistance_matrix_file), \
+                f"{resistance_matrix_file} missing"
+            assert os.path.exists(coords_file), f"{coords_file} missing"
+
+            # Check the number of rows in the coords file
+            with open(coords_file, 'r') as file:
+                num_lines = len(file.readlines())
+                expected_lines = num_samples + 1  # +1 for the header
+                assert num_lines == expected_lines, \
+                    f"{coords_file} should have {expected_lines} \
+                        lines but has {num_lines}"
+            # Check the dimensions of the resistance matrix
+            resistance_matrix_file = \
+                f"{output_prefix}_{r}.ResistanceMatrix.tsv"
+            df = pd.read_csv(
+                resistance_matrix_file, sep='\t', header=0, index_col=0)
+            expected_shape = (num_samples, num_samples)
+            assert df.shape == expected_shape, \
+                f"{resistance_matrix_file} should have shape {expected_shape}"

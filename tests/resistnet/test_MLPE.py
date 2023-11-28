@@ -14,8 +14,6 @@ def test_MLPE_R_with_mocked_R(mock_globalenv):
     mock_mlpe = MagicMock()
     mock_mlpe.return_value = "Expected Result"
     mock_globalenv.__getitem__.return_value = mock_mlpe
-
-    # Call your function
     result = mlpe.MLPE_R(X_mock, Y_mock, scale=True)
 
     # Assert that the result is as expected
@@ -35,8 +33,7 @@ def test_ZZ_mat_valid_input():
 
     # Call the function
     zz_matrix = mlpe.ZZ_mat_(pops, id_data)
-    print(zz_matrix)
-    # Assertions to check if the output is as expected
+
     assert zz_matrix.shape == (pops, id_data.shape[0])
     # Check if the values in the matrix are correctly set
     expected_matrix = np.array([

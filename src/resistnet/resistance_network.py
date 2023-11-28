@@ -78,6 +78,7 @@ class ResistanceNetwork:
         self.minimize = minimize
         self.variables = variables
         self.agg_opts = agg_opts
+        self.fitmetric = "aic"
 
         # Additional attributes for internal use
         self.minimized_subgraph = None
@@ -1067,7 +1068,7 @@ class ResistanceNetwork:
         calculates the effective resistance matrix for the given model.
 
         Args:
-            model (list): A list representing an individual model in the
+            model (pd.Series): A list representing an individual model in the
                           genetic algorithm, containing transformation and
                           weight information for variables.
 
@@ -1341,7 +1342,9 @@ class SimResistanceNetwork(ResistanceNetwork):
             res = rd.effectiveResistanceMatrix(
                 self._points_snapped, self._inc, multi
             )
-            res = trans.rescaleCols(res, 0, 1)
+            res_df = pd.DataFrame(res)
+            rescaled_res_df = trans.rescaleCols(res_df, 0, 1)
+            res[:] = rescaled_res_df.values
 
             # Write outputs
             out_mat = f"{base}.ResistanceMatrix.tsv"
