@@ -9,17 +9,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Cache Conda Environment
-      id: cache-env
-      uses: actions/cache@v2
-      with:
-        path: ~/miniconda3/envs/resistnet
-        key: ${{ runner.os }}-conda-env-${{ hashFiles('environment.yml') }}
-        restore-keys: |
-          ${{ runner.os }}-conda-env-
-
     - name: Setup Miniconda
-      if: steps.cache-env.outputs.cache-hit != 'true'
       uses: conda-incubator/setup-miniconda@v2
       with:
         auto-update-conda: true
