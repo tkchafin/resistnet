@@ -1,17 +1,19 @@
 # ResistNet
-Software for examining spatial patterns of diversity and differentiation in dendritic ecological networks (=DENs). Note that the contents of this directory are a work in progress.
+
+`ResistNet` is a Python program for optimising environmental resistance models in dendritic spatial networks, such as riverscapes. It includes utilities for optimising models from an arbitrary number of environmental covariates using a genetic algorithm, simulating datasets (e.g., for power analyses), and model-averaging results within runs or across replicates.
 
 ## Table of Contents:
 1. [Installation](#install)
     1. [Installing from GitHub](#install_dev)
-2. [Program Description](#desc)
-    1. [Usage](#usage)
+2. [Usage](#usage)
+    1. [Command-line Interface](#usage_cli)
     2. [Input Files](#inputs)
-    3. [Output Files](#outputs)
-3. [Tutorials](#start)
+    3. [Outputs](#outputs)
+    4. [GA Parameters](#ga_params)
+3. [Tutorials](#tutorials)
     1. [Example Dataset](#example)
     2. [Utility Scripts](#scripts)
-    3. [Integrating into workflows](#workflow)
+    3. [Integrating into workflows](#workflows)
 4. [Contributing](#contrib)
     1. [Reporting Issues](#report)
     2. [Making Changes](#changes)
@@ -53,239 +55,473 @@ Then you can install `resistnet` using pip:
 pip install -e .
 ```
 
+## Usage <a name="usage"></a>
 
+### Command-line Interface <a name="usage_cli"></a>
 
-## Program Description <a name="desc"></a>
-### Program description <a name="rscape_desc"></a>
+The core `ResistNet` functionality is accessed via the `runResistnet.py` script. This can be found in the `scripts/` directory (if cloning the repository from GitHub), or wherever your binaries are installed (if installed via conda/ pip).
 
+All executables bundled in `ResistNet` have a help menu which can be displayed by calling them with `-h`. To view the help menu for `runResistnet.py`, simply enter:
 
-#### Genetic algorithm background and similarities to ResistNet
+```
+runResistnet.py -h
+```
 
-All variables can vary in their model inclusion, but also in the manner by which they are transformed; transformations are the same as those used in ResistNet, and shape parameters are included for each variable in the "chromosome". Note that as shape parameters increase, the more similar the "transformed" values are to the original values, with high values for the shape parameter (e.g., 50-100) resulting in negligable transformation:
+This will show the currently available options:
 
-![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/transforms.png)
-
-### Usage <a name="rscape_usage"></a>
-
-#### Options and Help Menu <a name="rscape_help"></a>
-
-As with all of the scripts in this repository, you can view a list of the options for ResistNet by calling the help menu with <-h>:
 ```
 resistnet.py
 
-Author: Tyler K Chafin, Biomathematics and Statistics Scotland
+Author: Tyler K Chafin
 Contact: tyler.chafin@bioss.ac.uk
-Description: Genetic algorithm to optimize resistance models on networks
+Description: Genetic algorithm to optimise resistance networks
 
 Input options:
-  If using FitDistNet outputs:
-	-p,--prefix	: Prefix for autoStreamTree outputs
-
--or-
-
-  If manually specifying inputs:
-	-g,--genmat	: Genetic distance matrix
-	-n,--network	: Input graph (in pickle'd networkx format)
-	<add the rest later>
+    -g, --genmat: Genetic distance matrix
+    -s, --shp: Path to shapefile, geodatabase, or GPKG file
+    -c, --coords: Input tsv containing sample coordinates
 
 General options:
-	-s,--seed	: Random number seed (default=taken from clock time)
-	-T,--procs	: Number of parallel processors
-	-X,--noPlot	: Turn off plotting
-	-o,--out	: Output file prefix
-	-h,--help	: Displays help menu
+    --seed: Random number seed (default=taken from clock time)
+    --reachid_col: Reach ID [default="REACH_ID"]
+    --length_col: Length [default="LENGTH_KM"]
+    -t, --procs: Number of parallel processors
+    -X, --noPlot: Turn off plotting
+    -o, --out: Output file prefix
+    -h, --help: Displays help menu
+
+Aggregation options:
+    --edge_agg: Method for combining variables across segments
+    --pop_agg: Method to combine population genetic distances
+      Options: ARITH (-metic mean), MEDIAN, HARM (-monic mean),
+      ADJHARM (adjusted HARM, see docs), GEOM (geometric mean),
+      MIN, MAX, FIRST, SD (standard deviation), VAR (variance),
+      SUM (simple sum), CV (coefficient of variation = SD/MEAN)
 
 Genetic Algorithm Options:
-	-P,--maxPop	: Maximim population size [default = 100]
-	-G,--maxGen	: Maximum number of generations [default = 500]
-	-s,--size	: Manually set population size to <-p int>
-			    NOTE: By default, #params * 15
-	-m,--mutpb	: Probability of mutation per individual [default=0.2]
-	-i,--indpb	: Probability of mutation per trait [default=0.1]
-	-c,--cxpb	: Probability of being chosen for cross-over [default=0.5]
-	-t,--tourn	: Tournament size [default=10]
-	--posWeight	: Constrain parameter weights to between 0.0-1.0
-	--fixWeight	: Constrain parameter weights to 1.0 (i.e., unweighted)
-	--allShapes	: Allow inverse and reverse transformations
+    -P, --maxPop: Maximum population size [default = 100]
+    -G, --maxGen: Maximum number of generations [default = 500]
+    -s, --size: Manually set population size to <-p int>,
+        NOTE: By default, #params * 15
+    -m, --mutpb: Mutation probability per trait [default=0.5]
+    --indpb: Mutation probability per individual [default=0.5]
+    --cxpb: Cross-over probability [default=0.5]
+    -T, --tSize: Tournament size [default=10]
+    --posWeight: Constrain parameter weights to between 0.0-1.0
+    --minWeight: Sets minimum allowable weight (w/--posWeight)
+    --fixWeight: Constrain parameter weights to 1.0
+    --fixShape: Turn off feature transformation
+    --allShapes: Allow inverse and reverse transformations
+    --maxShape: Maximum shape value [default=100]
 
-Model optimization/ selection options:
-	-F,--nfail	: Number of generations failing to improve to stop optimization
-	-d,--delt	: Threshold absolute change in fitness [default=0.0]
-	-D,--deltP	: Threshold percentage change in fitness, as decimal [default=0.001]
-	-f,--fit	: Fitness metric used to evaluate models <NOT IMPLEMENTED>
-			    Options:
-			    aic (default)
-			    loglik (log-likelihood)
-			    r2m (marginal R^2)
-			    delta (Change in AIC versus null model)
-			    NOTE: Case-insensitive
-	-b,--burn	: Number of generations for pre-burnin [default=0]
-	--max_hof_size	: Maximum individuals to track in the Hall of Fame [default=100]
-
-Circuitscape options:
-	--cholmod	: Turn on CHOLMOD solver
-	-C,--cprocs	: Processors per Circuitscape process [default=1]
-			    NOTE: Total simultaneous processes= <-T> * <-C>
-
-Genetic distance options:
-	--force		: Use XX attribute from input table as distance metric (e.g. 'fittedD')
-			    NOTE: By default, the average of "locD_" columns will be taken
-	--infer		: Infer pairwise distances from input table (i.e., NOT input matrix)
-	-v,--vars	: Comma-separated list (no spaces) of explanatory attributes to include
+Model optimization/selection options:
+    -v, --vars: Comma-separated list of variables to use
+    -V, --varfile: Optional file with variables provided as:
+        var1 \t <Optional aggregator function>
+        var2 \t <Optional aggregator function>
+        ...
+    -F, --nfail: Number of failed gens to stop optimization
+    -d, --delt: Threshold absolute change in fitness [def.=0.0]
+    -D, --deltP: Threshold as decimal percentage [def.=0.001]
+    -f, --fit: Fitness metric used to evaluate models
+        Options: aic (default), loglik (log-likelihood),
+        r2m (marginal R^2), delta (Change in AIC vs null model)
+        NOTE: Case-insensitive
+    -b, --burn: Number of generations for pre-burnin [def.=0]
+    --max_hof_size: Maximum models retained [default=100]
 
 Multi-model inference options:
-	-A,--modavg	: Compute model-averaged resistances
-			    NOTE: This involves re-running Circuitscape for each model
-	-a,--awsum	: Cumulative Akaike weight threshold to retain top N models [default=0.95]
-	--report_all	: Plot per-stream resistance and generate full outputs for all retained models
+    -a, --awsum: Cumulative Akaike weight threshold [def.=0.95]
+    --report_all: Plot outputs for all retained models
 ```
 
-#### Input files <a name="rscape_input"></a>
+The use of these options are described below.
 
-For convienience, the inputs for ResistNet follow the formats of the files output by DistNet and FormatNet (not complete yet).
+### Input Files <a name="inputs"></a>
 
-#### Outputs <a name="rscape_output"></a>
+#### Coordinates 
 
-After parsing all of the inputs, ResistNet will randomly generate a population of 'individuals' (=model parameterizations), which is by default 15X the number of parameter, up to a maximum size specified by <-P,--maxPop>. Alternatively, you can specify a fixed size with <-s,--size>. Each 'generation', individuals will be selected using the desired fitness function (specified with <-f,--fit>; e.g. -f AIC to use AIC), and the maximum, minimum, meand, and standard deviation of population fitness values will be output to the terminal (stdout):
+Coordinates for your populations or individuals should be provided as a tab-delimited table, using the `-c/ --coords` argument. An example can be found in `src/resistnet/data/test.pointCoords.txt`:
 ```
-Reading network from:  ../out3.network
-Reading DistNet results from: ../out3.streamTree.txt
+sample  lat     long
+burk    26.927083333332924      90.39374999999947
+cdikc   27.264583333332887      90.03958333333279
+dakp    27.14791666666624       90.68958333333276
+digl    26.893749999999564      91.75208333333276
+dikc    26.881249999999547      90.26874999999947
+...
+...
+```
+
+The columns required are "sample", "lat", and "long", any other present columns will be ignored. Note that samples (or populations) defined here will require labelling which is consistent in the genetic distance matrix (described below). 
+
+#### Genetic distance matrix 
+
+The input genetic distance matrix, supplied via the `-g/ --genmat` argument, should be a tab-delimited file with both column and row names, matching the samples provided in the coordinates file. 
+
+The example dataset comes with an input genetic distance matrix for reference, at `src/resistnet/data/test.popGenDistMat.txt`:
+
+```
+        burk    cdikc   dakp    digl    ...
+burk    0.0     0.6913154781112187      0.6943568032698719      0.6975921469002094      ... 
+cdikc   0.6913154781112187      0.0     0.6004024031774708      0.6024853508009713      ... 
+... 
+...
+```
+
+There are a number of packages available to generate this pairwise distance matrix. For convenience, all files necessary to analyse the example dataset in [`autoStreamTree`](https://github.com/tkchafin/autostreamtree) are also included in the `data/` directory. 
+
+#### Geodatabase
+
+The input stream network can be provided as a shapefile, geodatabase, or GPKG file, all passed uing the `-s/--shp` option. There are a number of requirements for this file in order for the result to create a valid network. I highly recommend using the existing global stream datasets provided by the [HydroLab group](https://wp.geog.mcgill.ca/hydrolab/) at McGill University, specifically the [HydroAtlas](https://www.hydrosheds.org/page/hydroatlas) or [free-flowing rivers dataset](https://wp.geog.mcgill.ca/hydrolab/free-flowing-rivers/) as these are already properly formatted for use, and contain a large number of covariates as reach-level annotations which can be analysed by `ResistNet`. You will also need to provide the reach identifier `--reachid_col` (default is "HYRIV_ID") and reach length (`--length_col`) (default "LENGTH_KM"). 
+
+If for some reason you cannot use the HydroRIVERS dataset, you will need to do some things first before loading your shapefile into autoStreamTree. First, you will need to include two variables in the attribute table of your shapefile: 1) a reach ID must provide a unique identifier to each stream reach; and 2) a reach length variable should give the length of each segment. Next, because sometime large stream layers will have small gaps in between streams, you will need to span any small gaps between streams which should be contiguous, and also dissolve any lines that overlap with one another so that any given section of river is represented by a single line. There are some scripts in a complementary package that can help with these steps using the ArcPy API: <https://github.com/stevemussmann/StreamTree_arcpy>.
+
+Note that a valid path is required between all sites. Thus, if you are analyzing data from multiple drainages which only share an oceanic connection (or a connection which is otherwise absent from your dataset), you will need to augment the shapefile. For example this could be accomplished by adding a vector representing the coastline to create an artificial connection among drainages.
+
+
+### Outputs <a name="outputs"></a>
+
+After parsing all of the inputs, `ResistNet` will randomly generate a population of 'individuals' (=model parameterizations), which is by default 15X the number of parameter, up to a maximum size specified by `-P,--maxPop`. Each 'generation', individuals will be selected using the desired fitness function (specified with `-f,--fit`; e.g. `-f AIC` to use AIC), and the maximum, minimum, mean, and standard deviation of population fitness values will be output to the terminal (stdout):
+```
+Building network from shapefile: /Users/tyler/resistnet/src/resistnet/data/test.shp
+WARNING: This can take a while with very large files!
+Read 37 points.
+
+
+Extracting full subgraph...
+
+Merging redundant paths...
+
 Initializing genetic algorithm parameters...
 
-Establishing a population of size: 50
+Establishing a population of size: 10
 
-Evaluating initial population...
-
-Starting optimization...
+Starting worker 0 with seed 1234
+Starting worker 1 with seed 1235
+Starting worker 2 with seed 1236
+Starting worker 3 with seed 1237
 
 -- Generation 1 --
-  Worst 7466.655283180244
-  Best 6644.0304460748275
-  Avg 6986.83389341895
-  Std 174.1935275523536
-  nFails 0
--- Generation 2 --
-  Worst 7499.103994724142
-  Best 6637.266874648363
-  Avg 6821.94687814646
-  Std 149.476198344529
+  Worst -1200.4747471654575
+  Best -1163.9990149524226
+  Avg -1178.6391094740154
+  Std 15.774111494879024
   nFails 0
 ...
 ...
+
 ```
-Also included in this report is the number of consecutive generations that the genetic algorithm has failed to find a 'better' individual (with 'better' being defined using thresholds set with <-d,--delt> or <-D,--deltP>). After either a specified number of generations (<-G,--maxGen>) have passed, or nFail exceeds the user-specified number (-F,--nFail), the algorithm will stop, and report to the screen which stopping criteria was met:
+Also included is the number of consecutive generations that the genetic algorithm has failed to find a 'better' model (defined using thresholds set with `-d,--delt` or `-D,--deltP`). After either a specified number of generations (`-G,--maxGen`) have passed, or nFail exceeds the user-specified number (`-F,--nFail`), the algorithm will stop, and report to the screen which stopping criteria was met:
 ```
+...
+...
 -- Generation 5 --
-  Worst 6854.294254647968
-  Best 6596.9194357890165
-  Avg 6643.346646257467
-  Std 53.73712600565164
-  nFails 0
+  Worst -1217.011714840949
+  Best -1134.9919179075587
+  Avg -1162.9318785505388
+  Std 32.02090507102848
+  nFails 2
 Stopping optimization after 5 generations.
 Reason: Exceeded maxGens
-```
-At this time a series of plots and tables will be produced. The fitness values through time will be reported at $out.FitnessLog.tsv (where "$out" is the output prefix defined with <-o,--out>):
-
-| Generation | Worst             | Best              | Mean              | Stdev              |
-|------------|-------------------|-------------------|-------------------|--------------------|
-| 1          | 6644.389928164675 | 7466.655283180244 | 6985.505559085744 | 173.72113685174205 |
-| 2          | 6639.881724568676 | 7499.539461868835 | 6820.890653185437 | 147.67937472826992 |
-| 3          | 6617.603822325212 | 6872.074421364015 | 6683.739424517294 | 49.76330989463599  |
-| 4          | 6610.290247013926 | 6794.057145496889 | 6642.676944232899 | 29.918610153913338 |
-| 5          | 6597.775539690673 | 7018.279668244255 | 6642.276324199858 | 67.76930180708179  |
-
-In addition to this, ResistNet maintains a "Hall of Fame", tracking the best individuals to have ever be sampled in the population, up to a maximum Hall of Fame size specified with <--max_hof_size>, which defaults to 100. This table will be sorted by fitness value, and will include calculations of the Akaike weight. Models are assigned to be retained for model averaging using the cumulative Akaike threshold set by the user <-a,--awsum>, which defaults to 0.95.
-| fitness            | run_mm_cyr | run_mm_cyr_weight   | run_mm_cyr_trans | run_mm_cyr_shape | kar_pc_cse | kar_pc_cse_weight | kar_pc_cse_trans | kar_pc_cse_shape | soc_th_cav | soc_th_cav_weight | soc_th_cav_trans | soc_th_cav_shape | pst_pc_cse | pst_pc_cse_weight    | pst_pc_cse_trans | pst_pc_cse_shape | riv_tc_csu | riv_tc_csu_weight   | riv_tc_csu_trans | riv_tc_csu_shape | LENGTH_KM | LENGTH_KM_weight    | LENGTH_KM_trans | LENGTH_KM_shape | slp_dg_cav | slp_dg_cav_weight   | slp_dg_cav_trans | slp_dg_cav_shape | urb_pc_cse | urb_pc_cse_weight   | urb_pc_cse_trans | urb_pc_cse_shape | CSI | CSI_weight          | CSI_trans | CSI_shape | for_pc_cse | for_pc_cse_weight   | for_pc_cse_trans | for_pc_cse_shape | loglik              | r2m                 | aic                | delta_aic_null    | delta_aic_best     | akaike_weight          | acc_akaike_weight  | keep  |
-|--------------------|------------|---------------------|------------------|------------------|------------|-------------------|------------------|------------------|------------|-------------------|------------------|------------------|------------|----------------------|------------------|------------------|------------|---------------------|------------------|------------------|-----------|---------------------|-----------------|-----------------|------------|---------------------|------------------|------------------|------------|---------------------|------------------|------------------|-----|---------------------|-----------|-----------|------------|---------------------|------------------|------------------|---------------------|---------------------|--------------------|-------------------|--------------------|------------------------|--------------------|-------|
-| 6597.775539690673  | 1          | -0.1455520926262841 | 6                | 11               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 0          | -                   | -                | -                | 0         | -                   | -               | -               | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | -0.9319860657625789 | 3         | 64        | 1          | -0.6901645609234912 | 2                | 89               | -3294.8877698453366 | 0.1945129136531144  | 6597.775539690673  | 632.5800876388339 | 0.0                | 0.5064833775653471     | 0.5064833775653471 | True  |
-| 6598.624189654391  | 1          | -0.1455520926262841 | 6                | 11               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 0          | -                   | -                | -                | 0         | -                   | -               | -               | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | -0.9319860657625789 | 3         | 64        | 1          | 0.5971939266873523  | 4                | 18               | -3295.3120948271953 | 0.1952412393909014  | 6598.624189654391  | 635.0907078516702 | 0.8486499637174347 | 0.3313471187668753     | 0.8378304963322224 | True  |
-| 6600.142494390143  | 1          | -0.1455520926262841 | 6                | 11               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 1          | 0.6205977178035142  | 2                | 35               | 1         | -0.9664157414652275 | 8               | 39              | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | -0.9319860657625789 | 3         | 64        | 1          | -0.6901645609234912 | 2                | 89               | -3296.0712471950715 | 0.18871059961215467 | 6600.142494390143  | 612.7956484064507 | 2.3669546994697157 | 0.15509132782604312    | 0.9929218241582656 | True  |
-| 6608.1073678991415 | 1          | -0.1455520926262841 | 6                | 11               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 1          | 0.6205977178035142  | 2                | 35               | 1         | -0.9664157414652275 | 8               | 39              | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | 0.6465553956747097  | 0         | 75        | 1          | -0.6901645609234912 | 2                | 18               | -3300.0536839495708 | 0.18729419553514634 | 6608.1073678991415 | 607.3437218603012 | 10.331828208468323 | 0.0028909275456527952  | 0.9958127517039184 | False |
-| 6609.615347179055  | 1          | -0.1455520926262841 | 6                | 11               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 0          | -                   | -                | -                | 0         | -                   | -               | -               | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | 0.6465553956747097  | 0         | 75        | 1          | -0.6901645609234912 | 2                | 18               | -3300.8076735895274 | 0.19483502307914924 | 6609.615347179055  | 631.8005512099589 | 11.839807488381666 | 0.001360140170154527   | 0.9971728918740729 | False |
-| 6610.290247013926  | 1          | -0.1455520926262841 | 6                | 11               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 1          | 0.6205977178035142  | 2                | 35               | 1         | -0.9664157414652275 | 8               | 39              | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | 0.6465553956747097  | 0         | 75        | 1          | -0.6901645609234912 | 2                | 18               | -3301.145123506963  | 0.1852952541184347  | 6610.290247013926  | 600.6581119492184 | 12.514707323252878 | 0.0009705793121750887  | 0.9981434711862479 | False |
-| 6611.183034947682  | 1          | -0.1455520926262841 | 6                | 11               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 0          | -                   | -                | -                | 0         | -                   | -               | -               | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | 0.6465553956747097  | 0         | 75        | 1          | -0.6901645609234912 | 2                | 89               | -3301.591517473841  | 0.19179945737685386 | 6611.183034947682  | 621.7468721555406 | 13.407495257009032 | 0.0006211043823916513  | 0.9987645755686395 | False |
-| 6611.498278064627  | 1          | -0.1455520926262841 | 6                | 11               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 0          | -                   | -                | -                | 0         | -                   | -               | -               | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | 0.6465553956747097  | 0         | 75        | 1          | -0.6901645609234912 | 2                | 89               | -3301.7491390323135 | 0.19479738590965015 | 6611.498278064627  | 631.4176360681067 | 13.722738373953689 | 0.0005305305783013392  | 0.9992951061469408 | False |
-| 6611.498278064627  | 1          | -0.1455520926262841 | 6                | 11               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 0          | -                   | -                | -                | 0         | -                   | -               | -               | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | 0.6465553956747097  | 0         | 75        | 1          | -0.6901645609234912 | 2                | 89               | -3301.7491390323135 | 0.19479738590965015 | 6611.498278064627  | 631.4176360681067 | 13.722738373953689 | 0.0005305305783013392  | 0.9998256367252422 | False |
-| 6614.424384033492  | 1          | -0.1455520926262841 | 6                | 77               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 1          | -0.09796388256653743 | 0                | 80               | 1          | 0.6205977178035142  | 2                | 35               | 1         | -0.9664157414652275 | 8               | 39              | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | -0.9319860657625789 | 3         | 64        | 1          | -0.6901645609234912 | 2                | 89               | -3303.212192016746  | 0.18791714272102264 | 6614.424384033492  | 608.633840904944  | 16.648844342818848 | 0.00012283286528141403 | 0.9999484695905235 | False |
-| 6617.603822325212  | 1          | -0.1455520926262841 | 6                | 11               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 1          | 0.07949635894691087 | 7                | 18               | 0         | -                   | -               | -               | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | -0.9319860657625789 | 3         | 64        | 1          | 0.5971939266873523  | 4                | 18               | -3304.801911162606  | 0.20153290148171848 | 6617.603822325212  | 653.0208456285163 | 19.828282634538482 | 2.5055803231555324e-05 | 0.9999735253937551 | False |
-| 6619.827623973979  | 1          | -0.1455520926262841 | 6                | 11               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 0          | -                   | -                | -                | 0         | -                   | -               | -               | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | -0.9319860657625789 | 3         | 64        | 1          | 0.5971939266873523  | 4                | 18               | -3305.9138119869895 | 0.19816589207605215 | 6619.827623973979  | 641.6683238153164 | 22.052084283305703 | 8.241683590176287e-06  | 0.9999817670773452 | False |
-| 6620.788954854979  | 1          | -0.1455520926262841 | 6                | 77               | 0          | -                 | -                | -                | 0          | -                 | -                | -                | 0          | -                    | -                | -                | 1          | 0.07949635894691087 | 7                | 18               | 0         | -                   | -               | -               | 1          | 0.34392503912199834 | 2                | 51               | 1          | -0.7752412475467703 | 8                | 60               | 1   | -0.9319860657625789 | 3         | 64        | 1          | -0.6901645609234912 | 2                | 89               | -3306.3944774274896 | 0.19844574255201924 | 6620.788954854979  | 642.5574955984894 | 23.013415164306025 | 5.096424430273501e-06  | 0.9999868635017755 | False |
-
-Other values in the table include whether or not a variable is included in a model ($var, where $var is the variable name), specified as either "1" (=included) or "0" (=excluded), and the transformation type (=$var_trans), transformation shape parameter (=$var_shape), and weight of the parameter when calculating the composite resistance edges (=$var_weight). For the transformation column, the types of transformations are as follows: 0=Not transformed; 1=Ricker; 2=Reverse Ricker; 3=Inverse Ricker; 4=Reverse-Inverse Ricker; 5=Monomolecular; 6=Reverse Monomolecular; 7=Inverse Monomolecular; 8=Reverse-Inverse Monomolecular. In all cases, the larger the shape value, the closer each transformation gets to being linear (=essentially no transformation).
-
-A plot summarizing among models called $out.ICprofile.pdf will also be produced, which shows several pieces of information: 1) How AIC supports vary among all of the Hall of Fame models (arranged from left to right = 'best' to 'worst'). Points are separated as those which were retained for model-averaging given the <-a,--awsum> cutoff, scaled by marginal R^2 values (i.e., correlation coefficient from the MLPE model), and with a red horizontal bar showing a raw delta-AIC cutoff of 2:
-
-![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/ic_profile.png)
-
-Another plot will summarize the relationship among the various possible fitness metrics (marginal R^2, AIC, etc), as well as how these are distributed among the retained and excluded models, $out.pairPlot.pdf:
-
-![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/pairplot.png)
-
-Relative variable importance values will be plotted as a bar plot, $out.varImportance.pdf:
-
-![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/vif.png)
-
-If model-averaging was performed (turned on using <-A,--modavg>), ResistNet will calculate model-averaged resistance values, which will be plotted by coloring edges in the stream network, $out.Model-Average.streamsByResistance.pdf:
-
-![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/modavg_resist.png)
-
-It will also produce plots with a simple linear regression of genetic distances against pairwise resistance ($out.Model-Average.Pairwise.pdf) and edge-wise fitted distances against effective resistances from Circuitscape ($out.Model-Average.Edgewise.pdf):
-
-![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/modavg_pw.png)
-
-![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/modavg_ew.png)
-
-If using the <--report_all> option, these plots will also be produced for every one of the "kept" models from the Hall of Fame, with naming as $out.Model-#.Pairwise.pdf (etc), where "#" is the row number from the HallofFame.tsv table (with 0-based indexing; i.e. 0="best" model; 1=second-best, and so on).
-
-#### Parallel execution <a name="rscape_parallel"></a>
-
-There are two parameters for controlling parallel execution: <-T,--procs> controls the spread of individual fitness calculations in the genetic algorithm, using the multiprocessing Python library; and <-C,--cprocs> controls the number of processor cores dedicated per Circuitscape run (which is run for every individual, every generation). <-C> * <-T> should not exceed the number of CPUs on your machine.
-
-I've found that each Circuitscape run generally doesn't take too long with moderately sized networks (more below in the [Runtimes and Benchmarking section](#rscape_benchmark)), and that the greatest gains can be gotten by maximizing the <-T> parameter. This allows not only the Circuitscape step to be parallelized, but also the generation and parsing of Circuitscape outputs, and fitting of the MLPE model. However, extremely large networks may benefit from increasing the <-C> parameter. For most users, I wouldn't recommend increasing <-C> unless your machine has twice the number of processors as there are individuals in the GA population, as <-T> will not give any benefit if increasing beyond the population size. For example, if you have a small population size of 24 and are running on a 48-core machine, increasing <-T> beyond T=24 will not increase runtimes, and you may wish to set <-T 24> and <-C 2> in order to best use the cores avaialable. However, for most use cases, the available number of CPUs is unlikely to be larger than the population size.
-
-#### Genetic Algorithm options <a name="rscape_ga"></a>
-
-ResistNet provides options for manipulating the relevant parameters of the genetic algorithm. If there are additional parameters you wish to control, just shoot me an email (tylerkchafin@gmail.com) or launch an Issue here and GitHub and I'll add it as soon as I can.
-
-The parameters which can be manipulating from the command-line are as follows:
-```
-	Genetic Algorithm Options:
-		-P,--maxPop	: Maximim population size [default = 100]
-		-G,--maxGen	: Maximum number of generations [default = 500]
-		-s,--size	: Manually set population size to <-p int>
-				    NOTE: By default, #params * 15
-		-m,--mutpb	: Probability of mutation per individual [default=0.2]
-		-i,--indpb	: Probability of mutation per trait [default=0.1]
-		-c,--cxpb	: Probability of being chosen for cross-over [default=0.5]
-		-t,--tourn	: Tournament size [default=10]
-		--posWeight	: Constrain parameter weights to between 0.0-1.0
-		--fixWeight	: Constrain parameter weights to 1.0 (i.e., unweighted)
-		--allShapes	: Allow inverse and reverse transformations
+...
+...
 ```
 
-The --posWeight and --fixWeight options are used to either constrain parameter weights to 0.0 - 1.0, or to fix all weights at 1.0. By default, weights can vary from -1.0 to 1.0, and all 'negatively weighted' transformations are not available (inverse and reverse). Only ricker, monomolecular, and inverse-reverse versions of both are available unless --allShapes is used. I don't recommend using both negative weights AND --allShapes together, because this creates a situation where there are multiple ways to get the same possible result (i.e., ricker with -1.0 weighting has the same impact on composite surface as reverse ricker with 1.0 weighting).
+At this time a series of plots and tables will be produced using the output path/ prefix defined with `-o,--out`):
 
-#### Model Selection/ Optimization <a name="rscape_model"></a>
+| File Name                                    | Description                                                                                                                     |
+|----------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| output.FitnessLog.tsv                        | Log of fitness min, mean, max, and spread across generations                                                                    |
+| output.minimalSubgraph.net                   | Compressed representation of the minimized subgraph                                                                             |
+| output.HallOfFame.tsv                        | Full text specification of the retained models for the run                                                                      |
+| output.minimalSubgraph.pdf                   | Graphical representation of the minimized subgraph                                                                              |
+| output.modavgWeights.tsv                     | Table giving the model-averaged weights for each covariate                                                                      |
+| output.Model-Average.PairwiseRegplot.pdf     | Regression of pairwise resistance X genetic distances                                                                           |
+| output.pairPlot.pdf                          | Plots of pairwise correlation between fitness metrics across sampled models                                                     |
+| output.Model-Average.ResistanceEdges.tsv     | Effective resistance values for each segment by reach ID                                                                        |
+| output.pointsTable.txt                       | Table of points                                                                                                                 |
+| output.Model-Average.ResistanceMatrix.tsv    | Pairwise effective resistance distances                                                                                         |
+| output.snapDistances.txt                     | Table giving the distance (in km) between input sampling points and nearest graph nodes (useful to diagnose mis-snapped points) |
+| output.Model-Average.streamsByResistance.pdf | Plot of model-averaged effective resistance values for each segment in the network                                              |
+| output.subgraph.net                          | Compressed representation of the subgraph                                                                                       |
+| output.Null-Model.tsv                        | Table giving fitness metrics for the distance-only and null (population effect only) models                                     |
+| output.varImportance.pdf                     | Bar plot of relative variable importances                                                                                       |
+| output.incidenceMatrix.txt                   | Incidence matrix for paths between each pair of samples (only used internally)                                                  |
+| output.varImportance.tsv                     | Table giving the model-averaged relative variable importances for each covariate                                                |
 
-#### Circuitscape <a name="rscape_cs"></a>
+A full set of example outputs can be seen in `src/resistnet/data/example_output`. If using the `--report_all` option, these plots will also be produced for every one of the "kept" models from the Hall of Fame, with naming as `$out.Model-#.Pairwise.pdf` (etc), where "#" is the row number from the `HallofFame.tsv` table (with 0-based indexing; i.e. 0="best" model; 1=second-best, and so on).
 
-#### Model-averaging and multi-model importance <a name="rscape_modavg"></a>
 
-### Runtimes and Benchmarking <a name="rscape_benchmark"></a>
-In all of these tests, I used a dataset composed of N=112 network edges (corresponding to N=2,248 contiugous segments in the input shapefile), and N=78 populations. I randomly selected 10 environmental variables, and used a population size of 50. Tests were performed on a Linux computer with 256gb of memory and 16 cores.
+#### $out.HallOfFame.tsv 
 
-Increasing the <-T> parameter leads to speed increases when <-t> <= population size, although returns are diminishing at higher values, given several added costs: The need for more separate initializations, and the communication cost of sending information between the master and sub-processes. Here, for each generation, the master process has to send a model parameterization (a vector of e.g., [1, 0.89, 7, 16] x number of variables), and the sub-process returns a vector of potential fitness measures (loglik, AIC, marginal r^2, deltaAIC vs. null). Memory increases linearly as you add processors, with the slope determined by the size of the input dataset, since each sub-process maintains a deep copy of the entire graph, pairwise genetic distance matrix, etc.
+The output table `$out.HallOfFame.tsv` contains textual representations of the retained models for a run, with a format like:
 
-In this test, I used 1-16 processors to examine N=50 individual models per generation, for 10 generations. The random number seed was fixed, to maintain comparability. Total runtimes varied from 165 minutes for <-T 1> to ~14 minutes for <-T 16>. Runtime increases linearly with number of generations, such that e.g., 200 generations with this same dataset and population size takes ~280 minutes with <-T 16>. A run of the same dataset, with a population size of 200, and 200 generations, took 840 minutes.
+```
+fitness run_mm_cyr      run_mm_cyr_weight       run_mm_cyr_trans        run_mm_cyr_shape ... akaike_weight   acc_akaike_weight       keep 
+1165.2161145651664      1       0.5381247419039517      1   ... 0.9999999697774224      0.9999999697774224      True
+```
 
-![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/rscape_benchmark.png)
+Some of these are self-explanatory (i.e., "fitness" is the model fitness, which by default is AIC). Other summary metrics included are the Akaike weights, change in AIC relative to the null and "best" models, as well as the other fitness metrics (marginal R^2, log-likelihoods). Other values in the table include whether or not a variable is included in a model ($var, where $var is the variable name), specified as either "1" (=included) or "0" (=excluded), and the transformation type (=$var_trans), transformation shape parameter (=$var_shape), and weight of the parameter when calculating the composite resistance edges (=$var_weight). For the transformation column, the types of transformations are as follows: 0=Not transformed; 1=Ricker; 2=Reverse Ricker; 3=Inverse Ricker; 4=Reverse-Inverse Ricker; 5=Monomolecular; 6=Reverse Monomolecular; 7=Inverse Monomolecular; 8=Reverse-Inverse Monomolecular. In all cases, the larger the shape value, the closer each transformation gets to being linear (=essentially no transformation).
 
-In comparing the gains from parallelization, the <-T> parameter grants the most efficient use of available CPUs:
+#### Covariate relative importance 
 
-![](https://raw.githubusercontent.com/tkchafin/DENdriscape/master/examples/plots/t_vs_c.png)
+Other outputs that will typically be of interest are the `modAvgWeights.tsv` and `.varImportance.tsv` files, which give the model-averaged weights and importances for all included covariates:
 
-Here, dedicating all 16 cores to <-T> parallelization, after ~3 minutes spend parsing the input files, each generation took approximately 1 minute of computation. With a population size of 50, this averages out to each CPU core evaluating 3-4 individual models, so about 15-20 seconds per individual model (that includes running Circuitscape, parsing the outputs, and fitting the MLPE model). When setting <-T 8> and <-C 2>, each model evaluation averages to 20-24 seconds each, AND each CPU had to evaluate 6-7 individuals per generation. So not only did we see loss in the number of simultaneous model evaluations at a time, Circuitscape actually got slower -- probably reflecting the cost of passing around data. With much larger networks and a larger number of pairwise evaluations (maybe several hundred samples), this relationship is likely to change. For large datasets with long computation times, I would recommend doing some short runs evaluating whether or not increasing the <-C> parameter is worthwhile for your case.
+```
+# RVI
+variable        RVI
+run_mm_cyr      0.9999999992728014
+sgr_dk_rav      0.9999999777043529
+tmp_dc_cyr      0.999999974582615
+dor_pc_pva      5.403280690464821e-10
 
-### Example Workflows <a name="rscape_workflow"></a>
+# MAW
+variable        MAW
+sgr_dk_rav      0.9438627249077166
+run_mm_cyr      0.5381247256404349
+dor_pc_pva      -0.0
+tmp_dc_cyr      -0.24636058036382147
+```
 
-## Scripts and Tools
+#### Effective resistance values 
+
+The model-averaged effective resistance values are computed for each segment in the subgraph, and also output for each individual model if using `--report-all`. 
+
+If you would like to import these into other GIS plotting tools, you can simply perform a left join of the `.ResistanceEdges.tsv` table, using the specified `--reachid_col` (EDGE_ID in this example):
+
+```
+EDGE_ID Resistance
+40830357        8.842640424633727
+40832271        8.22649846960403
+40833054        7.926278241834325
+40833364        4.568026911233788
+...
+...
+```
+
+These are also plotted for simple visualisation on the input spatial network, in the `.streamsByResistance.pdf` files. Pairwise effective values (between points) are also output as tab-delimited text (`.ResistanceMatrix.tsv`).
+### Genetic Algorithm parameters <a name="ga_params"></a>
+
+ResistNet provides options for manipulating the relevant parameters of the genetic algorithm:
+
+```
+Genetic Algorithm Options:
+    -P, --maxPop: Maximum population size [default = 100]
+    -G, --maxGen: Maximum number of generations [default = 500]
+    -s, --size: Manually set population size to <-p int>,
+        NOTE: By default, #params * 15
+    -m, --mutpb: Mutation probability per trait [default=0.5]
+    --indpb: Mutation probability per individual [default=0.5]
+    --cxpb: Cross-over probability [default=0.5]
+    -T, --tSize: Tournament size [default=10]
+    --posWeight: Constrain parameter weights to between 0.0-1.0
+    --minWeight: Sets minimum allowable weight (w/--posWeight)
+    --fixWeight: Constrain parameter weights to 1.0
+    --fixShape: Turn off feature transformation
+    --allShapes: Allow inverse and reverse transformations
+    --maxShape: Maximum shape value [default=100]
+```
+
+The `--posWeight` and `--fixWeight` options are used to either constrain parameter weights to 0.0 - 1.0, or to fix all weights at 1.0. By default, weights can vary from -1.0 to 1.0, and all 'negatively weighted' transformations are not available (inverse and reverse). Only ricker, monomolecular, and inverse-reverse versions of both are available unless `--allShapes` is used. I don't recommend using both negative weights and `--allShapes` together, because this creates a situation where there are multiple ways to get the same possible result (i.e., ricker with -1.0 weighting has the same impact on composite surface as reverse ricker with 1.0 weighting). 
+
+Note that the "right" parameters will vary by context, and you should not necessarily just run using the defaults!
+
+
+## Tutorials <a name="tutorials"></a>
+
+### Example Dataset <a name="example"></a>
+
+A full example dataset is included in `src/resistnet/data`. You can very quickly test out if your installation is running, and explore what the outputs look like or profile runtimes by performing a short run using the bundled dataset:
+
+```
+runResistnet.py \
+    -s ./src/resistnet/data/test.shp \
+    -c ./src/resistnet/data/test.pointCoords.txt \
+    -g ./src/resistnet/data/test.popGenDistMat.txt \
+    -V ./src/resistnet/data/selected_vars.txt \
+    -P 10 -G 5 -t 4 --seed 1234
+```
+
+Note that this example is not necessarily useful (i.e., real runs will likely need to be run for much longer, and with a larger population size), so you can try playing around with the running parameters, as well as the covariates included (specified in the `selected_vars.txt` file). This dataset contains all of the [HydroATLAS](https://www.hydrosheds.org/hydroatlas) covariates.
+
+
+### Utility Scripts <a name="scripts"></a>
+
+The primary functions of `ResistNet` are accessed via the command-line interface `runResistnet.py`. However, to there are also currently two other utilities that are installed alongside `runResistnet.py` (whether installing via conda or pip, or found directly in the `scripts/` directory of the GitHub repository): `simResistnet.py` and `ensembleResistnet.py`. 
+
+#### Simulating datasets with simResistnet.py
+
+As with `runResistnet.py`, `simResistnet.py` has a command-line interface and help menu which can be accessed by calling the script with `-h`:
+
+```
+simResistnet.py
+
+Author: Tyler Chafin
+Description: Simulate data on a given network
+
+Arguments:
+    -n, --network: Input network (pickle'd networkx output)
+    -i, --in: Table giving variables to use to generate resistnet input
+    -r, --reps: Number of replicates
+    -s, --samples: Number of random nodes to sample
+    -l, --len_col: Edge length attribute (def=LENGTH_KM)
+    -c, --id_col: Reach ID attribute (def=EDGE_ID)
+    -o, --out: Output file name (default=sim)
+```
+
+Simulations require a compressed input network (i.e., as output by `runResistnet.py` or `autoStreamTree`), and a specifications file which should be tab-delimited and provide some covariates you would like to simulate effective resistances with. An example can be found in `src/resistnet/data/simparams.tsv`:
+```
+VAR     WEIGHT  TRANSFORM       SHAPE
+LENGTH_KM       1.0     0       0
+```
+
+In this example, a pairwise resistance matrix will simply be the sum of pairwise segment lengths (i.e., isolation-by-distance), which will then be normalised between 0 and 1. 
+
+You can specify the number of samples with `-s/--samples`, which determines the number of "populations" samples (as random nodes in the graph), as well as the number of replicated datasets to produce, using `-r/--reps`. For example, to simulate 10 datasets, each with 50 random samples and the above specifications:
+
+```
+simResistnet.py -n src/resistnet/data/test.network -s 50 -r 10 -o sim -i src/resistnet/data/simparams.tsv
+```
+
+This will produce a number of outputs named `*.ResistanceMatrix.tsv` and `*.coords`, which can be supplied directly as inputs to `runResistnet.py` via `-g` and `-c`, for example to test if `ResistNet` model optimisation can recover the specified model in your network, given different sample sizes. 
+
+#### Model-averaging across runs with ensembleResistnet.py
+
+`runResistnet.py` by default performs model-averaging within runs, but if you want to consider outputs across replicate runs (or for example, the top or 'best' model from a series of independent runs), you can use the utility `ensembleResistnet.py`, which has the following options:
+
+```
+ensembleResistnet.py
+
+Utility for model-averaging across ResistNet outputs
+
+Arguments:
+-s, --shp: Path to shapefile
+-n, --network: Input network
+-i, --in: Directory containing resistnet outputs
+-L, --list: Optional comma-separated prefixes (no spaces)
+-C, --coords: Optional static coordinates file
+
+Optional Arguments:
+-t, --procs: Number of parallel processors
+--seed: RNG seed
+-a, --awsum: Cumulative Akaike weight threshold [default=0.95]
+--only_keep: Only retain models where column 'keep'=True
+--only_best: Only retain best model from each input
+--split_samples: Treat all samples as unique
+-X, --noPlot: Turn off plotting
+-m, --max_keep: Maximum models to keep (default = all models)
+-l, --len_col: Edge length attribute (def=LENGTH_KM)
+-c, --id_col: Reach ID attribute (def=EDGE_ID)
+-o, --out: Output file prefix (default=ensemble)
+--report_all: Plot full outputs for all retained models
+--allShapes: Allow inverse and reverse transformations
+-V, --varfile: Optional file with variables provided like so:
+          var1   <Optional aggregator function>
+          var2   <Optional aggregator function>
+          ...
+```
+
+Most arguments are used in the same way as their equivalents in `runResistnet.py`, but one difference is in how a group of replicate run outputs are passed. The simplest way is to provide the path to an output directory, where outputs are named like `{prefix}_{rep}.*`. Example outputs can be found in `src/resistnet/data/test_ensemble/replicates`:
+```
+test_1.out.FitnessLog.tsv
+test_1.out.HallOfFame.tsv
+test_1.out.ICprofile.pdf
+test_1.out.Model-Average.Mantel.tsv
+test_1.out.Model-Average.PairwiseRegplot.pdf
+test_1.out.Model-Average.ResistanceEdges.tsv
+test_1.out.Model-Average.ResistanceMatrix.tsv
+test_1.out.Model-Average.streamsByResistance.pdf
+test_1.out.genDistMat.tsv
+test_1.out.genDistMat.txt
+test_1.out.incidenceMatrix.txt
+test_1.out.minimalSubgraph.net
+test_1.out.minimalSubgraph.pdf
+test_1.out.modavgWeights.tsv
+test_1.out.pairPlot.pdf
+test_1.out.pointsTable.txt
+test_1.out.snapDistances.txt
+test_1.out.subgraph.net
+test_1.out.varImportance.pdf
+test_1.out.varImportance.tsv
+test_10.out.FitnessLog.tsv
+test_10.out.HallOfFame.tsv
+...
+...
+...
+```
+
+Creating a model-average across the 20 replicate analyses in this directory can be done like so:
+
+```
+ensembleResistnet.py \
+    -n data/test_ensemble/test.full.network \
+    -i data/test_ensemble/replicates \
+    -c HYRIV_ID -C data/test_ensemble/test.pointCoords.txt \
+    -o test -t 4
+```
+
+To instead create a model-average of only the best models sampled in each run, you can add the `--only_best` argument:
+
+```
+ensembleResistnet.py \
+    -n data/test_ensemble/test.full.network \
+    -i data/test_ensemble/replicates \
+    -c HYRIV_ID -C data/test_ensemble/test.pointCoords.txt \
+    -o test -t 4 --only_best
+```
+
+### Integration Into Workflows <a name="workflows"></a>
+
+All utilities from `ResistNet` are intended to be easy to run as a sequential pipeline. An example of building these into a [`SnakeMake`](https://snakemake.github.io) workflow can be found in the [Open Science Framework](https://osf.io/4uxfj/) repository (doi: 10.17605/OSF.IO/4UXFJ).
+
+For example, in the `run_validation.smk` file, you can find everything needed to perform simulations of varying sampling sizes across a number of specified models, across 3 example networks. 
+
+For further examples on incorporating `ResistNet` with feature engineering (via robust PCA) and feature selection (via random forests), see the [Open Science Framework repository](https://osf.io/9zsf7/) for an upcoming paper (to be posted soon!)
+## Contributing <a name="contrib"></a>
+
+We welcome contributions in all forms, be that reporting bugs, requesting/ discussing new features, or pull requests! Please see below for some general guidelines, and please help to maintain a helpful and inclusive dialogue by following the [Contributer Covenant Code of Conduct](https://www.contributor-covenant.org/version/1/4/code-of-conduct/).
+
+### Reporting Issues <a name="report"></a>
+
+If you encounter a bug or any other issue, please use the [GitHub Issues](https://github.com/tkchafin/resistnet/issues) page, after first checking that someone else hasn't already reporting the same problem!
+
+When describing your issue, please be detailed, and include any relevant system details, as well as the full command-line prompt you used, as well as any necessary data files to replicate the problem. 
+
+You can also use this page to post any feature requests you might have. 
+
+### Making changes <a name="changes"></a>
+
+If you would like to make any changes or add features to `ResistNet` (always welcome!), the procedure is simple:
+
+1. Fork the repository
+2. Make changes 
+3. Submit a pull request 
+
+Note that we use `flake8` to enforce readable styling, and also have a set of integrated unit tests which will be run on submitting the pull request (see below section on continuous integration).
+
+### Unit Tests and CI <a name="testci"></a>
+
+We use [`flake8`](https://flake8.pycqa.org/en/latest/) to ensure that all code contributions follow a readable style, and a set of unit tests in [`pytest`](https://docs.pytest.org/en/7.4.x/) to ensure that the basic functionality of `ResistNet` is maintained before merging any changes.
+
+Both of these are run automatically via `GitHub Actions` when you submit a pull request to the repository. If you would like to first run these locally, you can do so on the command-line, after installing both tools with conda/ mamba:
+
+```
+mamba install flake8 pytest
+```
+
+To run `flake8` linting:
+
+```
+cd resistnet
+flake8 src/*.py
+```
+
+And to run the unit tests:
+
+```
+cd resistnet
+pytest tests/
+```
+
+Note that these tests are NOT comprehensive! We currently have a test coverage of ~85%, and welcome any contributions to make the testing framework more robust! 
