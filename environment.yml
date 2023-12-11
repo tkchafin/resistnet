@@ -1,5 +1,6 @@
 name: resistnet
 channels:
+  - ecoevoinfo
   - conda-forge
   - bioconda
   - defaults
@@ -27,5 +28,4 @@ dependencies:
   - r-lme4
   - r-matrix
   - r-mumin
-  - pip:
-    - mantel
+  - mantel
