@@ -5,8 +5,6 @@ channels:
   - bioconda
   - defaults
 dependencies:
-requirements:
-  run:
   - python>=3.10
   - setuptools
   - pip
