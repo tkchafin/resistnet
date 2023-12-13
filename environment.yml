@@ -10,6 +10,7 @@ dependencies:
   - pip
   - perl
   - pytest
+  - flake8
   - numpy
   - pandas>2
   - matplotlib
