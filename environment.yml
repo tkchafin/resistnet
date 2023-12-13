@@ -5,7 +5,10 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  - python=3.10
+requirements:
+  run:
+  - python>=3.10
+  - setuptools
   - pip
   - perl
   - pytest
@@ -14,7 +17,6 @@ dependencies:
   - matplotlib
   - scikit-learn
   - seaborn
-  - flake8
   - geopandas
   - sortedcontainers
   - momepy

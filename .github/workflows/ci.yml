@@ -21,7 +21,7 @@ jobs:
       shell: bash -l {0}
       run: |
         conda activate resistnet
-        pip install -e .
+        pip install .
 
     - name: Lint with flake8
       shell: bash -l {0}
