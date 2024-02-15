@@ -82,6 +82,7 @@ class parseArgs():
         self.fixWeight = False
         self.allShapes = False
         self.fixShape = False
+        self.fixAsym = True
         self.max_shape = 100
         self.min_weight = 0.0
 

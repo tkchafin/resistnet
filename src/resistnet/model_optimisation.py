@@ -1,5 +1,6 @@
 import traceback
 import random
+import sys
 import pandas as pd
 import numpy as np
 from queue import Empty
@@ -59,6 +60,7 @@ class ModelRunner:
         self.fixWeight = None
         self.fixShape = None
         self.allShapes = None
+        self.fixAsym = True
         self.min_weight = None
         self.max_shape = None
         self.max_hof_size = None
@@ -83,7 +85,7 @@ class ModelRunner:
         self.init_ga_attributes()
 
         # Initialize population
-        popsize = len(self.resistance_network.variables) * 4 * 15
+        popsize = len(self.resistance_network.variables) * 5 * 15
         if self.popsize:
             popsize = self.popsize
         if popsize > self.maxpopsize:
@@ -191,6 +193,7 @@ class ModelRunner:
         """
         try:
             # Set GA parameters
+            print("set params")
             self.set_ga_parameters(mutpb, cxpb, indpb, popsize, maxpopsize,
                                    posWeight, fixWeight, fixShape, allShapes,
                                    min_weight, max_shape, max_hof_size,
@@ -198,7 +201,9 @@ class ModelRunner:
                                    verbose, report_all)
 
             # Initialize GA components and worker pool
+            print("init")
             self.initialize_ga()
+            sys.exit()
             self.start_workers(threads)
 
             # Initialize population and set up GA run parameters
@@ -564,6 +569,8 @@ class ModelRunner:
         """
         # Register attributes
         self.toolbox.register("feature_sel", random.randint, 0, 1)
+
+        # weight
         if self.posWeight:
             self.toolbox.register(
                 "feature_weight", random.uniform, self.min_weight, 1.0
@@ -572,6 +579,14 @@ class ModelRunner:
             self.toolbox.register("feature_weight", random.uniform, 1.0, 1.0)
         if not self.fixWeight and not self.posWeight:
             self.toolbox.register("feature_weight", random.uniform, -1.0, 1.0)
+
+        # asymmetry parameter
+        if not self.fixAsym:
+            self.toolbox.register("feature_asym", random.randint, 0, 1)
+        else:
+            self.toolbox.register("feature_asym", random.randint, 0, 0)
+        
+        # shape
         if not self.fixShape:
             self.toolbox.register("feature_transform", random.randint, 0, 8)
             self.toolbox.register(
@@ -585,9 +600,11 @@ class ModelRunner:
             "individual",
             tools.initCycle,
             creator.Individual,
-            (self.toolbox.feature_sel, self.toolbox.feature_weight,
+            (self.toolbox.feature_sel,
+                self.toolbox.feature_weight,
                 self.toolbox.feature_transform,
-                self.toolbox.feature_shape),
+                self.toolbox.feature_shape,
+                self.toolbox.feature_asym),
             n=len(self.resistance_network.variables)
         )
         self.toolbox.register(
@@ -649,6 +666,7 @@ class ModelRunner:
                 "fitmetric": self.fitmetric,
                 "posWeight": self.posWeight,
                 "fixWeight": self.fixWeight,
+                "fixAsym": self.fixAsym,
                 "allShapes": self.allShapes,
                 "fixShape": self.fixShape,
                 "min_weight": self.min_weight,
@@ -706,14 +724,16 @@ class ModelRunner:
         Returns:
             A tuple containing the mutated individual.
         """
-        length = len(individual) // 4  # number of covariates
+        length = len(individual) // 5  # number of covariates
         for i in range(length):
             if random.random() < self.mutpb:
-                individual[i * 4] = self.toolbox.feature_sel()
+                individual[i * 5] = self.toolbox.feature_sel()
             if random.random() < self.mutpb:
-                individual[i * 4 + 1] = self.toolbox.feature_weight()
+                individual[i * 5 + 1] = self.toolbox.feature_weight()
             if random.random() < self.mutpb:
-                individual[i * 4 + 2] = self.toolbox.feature_transform()
+                individual[i * 5 + 2] = self.toolbox.feature_transform()
             if random.random() < self.mutpb:
-                individual[i * 4 + 3] = self.toolbox.feature_shape()
+                individual[i * 5 + 3] = self.toolbox.feature_shape()
+            if random.random() < self.mutpb:
+                individual[i * 5 + 4] = self.toolbox.feature_asym()
         return individual,

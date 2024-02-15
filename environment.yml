@@ -21,12 +21,13 @@ dependencies:
   - momepy
   - networkx>3
   - pyogrio
-  - deap
+  - deap>=1.4
   - nlopt
   - r-base
   - r-tidyverse
   - rpy2
-  - r-lme4
-  - r-matrix
+  - r-lme4>=1.1
+  - r-matrix>=1.6
   - r-mumin
   - mantel
+  - r-samc

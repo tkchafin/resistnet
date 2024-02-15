@@ -1030,17 +1030,17 @@ class ResistanceNetwork:
         for i, variable in enumerate(self._predictors.columns):
             # Perform variable transformations if the variable is selected
             # (indicated by a value of 1)
-            if individual[0::4][i] == 1:
+            if individual[0::5][i] == 1:
                 var = self.transform(
                     self._predictors[variable],
-                    individual[2::4][i],
-                    individual[3::4][i]
+                    individual[2::5][i],
+                    individual[3::5][i]
                 )
                 if first:
-                    multi = var * individual[1::4][i]
+                    multi = var * individual[1::5][i]
                     first = False
                 else:
-                    multi += var * individual[1::4][i]
+                    multi += var * individual[1::5][i]
 
         # If no layers are selected, return a zero fitness
         if first:
@@ -1081,15 +1081,15 @@ class ResistanceNetwork:
 
         # Combine transformed variables based on model specifications
         for i, variable in enumerate(self._predictors.columns):
-            if model[0::4][i] == 1:
+            if model[0::5][i] == 1:
                 var = self.transform(
-                    self._predictors[variable], model[2::4][i], model[3::4][i]
+                    self._predictors[variable], model[2::5][i], model[3::5][i]
                 )
                 if first:
-                    multi = var * model[1::4][i]
+                    multi = var * model[1::5][i]
                     first = False
                 else:
-                    multi += var * model[1::4][i]
+                    multi += var * model[1::5][i]
                 multi = trans.rescaleCols(multi, 1, 10)
 
         # Get pairwise effective resistance matrix
