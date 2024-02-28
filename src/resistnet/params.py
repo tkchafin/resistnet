@@ -29,7 +29,7 @@ class parseArgs():
                  "length_col=", "reachid_col=", "minimize", "network=",
                  "fixShape", "max_gens=", "max_gen=", "max_pop=", "varFile=",
                  "tournsize=", "tournSize=", "tSize=", "threads=",
-                 "minWeight=", "min_weight="
+                 "minWeight=", "min_weight=", "infer_origin=", "origin="
                  ]
             )
         except getopt.GetoptError as err:
@@ -85,6 +85,9 @@ class parseArgs():
         self.fixAsym = True
         self.max_shape = 100
         self.min_weight = 0.0
+
+        self.infer_origin = "NEXT_DOWN"
+        self.origin = None
 
         # First pass to see if help menu was called
         for o, a in options:
@@ -206,6 +209,10 @@ class parseArgs():
                 self.allShapes = True
             elif opt == "fixShape":
                 self.fixShape = True
+            elif opt == "infer_origin":
+                self.infer_origin = str(arg)
+            elif opt == "origin":
+                self.origin = int(arg)
             elif opt in ('h', 'help'):
                 pass
             else:

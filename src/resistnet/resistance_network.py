@@ -46,7 +46,8 @@ class ResistanceNetwork:
 
     def __init__(self, network, shapefile, coords, variables, inmat, agg_opts,
                  pop_agg="ARITH", reachid_col="HYRIV_ID",
-                 length_col="LENGTH_KM", out="out", verbose=True,
+                 length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
+                 origin=None, out="out", verbose=True,
                  minimize=False):
         """
         Constructs all the necessary attributes for the ResistanceNetwork
@@ -62,6 +63,10 @@ class ResistanceNetwork:
             pop_agg (str): Population aggregation method. Defaults to "ARITH".
             reachid_col (str): Column name for reach ID. Defaults to "HYRIV_ID"
             length_col (str): Column name for length. Defaults to "LENGTH_KM".
+            infer_origin (str): Column name used to infer origin.
+                                Default "NEXT_DOWN"
+            origin (int): reachid corresponding to the origin.
+                            Defaults to None.
             out (str): Prefix for output files. Defaults to "out".
             verbose (bool): Flag to enable verbose output. Defaults to True.
             minimize (bool): Flag to minimize subgraph. Defaults to False.
@@ -79,6 +84,8 @@ class ResistanceNetwork:
         self.variables = variables
         self.agg_opts = agg_opts
         self.fitmetric = "aic"
+        self.infer_origin = infer_origin
+        self.origin = origin
 
         # Additional attributes for internal use
         self.minimized_subgraph = None
@@ -93,6 +100,9 @@ class ResistanceNetwork:
         self._predictors = None
         self._edge_order = None
         self._gendist = None
+        self._origin = None
+        self._subgraph_origin = None
+        self._origin_point = None
 
         # Initialization methods
         self.initialize_network()
@@ -187,6 +197,33 @@ class ResistanceNetwork:
 
         # Annotate edges of the network graph
         self._K = self.annotate_edges(self.output_prefix)
+
+        # Identify the furthest downstream segment to anchor directional
+        # calculations later on
+        reach_to_edge = self.create_reach_to_edge_dict()
+        if self.infer_origin and not self.origin:
+            # Find the REACH_ID with a "NEXT_DOWN" that is not in reach_to_edge
+            for p1, p2, dat in self.subgraph.edges(data=True):
+                next_down = dat[self.infer_origin]
+                if next_down and next_down not in reach_to_edge:
+                    self._origin = dat[self.reachid_col]
+                    self._edge_origin = reach_to_edge.get(self._origin)
+                    break
+            if not hasattr(self, '_origin'):
+                raise ValueError(
+                    "Could not infer origin based on 'NEXT_DOWN'.")
+        # if provided, make sure it is present in table
+        elif self.origin:
+            # Check if the provided origin is in the reach_to_edge dictionary
+            if self.origin not in reach_to_edge:
+                raise ValueError(
+                    f"The provided origin {self.origin} is not found.")
+            else:
+                self._origin = self.origin
+                self._edge_origin = reach_to_edge.get(self._origin)
+        
+        # plot graph with detected origin
+        self.plot_inferred_origin(self.output_prefix)
 
         # Clean up to save memory by removing unnecessary graph copies
         del self._G
@@ -457,6 +494,13 @@ class ResistanceNetwork:
 
         return formatted_table
 
+    def create_reach_to_edge_dict(self):
+        reach_to_edge = {}
+        for p1, p2, dat in self._K.edges(data=True):
+            reach = dat[self.reachid_col]
+            reach_to_edge[reach] = dat['EDGE_ID']
+        return reach_to_edge
+
     def output_and_plot_model(self, oname, mat_r, edge_r, plot=True):
         """
         Outputs model results to files and optionally plots the resistance
@@ -579,6 +623,54 @@ class ResistanceNetwork:
 
         # Clear the plot to free up memory
         plt.clf()
+        plt.close()
+
+    def plot_inferred_origin(self, oname):
+        # Extract the positions of the nodes in the graph
+        pos = {n: n for n in self._K.nodes}
+
+        # Create a new figure
+        plt.figure(figsize=(8, 6))
+
+        # Draw the edges of the network
+        nx.draw_networkx_edges(self._K, pos, alpha=0.5, width=1)
+
+        def check_terminal(p1, p2):
+            print(self._K.degree(p1))
+            print(self._K.degree(p2))
+            if self._K.degree(p1) == 1:
+                return p1
+            elif self._K.degree(p2) == 1:
+                return p2
+            else:
+                return None
+
+        # Find and highlight the origin segment
+        for p1, p2, dat in self.subgraph.edges(data=True):
+            # Check if dat[self.reachid_col] is iterable and contains origin
+            if isinstance(dat[self.reachid_col], list):
+                if self._origin in dat[self.reachid_col]:
+                    nx.draw_networkx_edges(
+                        self.subgraph, pos,
+                        edgelist=[(p1, p2)],
+                        width=3,
+                        edge_color='orange'
+                    )
+            # If not iterable, check if it is equal to self._origin
+            elif dat[self.reachid_col] == self._origin:
+                nx.draw_networkx_edges(
+                    self.subgraph, pos,
+                    edgelist=[(p1, p2)],
+                    width=3,
+                    edge_color='orange'
+                )
+
+        # Remove the axis
+        plt.axis('off')
+
+        # Save the plot to a file
+        plt.title("Graph with inferred origin point")
+        plt.savefig(f"{oname}.graphOrigin.pdf")
         plt.close()
 
     def parse_subgraph_from_points(self, out=None):

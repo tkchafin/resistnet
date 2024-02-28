@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import sys
 import random
 from datetime import datetime
 
@@ -31,9 +32,14 @@ def main():
         inmat=params.inmat,
         reachid_col=params.reachid_col,
         length_col=params.length_col,
+        infer_origin=params.infer_origin,
+        origin=params.origin,
         out=params.out,
         verbose=True
     )
+
+    print(network._origin)
+    sys.exit()
 
     # Step 2: Initialise ModelRunner
     runner = ModelRunner(
