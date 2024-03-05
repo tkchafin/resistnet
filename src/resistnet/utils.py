@@ -9,6 +9,62 @@ import pandas as pd
 from sortedcontainers import SortedDict
 
 
+def graph_to_dag(K, origin):
+    """
+    Convert an undirected graph to a Directed Acyclic Graph (DAG) where all
+    edges are directed toward the tips from the root/ source node.
+
+    Args:
+        K (networkx.Graph): The undirected graph to be converted.
+        origin (node): The node in the graph that will act as the source point
+                       or root.
+
+    Returns:
+        networkx.DiGraph: A directed version of the input graph with all paths
+                          oriented away from the specified root node.
+    """
+    # Create an empty Directed Graph
+    D = nx.DiGraph()
+
+    # Start BFS from the root node, adding edges to D
+    for parent, child in nx.bfs_edges(K, source=origin):
+        D.add_edge(parent, child)  # direction is root -> tips
+        # copy attributes
+        if K.has_edge(parent, child):
+            for key, value in K[parent][child].items():
+                D[child][parent][key] = value
+    return D
+
+
+def graph_to_dag_converging(K, origin):
+    """
+    Convert an undirected graph to a Directed Acyclic Graph (DAG) where all
+    edges are directed to converge on a specified root node. 
+
+    Args:
+        K (networkx.Graph): The undirected graph to be converted.
+        origin (node): The node in the graph that will act as the convergence
+                       point or root.
+
+    Returns:
+        networkx.DiGraph: A directed version of the input graph with all paths
+                          oriented to converge on the specified root node.
+    """
+    # Create an empty Directed Graph
+    D = nx.DiGraph()
+
+    # Start BFS from the root node, adding edges to D with direction towards the root
+    for parent, child in nx.bfs_edges(K, source=origin):
+        D.add_edge(child, parent)  # Reverse the direction to point towards the root
+
+        # Optionally copy attributes from the original graph to the new directed graph
+        if K.has_edge(parent, child):
+            for key, value in K[parent][child].items():
+                D[child][parent][key] = value
+    return D
+
+
+
 def haversine(coord1, coord2):
     """
     Calculate the great circle distance in kilometers between two points
