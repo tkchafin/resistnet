@@ -1,23 +1,13 @@
-import os
+
 import sys
-from functools import partial
-import pickle
-import traceback
-import itertools
-import pandas as pd
 import numpy as np
-from sortedcontainers import SortedDict
-import seaborn as sns
 import matplotlib.pyplot as plt
-import pyogrio
-import momepy
 import networkx as nx
 
 import resistnet.utils as utils
-import resistnet.aggregators as agg
 import resistnet.transform as trans
-import resistnet.resist_dist as rd
 from resistnet.resistance_network import ResistanceNetwork
+
 
 class ResistanceNetworkSAMC(ResistanceNetwork):
     """
@@ -176,6 +166,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             edge_id: idx for idx, edge_id in enumerate(self._edge_order)}
 
         id = self.reachid_col
+
         # Helper function to determine adjacency and direction
         def add_edge_adjacency(u, v, edge_data_u_v):
             if id in edge_data_u_v:
@@ -186,10 +177,11 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     # of v are downstream, predecessors are upstream
                     for succ in self._K.successors(v):  # Downstream edges
                         edge_data_v_succ = self._K.get_edge_data(v, succ)
-                        if id in edge_data_v_succ and edge_data_v_succ[id] in edge_to_idx:
-                            idx_v_succ = edge_to_idx[edge_data_v_succ[id]]
-                            adjacency_matrix[idx_u_v, idx_v_succ] = 1 
-                            adjacency_matrix[idx_v_succ, idx_u_v] = -1 
+                        if id in edge_data_v_succ:
+                            if edge_data_v_succ[id] in edge_to_idx:
+                                idx_v_succ = edge_to_idx[edge_data_v_succ[id]]
+                                adjacency_matrix[idx_u_v, idx_v_succ] = 1 
+                                adjacency_matrix[idx_v_succ, idx_u_v] = -1 
 
         # Iterate over all edges to populate adjacency relationships
         for u, v, edge_data in self._K.edges(data=True):
@@ -209,6 +201,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     adjacency_matrix[idx_j, idx_i] = -1
                     adjacency_matrix[idx_i, idx_j] = -1
 
+        # TODO: If directional model, return abs(adjacency_matrix)
 
         self._adj = adjacency_matrix
 
@@ -284,11 +277,13 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         """
         fitness = 0
         res = None
-        multi = None
+        multi = np.zeros_like(self._adj, dtype=float)
+        adj_i = np.transpose(np.nonzero(self._adj))
         first = True
 
         # Compute any transformations
         for i, variable in enumerate(self._predictors.columns):
+            var_m = np.zeros_like(self._adj, dtype=float)
             # Perform variable transformations if the variable is selected
             # (indicated by a value of 1)
             if individual[0::5][i] == 1:
@@ -298,12 +293,38 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     individual[3::5][i]
                 )
                 # perform directional calculations
+                if individual[1::5][i] == 1:
+                    pass
 
-                # if first:
-                #     multi = var * individual[1::5][i]
-                #     first = False
-                # else:
-                #     multi += var * individual[1::5][i]
+                # reScale (minmax)
+                var = trans.rescaleCols(var, 0, 1)
+                print(var)
+
+                # if directional, convert
+
+                # Compute values for entries with 1
+                ones_indices = adj_i[self._adj[adj_i[:, 0], adj_i[:, 1]] == 1]
+                for i, j in ones_indices:
+                    var_m[i, j] = (var[i] + var[j]) / 2.0
+
+                # Compute values for entries with -1
+                minus_ones_indices = adj_i[self._adj[adj_i[:, 0], adj_i[:, 1]] == -1]
+                for i, j in minus_ones_indices:
+                    var_m[i, j] = var[i] - var[j]
+
+                print(var_m)
+                var_m = trans.rescaleCols(var_m, 0, 1)
+                print(var_m)
+
+                # sum within multivariate adjacency
+                if first:
+                    multi = var * individual[1::5][i]
+                    first = False
+                else:
+                    multi += var * individual[1::5][i]
+
+                sys.exit()
+            # inverse
 
         # If no layers are selected, return a zero fitness
         if first:
@@ -384,3 +405,72 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # Save the plot to a file
         plt.savefig(f"{oname}.graphDirectionality.pdf")
         plt.close()
+
+
+class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
+    """
+    A subclass of ResistanceNetwork that handles specific worker operations.
+
+    This class is designed for internal use, to hold local data for worker
+    operations.
+
+    Args:
+        network (NetworkX graph): The network graph.
+        pop_agg (str): Population aggregation method.
+        reachid_col (str): Column name for reach ID.
+        length_col (str): Column name for length.
+        variables (list): List of variables.
+        agg_opts (dict): Aggregation options.
+        fitmetric (str): Fitness metric.
+        posWeight (bool): Position weight.
+        fixWeight (bool): Fixed weight.
+        allShapes (bool): Indicator for all shapes.
+        fixShape (bool): Fixed shape.
+        min_weight (float): Minimum weight.
+        max_shape (float): Maximum shape.
+        inc (numpy.ndarray): Incidence matrix.
+        point_coords (dict): Point coordinates.
+        points_names (dict): Point names.
+        points_snapped (dict): Snapped points.
+        points_labels (dict): Point labels.
+        predictors (DataFrame): Predictor variables.
+        edge_order (list): Order of edges.
+        gendist (numpy.ndarray): Genetic distance matrix.
+        adj (numpy.ndarray): Adjacency matrix.
+        origin (tuple): Origin node.
+    """
+    def __init__(self, network, pop_agg, reachid_col, length_col,
+                 variables, agg_opts, fitmetric, posWeight, fixWeight,
+                 allShapes, fixShape, min_weight, max_shape, inc, point_coords,
+                 points_names, points_snapped, points_labels, predictors,
+                 edge_order, gendist, adj):
+
+        self.network = network
+        self.pop_agg = pop_agg
+        self.reachid_col = reachid_col
+        self.length_col = length_col
+        self.output_prefix = None
+        self.verbose = False
+        self.variables = variables
+        self.agg_opts = agg_opts
+
+        self.fitmetric = fitmetric
+        self.posWeight = posWeight
+        self.fixWeight = fixWeight
+        self.fixShape = fixShape
+        self.allShapes = allShapes
+        self.min_weight = min_weight
+        self.max_shape = max_shape
+
+        self._inc = inc
+        self._origin = origin
+        self._G = None
+        self._K = self.read_network()
+        self._point_coords = point_coords
+        self._points_names = points_names
+        self._points_snapped = points_snapped
+        self._points_labels = points_labels
+        self._predictors = predictors
+        self._edge_order = edge_order
+        self._gendist = gendist
+        self._adj = adj

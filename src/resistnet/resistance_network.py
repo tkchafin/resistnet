@@ -982,40 +982,40 @@ class ResistanceNetwork:
 
         # Apply transformation based on the specified type
         if transformation == 1:
-            d = trans.ricker(dat, shape, 10)
+            d = trans.ricker(dat, shape, 1)
         elif transformation == 2:
             if self.allShapes:
-                d = trans.revRicker(dat, shape, 10)
+                d = trans.revRicker(dat, shape, 1)
             else:
-                d = trans.ricker(dat, shape, 10)
+                d = trans.ricker(dat, shape, 1)
         elif transformation == 3:
             if self.allShapes:
-                d = trans.invRicker(dat, shape, 10)
+                d = trans.invRicker(dat, shape, 1)
             else:
-                d = trans.revInvRicker(dat, shape, 10)
+                d = trans.revInvRicker(dat, shape, 1)
         elif transformation == 4:
-            d = trans.revInvRicker(dat, shape, 10)
+            d = trans.revInvRicker(dat, shape, 1)
         elif transformation == 5:
-            d = trans.monomolecular(dat, shape, 10)
+            d = trans.monomolecular(dat, shape, 1)
         elif transformation == 6:
             if self.allShapes:
-                d = trans.revMonomolecular(dat, shape, 10)
+                d = trans.revMonomolecular(dat, shape, 1)
             else:
-                d = trans.monomolecular(dat, shape, 10)
+                d = trans.monomolecular(dat, shape, 1)
         elif transformation == 7:
             if self.allShapes:
-                d = trans.invMonomolecular(dat, shape, 10)
+                d = trans.invMonomolecular(dat, shape, 1)
             else:
-                d = trans.revInvMonomolecular(dat, shape, 10)
+                d = trans.revInvMonomolecular(dat, shape, 1)
         elif transformation == 8:
-            d = trans.revInvMonomolecular(dat, shape, 10)
+            d = trans.revInvMonomolecular(dat, shape, 1)
         elif transformation <= 0:
             # No transformation applied
             pass
         else:
             print("WARNING: Invalid transformation type.")
 
-        return trans.rescaleCols(d, 0, 10)
+        return trans.rescaleCols(d, 0, 1)
 
     def evaluate(self, individual):
         """
@@ -1062,7 +1062,7 @@ class ResistanceNetwork:
         else:
             # Rescale multi-surface for circuitscape and evaluate using simple
             # resistance distance
-            multi = trans.rescaleCols(multi, 1, 10)
+            multi = trans.rescaleCols(multi, 0, 1)
             r, res = rd.parsePairwise(
                 self._points_snapped, self._inc, multi, self._gendist
             )
@@ -1104,7 +1104,7 @@ class ResistanceNetwork:
                     first = False
                 else:
                     multi += var * model[1::5][i]
-                multi = trans.rescaleCols(multi, 1, 10)
+                multi = trans.rescaleCols(multi, 0, 1)
 
         # Get pairwise effective resistance matrix
         r = rd.effectiveResistanceMatrix(
@@ -1275,7 +1275,7 @@ class SimResistanceNetwork(ResistanceNetwork):
         self._edge_order = df.index
 
         # Rescale variables
-        predictors = trans.rescaleCols(df[vars['VAR']], 0, 10)
+        predictors = trans.rescaleCols(df[vars['VAR']], 0, 1)
 
         # Generate composite resistance
         multi = None

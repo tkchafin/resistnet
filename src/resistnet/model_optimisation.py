@@ -6,7 +6,11 @@ import numpy as np
 from queue import Empty
 from multiprocessing import Process, Queue
 from deap import base, creator, tools
+
+from resistnet.resistance_network import ResistanceNetwork
 from resistnet.resistance_network import ResistanceNetworkWorker
+from resistnet.samc_network import ResistanceNetworkSAMC
+from resistnet.samc_network import ResistanceNetworkSAMCWorker
 from resistnet.hall_of_fame import HallOfFame
 
 
@@ -17,8 +21,8 @@ class ModelRunner:
 
     Attributes:
         seed (int): Seed for random number generator.
-        resistance_network (ResistanceNetworkWorker): An instance of
-                                                      ResistanceNetworkWorker.
+        resistance_network (ResistanceNetwork): An instance of
+                                                ResistanceNetwork or subclass.
         verbose (bool): Flag to control verbosity of output.
         task_queue (Queue): Queue for tasks.
         result_queue (Queue): Queue for results.
@@ -35,7 +39,7 @@ class ModelRunner:
         verbosity.
 
         Args:
-            resistance_network (ResistanceNetworkWorker): The resistance
+            resistance_network (ResistanceNetwork or subclass): The resistance
                                                           network to optimize.
             seed (int): Seed for random number generator.
             verbose (bool): Flag to control verbosity of output.
@@ -203,13 +207,14 @@ class ModelRunner:
             # Initialize GA components and worker pool
             print("init")
             self.initialize_ga()
-            sys.exit()
             self.start_workers(threads)
 
             # Initialize population and set up GA run parameters
             self.initialise_population()
             cxpb, indpb = self.cxpb, self.indpb
             fails, current_best = 0, None
+
+            sys.exit()
 
             # Run for maxgens generations
             for g in range(1, maxgens + 1):
@@ -642,6 +647,21 @@ class ModelRunner:
         if self.verbose:
             print()
 
+        # get worker type
+        # NOTE: THe order is important here, have to do subclass before 
+        # parent check (since both will return true)
+        if isinstance(self.resistance_network, ResistanceNetworkSAMC):
+            worker_type = "base"
+        elif isinstance(self.resistance_network, ResistanceNetwork):
+            worker_type = "samc"
+        else:
+            worker_type = "unknown" 
+
+        for i in range(threads):
+            worker_seed = self.seed + i
+            if self.verbose:
+                print(f"Starting worker {i} with seed {worker_seed}")
+
         for i in range(threads):
             worker_seed = self.seed + i
             if self.verbose:
@@ -649,6 +669,7 @@ class ModelRunner:
 
             # Pass only necessary and picklable information
             worker_args = {
+                'worker_type': worker_type,
                 'network': self.resistance_network.network,
                 'pop_agg': self.resistance_network.pop_agg,
                 'reachid_col': self.resistance_network.reachid_col,
@@ -666,12 +687,16 @@ class ModelRunner:
                 "fitmetric": self.fitmetric,
                 "posWeight": self.posWeight,
                 "fixWeight": self.fixWeight,
-                "fixAsym": self.fixAsym,
+                #"fixAsym": self.fixAsym,
                 "allShapes": self.allShapes,
                 "fixShape": self.fixShape,
                 "min_weight": self.min_weight,
                 "max_shape": self.max_shape
             }
+            if worker_type == "samc":
+                worker_args['adj'] = self.resistance_network._adj
+                worker_args['origin'] = self.resistance_network._origin
+
             worker_process = Process(
                 target=self.worker_task,
                 args=(self.task_queue, self.result_queue, worker_args,
@@ -696,7 +721,15 @@ class ModelRunner:
             seed (int): The seed value for random number generation.
         """
         random.seed(seed)
-        worker = ResistanceNetworkWorker(**worker_args)
+        worker_type = worker_args.get('worker_type', 'base')
+        del worker_args['worker_type']
+        if worker_type == "base":
+            worker = ResistanceNetworkWorker(**worker_args)
+        elif worker_type == "samc":
+            worker = ResistanceNetworkSAMCWorker(**worker_args)
+        else:
+            raise ValueError("Unknown worker type")
+
         while True:
             try:
                 task, id, data = task_queue.get()
