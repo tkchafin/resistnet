@@ -7,7 +7,7 @@ import networkx as nx
 import resistnet.utils as utils
 import resistnet.transform as trans
 from resistnet.resistance_network import ResistanceNetwork
-
+import scipy.sparse as sp
 
 class ResistanceNetworkSAMC(ResistanceNetwork):
     """
@@ -159,9 +159,23 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             network_file_suffix = ".subgraph.net"
         self.network = f"{self.output_prefix}{network_file_suffix}"
 
+    # scipy.sparse version
     def create_adjacency_matrix(self):
+        """
+        Creates an adjacency matrix representing the connections between nodes
+        in the network.
+
+        This method constructs a sparse adjacency matrix to represent the graph
+        structure of the network. The matrix is filled based on the edge data,
+        with entries indicating the directionality of connections (1 for
+        downstream, -1 for upstream) between nodes.
+
+        Returns:
+            None: The method updates the instance attribute `_adj` with the
+            constructed adjacency matrix (scipy.sparse.cnr format)
+        """
         n = len(self._edge_order)
-        adjacency_matrix = np.zeros((n, n), dtype=int)
+        adjacency_matrix = sp.lil_matrix((n, n), dtype=int)
         edge_to_idx = {
             edge_id: idx for idx, edge_id in enumerate(self._edge_order)}
 
@@ -201,24 +215,72 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     adjacency_matrix[idx_j, idx_i] = -1
                     adjacency_matrix[idx_i, idx_j] = -1
 
-        # TODO: If directional model, return abs(adjacency_matrix)
+        # If directional model, take absolute values of adjacency_matrix
+        # TODO 
+        # self._adj = abs(adjacency_matrix).tocsr() if directional_model else
+        # adjacency_matrix.tocsr()
+        self._adj = adjacency_matrix.tocsr()
 
-        self._adj = adjacency_matrix
+    # DEPRECATED: numpy ndarray version
+    # def create_adjacency_matrix(self):
+    #     n = len(self._edge_order)
+    #     adjacency_matrix = np.zeros((n, n), dtype=int)
+    #     edge_to_idx = {
+    #         edge_id: idx for idx, edge_id in enumerate(self._edge_order)}
+
+    #     id = self.reachid_col
+
+    #     # Helper function to determine adjacency and direction
+    #     def add_edge_adjacency(u, v, edge_data_u_v):
+    #         if id in edge_data_u_v:
+    #             edge_id_u_v = edge_data_u_v[id]
+    #             if edge_id_u_v in edge_to_idx:
+    #                 idx_u_v = edge_to_idx[edge_id_u_v]
+    #                 # Since the graph is oriented towards the root, successors
+    #                 # of v are downstream, predecessors are upstream
+    #                 for succ in self._K.successors(v):  # Downstream edges
+    #                     edge_data_v_succ = self._K.get_edge_data(v, succ)
+    #                     if id in edge_data_v_succ:
+    #                         if edge_data_v_succ[id] in edge_to_idx:
+    #                             idx_v_succ = edge_to_idx[edge_data_v_succ[id]]
+    #                             adjacency_matrix[idx_u_v, idx_v_succ] = 1 
+    #                             adjacency_matrix[idx_v_succ, idx_u_v] = -1 
+
+    #     # Iterate over all edges to populate adjacency relationships
+    #     for u, v, edge_data in self._K.edges(data=True):
+    #         add_edge_adjacency(u, v, edge_data)
+
+    #     # special case for edges connected to origin
+    #     root_edges = self._K.in_edges(self._origin, data=True)
+    #     root_edge_indices = []
+    #     for u, v, data in root_edges:
+    #         if self.reachid_col in data:
+    #             edge_id = data[self.reachid_col]
+    #             if edge_id in edge_to_idx:
+    #                 root_edge_indices.append(edge_to_idx[edge_id])
+    #     for idx_i in root_edge_indices:
+    #         for idx_j in root_edge_indices:
+    #             if idx_i != idx_j:
+    #                 adjacency_matrix[idx_j, idx_i] = -1
+    #                 adjacency_matrix[idx_i, idx_j] = -1
+
+    #     # TODO: If directional model, return abs(adjacency_matrix)
+
+    #     self._adj = adjacency_matrix
 
     def polarise_network(self, origin):
 
         # Re-orient as a DAG
         self._K = utils.graph_to_dag_converging(self._K, self._origin)
         self.plot_dag_directionality(self.output_prefix)
-        print(self._K)
 
         # make adjacency matrix of edges, ordered as in self._edge_order
         self.create_adjacency_matrix()
-        print(self._adj)
+        dense_adj_matrix = self._adj.toarray()
         adj_out = self.output_prefix + ".adjacencyMatrix.tsv"
-        np.savetxt(adj_out, self._adj, delimiter='\t', fmt='%d')
+        np.savetxt(adj_out, dense_adj_matrix, delimiter='\t', fmt='%d')
 
-        # we will work on further steps later
+        # work on further steps later
         pass
 
     def find_confluence(self):
@@ -275,9 +337,10 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             tuple: A tuple containing the fitness value and the results of the
                    evaluation.
         """
+        print("EVALUATE")
+        print(self._adj)
         fitness = 0
         res = None
-        multi = np.zeros_like(self._adj, dtype=float)
         adj_i = np.transpose(np.nonzero(self._adj))
         first = True
 
@@ -292,39 +355,39 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     individual[2::5][i],
                     individual[3::5][i]
                 )
-                # perform directional calculations
-                if individual[1::5][i] == 1:
-                    pass
 
                 # reScale (minmax)
                 var = trans.rescaleCols(var, 0, 1)
-                print(var)
 
-                # if directional, convert
+                # Compute transition values
+                # perform directional calculations
+                if individual[1::5][i] == 1:
+                    var_m = self._compute_transition(var, directional=True)
+                else:
+                    var_m = self._compute_transition(var, directional=False)
 
-                # Compute values for entries with 1
-                ones_indices = adj_i[self._adj[adj_i[:, 0], adj_i[:, 1]] == 1]
-                for i, j in ones_indices:
-                    var_m[i, j] = (var[i] + var[j]) / 2.0
-
-                # Compute values for entries with -1
-                minus_ones_indices = adj_i[self._adj[adj_i[:, 0], adj_i[:, 1]] == -1]
-                for i, j in minus_ones_indices:
-                    var_m[i, j] = var[i] - var[j]
-
-                print(var_m)
-                var_m = trans.rescaleCols(var_m, 0, 1)
-                print(var_m)
+                #var_m = utils.masked_minmax(var_m, mask)
+                var_m.data = utils.minmax(var_m.data)
 
                 # sum within multivariate adjacency
                 if first:
-                    multi = var * individual[1::5][i]
+                    multi = var_m.copy()
+                    multi.data *= individual[1::5][i]
                     first = False
                 else:
-                    multi += var * individual[1::5][i]
+                    var_m.data *= individual[1::5][i]
+                    multi.data += var_m.data
 
-                sys.exit()
-            # inverse
+        # minmax scale
+        multi.data = utils.minmax(multi.data)
+
+        sys.exit()
+
+        # inverse 
+        #multi.data = 1/multi.data
+
+        # convert to dense array 
+        # fill diagonals 
 
         # If no layers are selected, return a zero fitness
         if first:
@@ -346,7 +409,39 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             # res = list(res.iloc[0])
 
         # Return fitness value and results
-        return (fitness, res)
+        sys.exit()
+        return 0.0, [0.0,0.0,0.0,0.0,0.0]
+        #return (fitness, res)
+
+    def _compute_transition(self, var, directional=False):
+            data = []
+            rows = []
+            cols = []
+            n = self._adj.shape[0]
+
+            # Iterating through non-zero elements
+            if directional:
+                for row, col in zip(*self._adj.nonzero()):
+                    value = self._adj[row, col]
+                    if value == 1:
+                        new_value = (var.iloc[row] + var.iloc[col]) / 2.0
+                    elif value == -1:
+                        new_value = var.iloc[row] - var.iloc[col]
+                    else:
+                        continue
+                    data.append(new_value)
+                    rows.append(row)
+                    cols.append(col)
+            else:
+                for row, col in zip(*self._adj.nonzero()):
+                    value = self._adj[row, col]
+                    new_value = (var.iloc[row] + var.iloc[col]) / 2.0
+                    data.append(new_value)
+                    rows.append(row)
+                    cols.append(col)
+
+            # Create a sparse matrix from the new values
+            return sp.csr_matrix((data, (rows, cols)), shape=(n, n))
 
     def plot_inferred_origin(self, oname):
         # Extract the positions of the nodes in the graph
@@ -443,7 +538,7 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
                  variables, agg_opts, fitmetric, posWeight, fixWeight,
                  allShapes, fixShape, min_weight, max_shape, inc, point_coords,
                  points_names, points_snapped, points_labels, predictors,
-                 edge_order, gendist, adj):
+                 edge_order, gendist, adj, origin):
 
         self.network = network
         self.pop_agg = pop_agg

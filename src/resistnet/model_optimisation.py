@@ -214,7 +214,6 @@ class ModelRunner:
             cxpb, indpb = self.cxpb, self.indpb
             fails, current_best = 0, None
 
-            sys.exit()
 
             # Run for maxgens generations
             for g in range(1, maxgens + 1):
@@ -648,19 +647,14 @@ class ModelRunner:
             print()
 
         # get worker type
-        # NOTE: THe order is important here, have to do subclass before 
+        # NOTE: THe order is important here, have to do subclass before
         # parent check (since both will return true)
         if isinstance(self.resistance_network, ResistanceNetworkSAMC):
-            worker_type = "base"
-        elif isinstance(self.resistance_network, ResistanceNetwork):
             worker_type = "samc"
+        elif isinstance(self.resistance_network, ResistanceNetwork):
+            worker_type = "base"
         else:
-            worker_type = "unknown" 
-
-        for i in range(threads):
-            worker_seed = self.seed + i
-            if self.verbose:
-                print(f"Starting worker {i} with seed {worker_seed}")
+            raise ValueError("Could not set worker type")
 
         for i in range(threads):
             worker_seed = self.seed + i
@@ -687,7 +681,7 @@ class ModelRunner:
                 "fitmetric": self.fitmetric,
                 "posWeight": self.posWeight,
                 "fixWeight": self.fixWeight,
-                #"fixAsym": self.fixAsym,
+                # "fixAsym": self.fixAsym,
                 "allShapes": self.allShapes,
                 "fixShape": self.fixShape,
                 "min_weight": self.min_weight,
@@ -704,7 +698,6 @@ class ModelRunner:
             )
             worker_process.start()
             self.workers.append(worker_process)
-
         if self.verbose:
             print()
 
@@ -721,6 +714,7 @@ class ModelRunner:
             seed (int): The seed value for random number generation.
         """
         random.seed(seed)
+
         worker_type = worker_args.get('worker_type', 'base')
         del worker_args['worker_type']
         if worker_type == "base":
@@ -728,7 +722,7 @@ class ModelRunner:
         elif worker_type == "samc":
             worker = ResistanceNetworkSAMCWorker(**worker_args)
         else:
-            raise ValueError("Unknown worker type")
+            raise ValueError("Worker type not implemented")
 
         while True:
             try:

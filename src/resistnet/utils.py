@@ -64,6 +64,49 @@ def graph_to_dag_converging(K, origin):
     return D
 
 
+def minmax(X):
+    """
+    Perform min-max scaling on a NumPy array, scaling all values to be between 0 and 1.
+
+    Args:
+        X (numpy.ndarray): The input array to be scaled.
+
+    Returns:
+        numpy.ndarray: The scaled array, with all values between 0 and 1.
+    """
+    X_min = X.min()
+    X_max = X.max()
+    X_scaled = (X - X_min) / (X_max - X_min)
+    return X_scaled
+
+
+def masked_minmax(X, mask):
+    """
+    Perform min-max scaling on selected elements of a NumPy array. Selection
+    is determined by a boolean mask, and only elements where the mask is True
+    are scaled. Elements where the mask is False remain unchanged.
+
+    Args:
+        X (numpy.ndarray): The input array containing elements to be scaled.
+        mask (numpy.ndarray): A boolean array with the same shape as X. True
+            values indicate the positions in X that should be scaled.
+
+    Returns:
+        numpy.ndarray: An array with the same shape as X, where selected
+                       elements have been scaled to be between 0 and 1, and
+                       other elements are unchanged.
+    """
+    masked_values = X[mask]
+    min_val = masked_values.min()
+    max_val = masked_values.max()
+    scaled_values = (
+        (masked_values - min_val) / (max_val - min_val) 
+        if max_val != min_val else masked_values
+    )
+    X_scaled = np.copy(X)
+    X_scaled[mask] = scaled_values
+    return X_scaled
+
 
 def haversine(coord1, coord2):
     """
