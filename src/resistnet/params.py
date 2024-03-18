@@ -29,7 +29,8 @@ class parseArgs():
                  "length_col=", "reachid_col=", "minimize", "network=",
                  "fixShape", "max_gens=", "max_gen=", "max_pop=", "varFile=",
                  "tournsize=", "tournSize=", "tSize=", "threads=",
-                 "minWeight=", "min_weight=", "infer_origin=", "origin="
+                 "minWeight=", "min_weight=", "infer_origin=", "origin=",
+                 "sizes=", "allSymmetric"
                  ]
             )
         except getopt.GetoptError as err:
@@ -77,6 +78,7 @@ class parseArgs():
         self.report_all = False
         self.plot = True
         self.only_keep = True
+        self.allSymmetric = False
 
         self.posWeight = False
         self.fixWeight = False
@@ -86,8 +88,11 @@ class parseArgs():
         self.max_shape = 100
         self.min_weight = 0.0
 
+        # SAMC options
         self.infer_origin = "NEXT_DOWN"
         self.origin = None
+        self.sizefile = None
+
 
         # First pass to see if help menu was called
         for o, a in options:
@@ -213,6 +218,10 @@ class parseArgs():
                 self.infer_origin = str(arg)
             elif opt == "origin":
                 self.origin = int(arg)
+            elif opt == "allSymmetric":
+                self.allSymmetric = True
+            elif opt == "sizes":
+                self.sizefile = str(arg)
             elif opt in ('h', 'help'):
                 pass
             else:
@@ -320,6 +329,9 @@ class parseArgs():
             "        NOTE: Case-insensitive\n"
             "    -b, --burn: Number of generations for pre-burnin [def.=0]\n"
             "    --max_hof_size: Maximum models retained [default=100]\n\n"
+
+            "SAMC options:\n"
+            "TODO origin,infer_origin, sizefile,fixedSize,allSymmetric\n\n"
 
             "Multi-model inference options:\n"
             "    -a, --awsum: Cumulative Akaike weight threshold [def.=0.95]\n"

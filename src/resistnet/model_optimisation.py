@@ -690,6 +690,7 @@ class ModelRunner:
             if worker_type == "samc":
                 worker_args['adj'] = self.resistance_network._adj
                 worker_args['origin'] = self.resistance_network._origin
+                worker_args['R'] = self.resistance_network._R
 
             worker_process = Process(
                 target=self.worker_task,

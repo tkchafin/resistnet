@@ -3,11 +3,13 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
+import pandas as pd
+import scipy.sparse as sp
+from sortedcontainers import SortedDict
 
 import resistnet.utils as utils
 import resistnet.transform as trans
 from resistnet.resistance_network import ResistanceNetwork
-import scipy.sparse as sp
 
 class ResistanceNetworkSAMC(ResistanceNetwork):
     """
@@ -34,8 +36,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         parse_input_gen_mat(): Parses the input genetic distance matrix.
     """
 
-    def __init__(self, network, shapefile, coords, variables, inmat, agg_opts,
-                 pop_agg="ARITH", reachid_col="HYRIV_ID",
+    def __init__(self, network, shapefile, sizes, coords, variables, inmat,
+                 agg_opts, pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
                  origin=None, out="out", verbose=True,
                  minimize=False):
@@ -46,6 +48,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         Args:
             network (NetworkX graph): The network graph.
             shapefile (str): Path to the shapefile.
+            sizes (str): Path to file with population sizes.
             coords (list): List of coordinates.
             variables (list): List of variables.
             inmat (str): Path to input matrix file.
@@ -63,6 +66,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         """
         self.network = network
         self.shapefile = shapefile
+        self.pop_sizes = sizes
         self.coords = coords
         self.inmat = inmat
         self.pop_agg = pop_agg
@@ -76,6 +80,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self.fitmetric = "aic"
         self.infer_origin = infer_origin
         self.origin = origin
+        self.allSymmetric = False
 
         # Additional attributes for internal use
         self.minimized_subgraph = None
@@ -83,6 +88,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self._inc = None
         self._G = None
         self._K = None
+        self._sizes = None
         self._point_coords = None
         self._points_names = None
         self._points_snapped = None
@@ -94,6 +100,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self._edge_origin = None
         self._reach_origin = None
         self._Kd = None
+        self._edge_absorption = None
+        self._R = None
 
         # Initialization methods
         self.initialize_network()
@@ -103,8 +111,10 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             self.parse_input_gen_mat(out=self.output_prefix)
         
         # direct and detect origin 
-        print(self._reach_origin)
         self.polarise_network(self._origin)
+
+        # calculate edge-wise absorption 
+        self.calculate_absorption()
 
     def initialize_network(self):
         """
@@ -130,8 +140,23 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # Read and snap point coordinate data
         points = utils.read_points_table(self.coords)
 
+        # Read population sizes file
+        sizes = self.read_sizes()
+
+        # Filter to keep only entries present in both points and sizes
+        points = points[points["sample"].isin(sizes["sample"])]
+        sizes = sizes[sizes["sample"].isin(points["sample"])]
+
         # Snap points to the network graph
         self.snap_points(points, self._G, self.output_prefix)
+
+        # NOTE: If multiple pops map to same point, get the average size
+        self._sizes = SortedDict()
+        for key, pops in self._points_names.items():
+            this_sizes = sizes[sizes['sample'].isin(pops)]
+            if this_sizes.empty:
+                raise ValueError(f"Population in {pops} missing size") 
+            self._sizes[key] = this_sizes['size'].mean()
 
         # Compute the subgraph based on the snapped points
         self._K = self.parse_subgraph_from_points(self.output_prefix)
@@ -215,11 +240,12 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     adjacency_matrix[idx_j, idx_i] = -1
                     adjacency_matrix[idx_i, idx_j] = -1
 
-        # If directional model, take absolute values of adjacency_matrix
-        # TODO 
-        # self._adj = abs(adjacency_matrix).tocsr() if directional_model else
-        # adjacency_matrix.tocsr()
-        self._adj = adjacency_matrix.tocsr()
+        # If non-directional model, take absolute values of adjacency_matrix
+        if self.allSymmetric:
+            self._adj = abs(adjacency_matrix).tocsr()
+        else:
+            self._adj = adjacency_matrix.tocsr()
+        return
 
     # DEPRECATED: numpy ndarray version
     # def create_adjacency_matrix(self):
@@ -283,6 +309,60 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # work on further steps later
         pass
 
+    def calculate_absorption(self):
+        # Initialize the array for absorption values, filled with zeros
+        n = len(self._edge_order)
+        self._edge_absorption = [0] * n
+
+        # Mapping from edge IDs to indices in the absorption array
+        edge_to_idx = {
+            edge_id: idx for idx, edge_id in enumerate(self._edge_order)}
+
+        sites = list(self._points_snapped.keys())
+        # Iterate over edges in the graph
+        for u, v, edge_data in self._K.edges(data=True):
+            # Get the edge ID from edge_data using the identifier column name
+            if self.reachid_col in edge_data:
+                edge_id = edge_data[self.reachid_col]
+                if edge_id in edge_to_idx:
+                    # Determine if the 'source' node (u) is sample site
+                    if u in sites:
+                        # Get size
+                        if u in self._sizes:
+                            pop_size = self._sizes[u]
+                            # Calculate the absorption value for the edge
+                            # 1/2Ne (prob 2 alleles coalesce)
+                            absorption_value = 1 / (2 * pop_size)
+                            idx = edge_to_idx[edge_id]
+                            self._edge_absorption[idx] = absorption_value
+                        else:
+                            print(f"Population size missing for {u}")
+        self._R = np.array(self._edge_absorption)
+        self._R = self._R.reshape(-1, 1)
+
+    def read_sizes(self):
+        """
+        Reads the population sizes file and returns it as a DataFrame.
+
+        Returns:
+            pd.DataFrame: DataFrame containing 'sample' and 'size' columns.
+        """
+        if not hasattr(self, 'pop_sizes') or not self.pop_sizes:
+            raise ValueError("Population sizes file path is not set.")
+
+        # Attempt to read the file
+        try:
+            sizes = pd.read_csv(self.pop_sizes, sep='\t', header=0)
+        except Exception as e:
+            raise ValueError(f"Failed to read population sizes file: {str(e)}")
+
+        # Ensure required columns are present
+        required_columns = ['sample', 'size']
+        if not all(col in sizes.columns for col in required_columns):
+            raise ValueError(f"Missing required columns in sizes file")
+
+        return sizes
+
     def find_confluence(self):
         reach_to_edge = self.create_reach_to_edge_dict()
         edges_without_next_down = []
@@ -337,11 +417,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             tuple: A tuple containing the fitness value and the results of the
                    evaluation.
         """
-        print("EVALUATE")
-        print(self._adj)
-        fitness = 0
-        res = None
-        adj_i = np.transpose(np.nonzero(self._adj))
         first = True
 
         # Compute any transformations
@@ -363,10 +438,12 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                 # perform directional calculations
                 if individual[1::5][i] == 1:
                     var_m = self._compute_transition(var, directional=True)
+                    # transpose for 'backward in time' model
+                    var_m = var_m.T
                 else:
                     var_m = self._compute_transition(var, directional=False)
 
-                #var_m = utils.masked_minmax(var_m, mask)
+                # var_m = utils.masked_minmax(var_m, mask)
                 var_m.data = utils.minmax(var_m.data)
 
                 # sum within multivariate adjacency
@@ -378,20 +455,32 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     var_m.data *= individual[1::5][i]
                     multi.data += var_m.data
 
-        # minmax scale
+        # minmax scale 0-1
         multi.data = utils.minmax(multi.data)
 
-        sys.exit()
-
-        # inverse 
-        #multi.data = 1/multi.data
+        # inverse to get transition rates
+        # avoid a division by zero error by setting zero to smallest non-zero
+        non_zero_min = np.min(multi.data[np.nonzero(multi.data)])
+        multi.data[multi.data == 0] = non_zero_min
+        multi.data = utils.minmax(1 / multi.data)
 
         # convert to dense array 
-        # fill diagonals 
+        Q = multi.toarray()
+
+        # fill diagonals (row sums should be 1)
+        np.fill_diagonal(Q, 0)
+        row_sums = Q.sum(axis=1)
+        np.fill_diagonal(Q, 1 - row_sums)
+
+        # append R and compute P matrix 
+        bottom_row = np.zeros((1, Q.shape[1]))
+        bottom_row = np.append(bottom_row, 1).reshape(1, -1)
+        P = np.hstack((Q, self._R))
+        P = np.vstack((P, bottom_row))
 
         # If no layers are selected, return a zero fitness
         if first:
-            fitness = float('-inf')
+            return float('-inf'), None
         else:
             pass
             # Compute P matrix 
@@ -424,7 +513,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                 for row, col in zip(*self._adj.nonzero()):
                     value = self._adj[row, col]
                     if value == 1:
-                        new_value = (var.iloc[row] + var.iloc[col]) / 2.0
+                        new_value = var.iloc[col] - var.iloc[row]
                     elif value == -1:
                         new_value = var.iloc[row] - var.iloc[col]
                     else:
@@ -533,12 +622,13 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         gendist (numpy.ndarray): Genetic distance matrix.
         adj (numpy.ndarray): Adjacency matrix.
         origin (tuple): Origin node.
+        R (numpy.ndarray): Absorption array R
     """
     def __init__(self, network, pop_agg, reachid_col, length_col,
                  variables, agg_opts, fitmetric, posWeight, fixWeight,
                  allShapes, fixShape, min_weight, max_shape, inc, point_coords,
                  points_names, points_snapped, points_labels, predictors,
-                 edge_order, gendist, adj, origin):
+                 edge_order, gendist, adj, origin, R):
 
         self.network = network
         self.pop_agg = pop_agg
@@ -569,3 +659,4 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self._edge_order = edge_order
         self._gendist = gendist
         self._adj = adj
+        self._R = R
