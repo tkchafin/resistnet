@@ -9,6 +9,7 @@ from sortedcontainers import SortedDict
 
 import resistnet.utils as utils
 import resistnet.transform as trans
+import resistnet.resist_dist as rd
 from resistnet.resistance_network import ResistanceNetwork
 
 class ResistanceNetworkSAMC(ResistanceNetwork):
@@ -102,6 +103,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self._Kd = None
         self._edge_absorption = None
         self._R = None
+        self._edge_site_indices = None
 
         # Initialization methods
         self.initialize_network()
@@ -319,6 +321,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             edge_id: idx for idx, edge_id in enumerate(self._edge_order)}
 
         sites = list(self._points_snapped.keys())
+        print(sites)
+        tips = [None] * len(sites)
         # Iterate over edges in the graph
         for u, v, edge_data in self._K.edges(data=True):
             # Get the edge ID from edge_data using the identifier column name
@@ -335,10 +339,12 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                             absorption_value = 1 / (2 * pop_size)
                             idx = edge_to_idx[edge_id]
                             self._edge_absorption[idx] = absorption_value
+                            tips[sites.index(u)] = idx
                         else:
                             print(f"Population size missing for {u}")
         self._R = np.array(self._edge_absorption)
         self._R = self._R.reshape(-1, 1)
+        self._edge_site_indices = tips
 
     def read_sizes(self):
         """
@@ -418,6 +424,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                    evaluation.
         """
         first = True
+        multi = None
 
         # Compute any transformations
         for i, variable in enumerate(self._predictors.columns):
@@ -455,52 +462,31 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     var_m.data *= individual[1::5][i]
                     multi.data += var_m.data
 
-        # minmax scale 0-1
-        multi.data = utils.minmax(multi.data)
-
-        # inverse to get transition rates
-        # avoid a division by zero error by setting zero to smallest non-zero
-        non_zero_min = np.min(multi.data[np.nonzero(multi.data)])
-        multi.data[multi.data == 0] = non_zero_min
-        multi.data = utils.minmax(1 / multi.data)
-
-        # convert to dense array 
-        Q = multi.toarray()
-
-        # fill diagonals (row sums should be 1)
-        np.fill_diagonal(Q, 0)
-        row_sums = Q.sum(axis=1)
-        np.fill_diagonal(Q, 1 - row_sums)
-
-        # append R and compute P matrix 
-        bottom_row = np.zeros((1, Q.shape[1]))
-        bottom_row = np.append(bottom_row, 1).reshape(1, -1)
-        P = np.hstack((Q, self._R))
-        P = np.vstack((P, bottom_row))
-
         # If no layers are selected, return a zero fitness
-        if first:
+        if multi is None:
             return float('-inf'), None
         else:
-            pass
-            # Compute P matrix 
+            # complete Q matrix
+            # minmax scale 0-1
+            multi.data = utils.minmax(multi.data)
 
-            # fit SAMC model and compute cfpt matrix 
+            # inverse to get transition rates
+            # avoid divide-by-zero by setting zero to smallest non-zero element
+            non_zero_min = np.min(multi.data[np.nonzero(multi.data)])
+            multi.data[multi.data == 0] = non_zero_min
+            multi.data = utils.minmax(1 / multi.data)
 
-            # compute likelihoods with MLPE 
+            # compute cfpt matrix
+            cfpt, res = rd.conditionalFirstPassTime(
+                multi, self._R, self._edge_site_indices, self._gendist)
 
-            # multi = trans.rescaleCols(multi, 1, 10)
-            # r, res = rd.parsePairwise(
-            #     self._points_snapped, self._inc, multi, self._gendist
-            # )
-            # # fitness = res[self.fitmetric][0]
-            # fitness = res[self.fitmetric].iloc[0]
-            # res = list(res.iloc[0])
-
-        # Return fitness value and results
-        sys.exit()
-        return 0.0, [0.0,0.0,0.0,0.0,0.0]
-        #return (fitness, res)
+            # plot cfpt matrix pairwise regression against genetic distance 
+            # matrix held as self._gendist
+            # these can be assumed to have the same order
+            # fitness = res[self.fitmetric][0]
+            fitness = res[self.fitmetric].iloc[0]
+            res = list(res.iloc[0])
+            return (fitness, res)
 
     def _compute_transition(self, var, directional=False):
             data = []
@@ -628,7 +614,7 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
                  variables, agg_opts, fitmetric, posWeight, fixWeight,
                  allShapes, fixShape, min_weight, max_shape, inc, point_coords,
                  points_names, points_snapped, points_labels, predictors,
-                 edge_order, gendist, adj, origin, R):
+                 edge_order, gendist, adj, origin, R, edge_site_indices):
 
         self.network = network
         self.pop_agg = pop_agg
@@ -660,3 +646,4 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self._gendist = gendist
         self._adj = adj
         self._R = R
+        self._edge_site_indices = edge_site_indices

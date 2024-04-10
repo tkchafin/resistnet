@@ -691,6 +691,9 @@ class ModelRunner:
                 worker_args['adj'] = self.resistance_network._adj
                 worker_args['origin'] = self.resistance_network._origin
                 worker_args['R'] = self.resistance_network._R
+                worker_args[
+                    'edge_site_indices'
+                    ] = self.resistance_network._edge_site_indices
 
             worker_process = Process(
                 target=self.worker_task,
