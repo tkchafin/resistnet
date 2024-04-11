@@ -1,6 +1,6 @@
 import traceback
 import random
-import sys
+import math
 import pandas as pd
 import numpy as np
 from queue import Empty
@@ -214,7 +214,6 @@ class ModelRunner:
             cxpb, indpb = self.cxpb, self.indpb
             fails, current_best = 0, None
 
-
             # Run for maxgens generations
             for g in range(1, maxgens + 1):
                 if self.verbose:
@@ -287,19 +286,19 @@ class ModelRunner:
                             )
 
                     length = len(self.population)
-                    if length > 0 and all(isinstance(
-                            fit, (int, float)) for fit in fits
-                    ):
-                        mean = sum(fits) / length
-                        sum2 = sum(x * x for x in fits)
-                        variance = sum2 / length - mean**2
+                    if length > 0:
+                        if any(math.isinf(fit) for fit in fits):
+                            # Set stats to NaN if any values are inf or -inf
+                            mean = variance = std = float('nan')
+                        else:
+                            mean = sum(fits) / length
+                            sum2 = sum(x * x for x in fits)
+                            variance = sum2 / length - mean**2
 
-                        # Check for negative variance due to floating-point
-                        # arithmetic issues
-                        std = (abs(variance) ** 0.5) if variance >= 0 else 0
+                            std = (math.sqrt(variance)
+                                   if variance >= 0 else float('nan'))
                     else:
-                        mean = float('nan')
-                        std = float('nan')
+                        mean = variance = std = float('nan')
 
                     if self.verbose:
                         print("  Worst %s" % worst)

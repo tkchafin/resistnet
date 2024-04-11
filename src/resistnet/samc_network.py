@@ -468,13 +468,11 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         else:
             # complete Q matrix
             # minmax scale 0-1
-            multi.data = utils.minmax(multi.data)
+            multi.data = utils.minmax_nonzero(multi.data)
 
             # inverse to get transition rates
             # avoid divide-by-zero by setting zero to smallest non-zero element
-            non_zero_min = np.min(multi.data[np.nonzero(multi.data)])
-            multi.data[multi.data == 0] = non_zero_min
-            multi.data = utils.minmax(1 / multi.data)
+            multi.data = utils.minmax_nonzero(1 / multi.data)
 
             # compute cfpt matrix
             cfpt, res = rd.conditionalFirstPassTime(

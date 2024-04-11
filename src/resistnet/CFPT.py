@@ -1,19 +1,18 @@
 import sys
+import warnings
 import numpy as np
-from scipy.sparse import diags, eye, csr_matrix
+from scipy.sparse import diags, eye, csr_matrix, SparseEfficiencyWarning
 from scipy.sparse.linalg import spsolve, lgmres, cg
+from scipy.sparse import SparseEfficiencyWarning
 
-# 1. Scale dest row off-diagonals by absorption 
-# 2. fill diagonals 
-# 3. Extract Qj and qj 
-# 4. Negate Qj and +1 diagonals
+warnings.simplefilter('ignore', SparseEfficiencyWarning)
 
 def CFPT(Q, R, edge_site_indices):
     N = len(edge_site_indices)
     cfpt_matrix = np.zeros((N, N))
 
     for i, dest in enumerate(edge_site_indices):
-        Q_temp = Q.copy().tolil()  # LIL format for easier row manipulation
+        Q_temp = Q.copy().tolil()
         absorption_factor = R[dest]
 
         # Get indices and data for the dest row

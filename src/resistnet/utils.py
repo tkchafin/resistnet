@@ -64,6 +64,37 @@ def graph_to_dag_converging(K, origin):
     return D
 
 
+def minmax_lil(lil_matrix):
+    """
+    Perform min-max scaling on the non-zero values of a lil_matrix, scaling
+    all values to be between 0 and 1. This function modifies the matrix in
+    place.
+
+    Args:
+        lil_matrix (scipy.sparse.lil_matrix): The input sparse matrix
+
+    Returns:
+        None: The matrix is modified in place.
+    """
+    # Flatten all data to find global min and max
+    all_data = np.hstack(lil_matrix.data)
+
+    if all_data.size == 0:
+        return  # No data to scale, exit the function
+    
+    X_min = all_data.min()
+    X_max = all_data.max()
+    
+    # Avoid division by zero if all values are the same
+    if X_min == X_max:
+        return
+    
+    # Scale each non-zero value in lil_matrix.data
+    for row_data in lil_matrix.data:
+        for i in range(len(row_data)):
+            row_data[i] = (row_data[i] - X_min) / (X_max - X_min)
+
+
 def minmax(X):
     """
     Perform min-max scaling on a NumPy array, scaling all values to be between 0 and 1.
@@ -77,6 +108,26 @@ def minmax(X):
     X_min = X.min()
     X_max = X.max()
     X_scaled = (X - X_min) / (X_max - X_min)
+    return X_scaled
+
+
+def minmax_nonzero(X):
+    """
+    Perform min-max scaling on a NumPy array, initially scaling all values to be between 0 and 1,
+    and then adjusting the scale so that the smallest non-zero value becomes 1 and other values
+    are adjusted accordingly.
+
+    Args:
+        X (numpy.ndarray): The input array to be scaled.
+
+    Returns:
+        numpy.ndarray: The scaled array, with values adjusted as described.
+    """
+    X_min = X.min()
+    X_max = X.max()
+    X_scaled = (X - X_min) / (X_max - X_min)
+    smallest_nonzero = np.min(X_scaled[X_scaled > 0])
+    X_scaled[X_scaled == 0] = smallest_nonzero
     return X_scaled
 
 
