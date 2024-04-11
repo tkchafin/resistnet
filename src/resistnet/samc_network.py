@@ -321,7 +321,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             edge_id: idx for idx, edge_id in enumerate(self._edge_order)}
 
         sites = list(self._points_snapped.keys())
-        print(sites)
         tips = [None] * len(sites)
         # Iterate over edges in the graph
         for u, v, edge_data in self._K.edges(data=True):
@@ -526,15 +525,13 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # Draw the edges of the network
         nx.draw_networkx_edges(self._K, pos, alpha=0.5, width=1)
 
-        def check_terminal(p1, p2):
-            print(self._K.degree(p1))
-            print(self._K.degree(p2))
-            if self._K.degree(p1) == 1:
-                return p1
-            elif self._K.degree(p2) == 1:
-                return p2
-            else:
-                return None
+        # def check_terminal(p1, p2):
+        #     if self._K.degree(p1) == 1:
+        #         return p1
+        #     elif self._K.degree(p2) == 1:
+        #         return p2
+        #     else:
+        #         return None
 
         # highlight the origin node 
         nx.draw_networkx_nodes(
