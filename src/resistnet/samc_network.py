@@ -485,6 +485,47 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             res = list(res.iloc[0])
             return (fitness, res)
 
+    # TODO: Need to make a version of this that works correctly for SAMC
+    def model_output(self, model):
+        """
+        Generates the model output for a given model.
+
+        This method combines the transformed variables based on the model
+        specifications to produce a multi-surface representation. It then
+        calculates the effective resistance matrix for the given model.
+
+        Args:
+            model (pd.Series): A list representing an individual model in the
+                          genetic algorithm, containing transformation and
+                          weight information for variables.
+
+        Returns:
+            tuple: A tuple containing the effective resistance matrix and the
+                   multi-surface representation for the model.
+        """
+        first = True
+        multi = None
+
+        # Combine transformed variables based on model specifications
+        for i, variable in enumerate(self._predictors.columns):
+            if model[0::5][i] == 1:
+                var = self.transform(
+                    self._predictors[variable], model[2::5][i], model[3::5][i]
+                )
+                if first:
+                    multi = var * model[1::5][i]
+                    first = False
+                else:
+                    multi += var * model[1::5][i]
+                multi = trans.rescaleCols(multi, 0, 1)
+
+        # Get pairwise effective resistance matrix
+        r = rd.effectiveResistanceMatrix(
+            self._points_snapped, self._inc, multi
+        )
+
+        return r, multi
+
     def _compute_transition(self, var, directional=False):
             data = []
             rows = []
@@ -570,7 +611,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # Save the plot to a file
         plt.savefig(f"{oname}.graphDirectionality.pdf")
         plt.close()
-
 
 class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
     """

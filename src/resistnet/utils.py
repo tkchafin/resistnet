@@ -53,11 +53,11 @@ def graph_to_dag_converging(K, origin):
     # Create an empty Directed Graph
     D = nx.DiGraph()
 
-    # Start BFS from the root node, adding edges to D with direction towards the root
+    # Start BFS from the root node, adding edges w direction towards the root
     for parent, child in nx.bfs_edges(K, source=origin):
-        D.add_edge(child, parent)  # Reverse the direction to point towards the root
+        D.add_edge(child, parent)  # Reverse direction
 
-        # Optionally copy attributes from the original graph to the new directed graph
+        # Copy attributes to the new directed graph
         if K.has_edge(parent, child):
             for key, value in K[parent][child].items():
                 D[child][parent][key] = value
@@ -81,14 +81,14 @@ def minmax_lil(lil_matrix):
 
     if all_data.size == 0:
         return  # No data to scale, exit the function
-    
+
     X_min = all_data.min()
     X_max = all_data.max()
-    
+
     # Avoid division by zero if all values are the same
     if X_min == X_max:
         return
-    
+
     # Scale each non-zero value in lil_matrix.data
     for row_data in lil_matrix.data:
         for i in range(len(row_data)):

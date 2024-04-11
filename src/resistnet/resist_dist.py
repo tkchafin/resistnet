@@ -1,10 +1,10 @@
 import itertools
 import pandas as pd
-import sys
 import numpy as np
 
 import resistnet.MLPE as mlpe_rga
 import resistnet.CFPT as cfpt_samc
+
 
 def parsePairwise(points, inc_matrix, multi, gendist):
     """
@@ -61,6 +61,7 @@ def effectiveResistanceMatrix(points, inc_matrix, edge_resistance):
 
     return r
 
+
 def conditionalFirstPassTime(Q, R, sites_i, gendist):
 
     # get cfpt matrix
@@ -70,5 +71,3 @@ def conditionalFirstPassTime(Q, R, sites_i, gendist):
     # fit MLPE
     res = mlpe_rga.MLPE_R(gendist, cfpt, scale=True)
     return cfpt, res
-
-

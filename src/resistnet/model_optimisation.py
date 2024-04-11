@@ -444,7 +444,7 @@ class ModelRunner:
         weights = {}
         hof = self.bests.getHOF(only_keep=self.only_keep)
         for _, row in hof.iterrows():
-            n = len(self.resistance_network._predictors.columns) * 4
+            n = len(self.resistance_network._predictors.columns) * 5
             model_string = row.iloc[1:n + 1].to_list()
             models.append([mod_num, model_string])
             weights[mod_num] = row["akaike_weight"]
@@ -740,7 +740,6 @@ class ModelRunner:
                     else:
                         result_queue.put((id, fitness, None))
                 elif task == "output":
-                    print(data)
                     r, multi = worker.model_output(data)
                     result_queue.put((id, r, multi))
             except Empty:
