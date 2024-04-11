@@ -197,7 +197,6 @@ class ModelRunner:
         """
         try:
             # Set GA parameters
-            print("set params")
             self.set_ga_parameters(mutpb, cxpb, indpb, popsize, maxpopsize,
                                    posWeight, fixWeight, fixShape, allShapes,
                                    min_weight, max_shape, max_hof_size,
@@ -205,7 +204,6 @@ class ModelRunner:
                                    verbose, report_all)
 
             # Initialize GA components and worker pool
-            print("init")
             self.initialize_ga()
             self.start_workers(threads)
 
@@ -259,12 +257,15 @@ class ModelRunner:
                 # Replace population with offspring
                 self.population[:] = offspring
 
+                # update Hall of Fame
+                self.bests.check_population(pop_list)
+
                 # Gather all the fitnesses in one list and print the stats
                 fits = [ind.fitness.values[0] for ind in self.population]
 
                 # Evaluate for stopping criteria after burn-in period
                 if g > burnin:
-                    if fitmetric == "AIC":
+                    if fitmetric.upper() == "AIC":
                         fits = [-element for element in fits]
                         worst = max(fits)
                         best = min(fits)
@@ -739,6 +740,7 @@ class ModelRunner:
                     else:
                         result_queue.put((id, fitness, None))
                 elif task == "output":
+                    print(data)
                     r, multi = worker.model_output(data)
                     result_queue.put((id, r, multi))
             except Empty:
