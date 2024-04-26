@@ -1035,43 +1035,15 @@ class ResistanceNetwork:
             tuple: A tuple containing the fitness value and the results of the
                    evaluation.
         """
-        fitness = 0
-        res = None
-        multi = None
-        first = True
-
-        # Build multi-surface representation of variables
-        for i, variable in enumerate(self._predictors.columns):
-            # Perform variable transformations if the variable is selected
-            # (indicated by a value of 1)
-            if individual[0::5][i] == 1:
-                var = self.transform(
-                    self._predictors[variable],
-                    individual[2::5][i],
-                    individual[3::5][i]
-                )
-                if first:
-                    multi = var * individual[1::5][i]
-                    first = False
-                else:
-                    multi += var * individual[1::5][i]
-
-        # If no layers are selected, return a zero fitness
-        if first:
-            fitness = float('-inf')
-        else:
-            # Rescale multi-surface for circuitscape and evaluate using simple
-            # resistance distance
-            multi = trans.rescaleCols(multi, 0, 1)
-            r, res = rd.parsePairwise(
-                self._points_snapped, self._inc, multi, self._gendist
-            )
-            # fitness = res[self.fitmetric][0]
-            fitness = res[self.fitmetric].iloc[0]
-            res = list(res.iloc[0])
-
-        # Return fitness value and results
-        return (fitness, res)
+        multi = self._build_multi_surface_representation(individual)
+        if multi is None:
+            return float('-inf'), []
+        r, res = rd.parsePairwise(
+            self._points_snapped, self._inc, multi, self._gendist
+        )
+        fitness = res[self.fitmetric].iloc[0]
+        res = list(res.iloc[0])
+        return fitness, res
 
     def model_output(self, model):
         """
@@ -1090,29 +1062,44 @@ class ResistanceNetwork:
             tuple: A tuple containing the effective resistance matrix and the
                    multi-surface representation for the model.
         """
-        first = True
-        multi = None
+        multi = self._build_multi_surface_representation(model)
+        if multi is not None:
+            r = rd.effectiveResistanceMatrix(
+                self._points_snapped, self._inc, multi
+            )
+            return r, multi
+        return None, None
 
-        # Combine transformed variables based on model specifications
+
+    def _build_composite_surface(self, config):
+        """
+        Builds a multi-surface representation from a model configuration.
+
+        Args:
+            config (list): A list representing an individual or model in the
+                        genetic algorithm, containing transformation and weight
+                        information for variables.
+
+        Returns:
+            ndarray: The multi-surface representation for the configuration.
+        """
+        multi = None
+        first = True
         for i, variable in enumerate(self._predictors.columns):
-            if model[0::5][i] == 1:
+            if config[0::5][i] == 1:
                 var = self.transform(
-                    self._predictors[variable], model[2::5][i], model[3::5][i]
+                    self._predictors[variable],
+                    config[2::5][i],
+                    config[3::5][i]
                 )
                 if first:
-                    multi = var * model[1::5][i]
+                    multi = var * config[1::5][i]
                     first = False
                 else:
-                    multi += var * model[1::5][i]
-                multi = trans.rescaleCols(multi, 0, 1)
-
-        # Get pairwise effective resistance matrix
-        r = rd.effectiveResistanceMatrix(
-            self._points_snapped, self._inc, multi
-        )
-
-        return r, multi
-
+                    multi += var * config[1::5][i]
+        if not first:
+            multi = trans.rescaleCols(multi, 0, 1)
+        return multi
 
 class ResistanceNetworkWorker(ResistanceNetwork):
     """
