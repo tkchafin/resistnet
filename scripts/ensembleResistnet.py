@@ -15,9 +15,6 @@ os.environ['USE_PYGEOS'] = '0'
 
 
 def main():
-    """
-    Main function to run the resistnet application.
-    """
     # Step 0: Read/format input args
     params = ParseArgs()
 

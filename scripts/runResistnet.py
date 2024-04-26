@@ -6,6 +6,7 @@ from datetime import datetime
 
 from resistnet.params import parseArgs
 from resistnet.resistance_network import ResistanceNetwork
+from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.model_optimisation import ModelRunner
 
 
@@ -22,9 +23,10 @@ def main():
     random.seed(params.seed)
 
     # Step 1: Initialise network data
-    network = ResistanceNetwork(
+    network = ResistanceNetworkSAMC(
         network=params.network,
         shapefile=params.shapefile,
+        sizes=params.sizefile,
         coords=params.coords,
         variables=params.variables,
         agg_opts=params.agg_opts,
@@ -37,9 +39,19 @@ def main():
         out=params.out,
         verbose=True
     )
-
-    print(network._origin)
-    sys.exit()
+    # network = ResistanceNetwork(
+    #     network=params.network,
+    #     shapefile=params.shapefile,
+    #     coords=params.coords,
+    #     variables=params.variables,
+    #     agg_opts=params.agg_opts,
+    #     pop_agg=params.pop_agg,
+    #     inmat=params.inmat,
+    #     reachid_col=params.reachid_col,
+    #     length_col=params.length_col,
+    #     out=params.out,
+    #     verbose=True
+    # )
 
     # Step 2: Initialise ModelRunner
     runner = ModelRunner(

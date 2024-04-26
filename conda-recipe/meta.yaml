@@ -37,10 +37,9 @@ requirements:
   - r-tidyverse
   - rpy2
   - r-lme4
-  - r-matrix
+  - r-matrix >=1.6.2
   - r-mumin
   - mantel
-  - r-samc
 
 build:
   noarch: python

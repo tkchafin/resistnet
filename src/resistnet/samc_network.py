@@ -404,87 +404,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     self._edge_origin = reach_to_edge[dat[self.reachid_col]]
                     break
 
-    def evaluate(self, individual):
-        """
-        Evaluates the fitness of a given model represented by an individual.
-
-        This method calculates the fitness of an individual model based on its
-        variable transformations. It builds a multi-surface representation of
-        the variables and evaluates the model using the ResistanceNetwork's
-        parsePairwise method.
-
-        Args:
-            individual (list): A list representing an individual in the genetic
-                               algorithm, containing transformation and weight
-                               information for variables.
-
-        Returns:
-            tuple: A tuple containing the fitness value and the results of the
-                   evaluation.
-        """
-        first = True
-        multi = None
-
-        # Compute any transformations
-        for i, variable in enumerate(self._predictors.columns):
-            var_m = np.zeros_like(self._adj, dtype=float)
-            # Perform variable transformations if the variable is selected
-            # (indicated by a value of 1)
-            if individual[0::5][i] == 1:
-                var = self.transform(
-                    self._predictors[variable],
-                    individual[2::5][i],
-                    individual[3::5][i]
-                )
-
-                # reScale (minmax)
-                var = trans.rescaleCols(var, 0, 1)
-
-                # Compute transition values
-                # perform directional calculations
-                if individual[1::5][i] == 1:
-                    var_m = self._compute_transition(var, directional=True)
-                    # transpose for 'backward in time' model
-                    var_m = var_m.T
-                else:
-                    var_m = self._compute_transition(var, directional=False)
-
-                # var_m = utils.masked_minmax(var_m, mask)
-                var_m.data = utils.minmax(var_m.data)
-
-                # sum within multivariate adjacency
-                if first:
-                    multi = var_m.copy()
-                    multi.data *= individual[1::5][i]
-                    first = False
-                else:
-                    var_m.data *= individual[1::5][i]
-                    multi.data += var_m.data
-
-        # If no layers are selected, return a zero fitness
-        if multi is None:
-            return float('-inf'), None
-        else:
-            # complete Q matrix
-            # minmax scale 0-1
-            multi.data = utils.minmax_nonzero(multi.data)
-
-            # inverse to get transition rates
-            # avoid divide-by-zero by setting zero to smallest non-zero element
-            multi.data = utils.minmax_nonzero(1 / multi.data)
-
-            # compute cfpt matrix
-            cfpt, res = rd.conditionalFirstPassTime(
-                multi, self._R, self._edge_site_indices, self._gendist)
-
-            # plot cfpt matrix pairwise regression against genetic distance 
-            # matrix held as self._gendist
-            # these can be assumed to have the same order
-            # fitness = res[self.fitmetric][0]
-            fitness = res[self.fitmetric].iloc[0]
-            res = list(res.iloc[0])
-            return (fitness, res)
-
     # def evaluate(self, individual):
     #     """
     #     Evaluates the fitness of a given model represented by an individual.
@@ -503,19 +422,100 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
     #         tuple: A tuple containing the fitness value and the results of the
     #                evaluation.
     #     """
-    #     print("EVALUATE")
-    #     multi = self._build_composite_surface(individual)
-    #     print(multi)
+    #     first = True
+    #     multi = None
+
+    #     # Compute any transformations
+    #     for i, variable in enumerate(self._predictors.columns):
+    #         var_m = np.zeros_like(self._adj, dtype=float)
+    #         # Perform variable transformations if the variable is selected
+    #         # (indicated by a value of 1)
+    #         if individual[0::5][i] == 1:
+    #             var = self.transform(
+    #                 self._predictors[variable],
+    #                 individual[2::5][i],
+    #                 individual[3::5][i]
+    #             )
+
+    #             # reScale (minmax)
+    #             var = trans.rescaleCols(var, 0, 1)
+
+    #             # Compute transition values
+    #             # perform directional calculations
+    #             if individual[1::5][i] == 1:
+    #                 var_m = self._compute_transition(var, directional=True)
+    #                 # transpose for 'backward in time' model
+    #                 var_m = var_m.T
+    #             else:
+    #                 var_m = self._compute_transition(var, directional=False)
+
+    #             # var_m = utils.masked_minmax(var_m, mask)
+    #             var_m.data = utils.minmax(var_m.data)
+
+    #             # sum within multivariate adjacency
+    #             if first:
+    #                 multi = var_m.copy()
+    #                 multi.data *= individual[1::5][i]
+    #                 first = False
+    #             else:
+    #                 var_m.data *= individual[1::5][i]
+    #                 multi.data += var_m.data
+
+    #     # If no layers are selected, return a zero fitness
     #     if multi is None:
     #         return float('-inf'), None
+    #     else:
+    #         # complete Q matrix
+    #         # minmax scale 0-1
+    #         multi.data = utils.minmax_nonzero(multi.data)
 
-    #     cfpt, res = rd.conditionalFirstPassTime(
-    #         multi, self._R, self._edge_site_indices, self._gendist)
-    #     print(cfpt)
-    #     fitness = res[self.fitmetric].iloc[0]
-    #     res = list(res.iloc[0])
-    #     print(res)
-    #     return fitness, res
+    #         # inverse to get transition rates
+    #         # avoid divide-by-zero by setting zero to smallest non-zero element
+    #         multi.data = utils.minmax_nonzero(1 / multi.data)
+
+    #         # compute cfpt matrix
+    #         cfpt, res = rd.conditionalFirstPassTime(
+    #             multi, self._R, self._edge_site_indices, self._gendist)
+
+    #         # plot cfpt matrix pairwise regression against genetic distance 
+    #         # matrix held as self._gendist
+    #         # these can be assumed to have the same order
+    #         # fitness = res[self.fitmetric][0]
+    #         fitness = res[self.fitmetric].iloc[0]
+    #         res = list(res.iloc[0])
+    #         return (fitness, res)
+
+    def evaluate(self, individual):
+        """
+        Evaluates the fitness of a given model represented by an individual.
+
+        This method calculates the fitness of an individual model based on its
+        variable transformations. It builds a multi-surface representation of
+        the variables and evaluates the model using the ResistanceNetwork's
+        parsePairwise method.
+
+        Args:
+            individual (list): A list representing an individual in the genetic
+                               algorithm, containing transformation and weight
+                               information for variables.
+
+        Returns:
+            tuple: A tuple containing the fitness value and the results of the
+                   evaluation.
+        """
+        print("EVALUATE")
+        multi = self._build_composite_surface(individual)
+        print(multi)
+        if multi is None:
+            return float('-inf'), None
+
+        cfpt, res = rd.conditionalFirstPassTime(
+            multi, self._R, self._edge_site_indices, self._gendist)
+        print(cfpt)
+        fitness = res[self.fitmetric].iloc[0]
+        res = list(res.iloc[0])
+        print(res)
+        return fitness, res
 
     # will need to overload plotting functions for SAMC models as well
     def model_output(self, model):
