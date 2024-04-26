@@ -64,7 +64,7 @@ class ModelRunner:
         self.fixWeight = None
         self.fixShape = None
         self.allShapes = None
-        self.fixAsym = True
+        self.fixAsym = False
         self.min_weight = None
         self.max_shape = None
         self.max_hof_size = None

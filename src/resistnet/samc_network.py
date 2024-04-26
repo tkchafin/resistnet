@@ -485,7 +485,39 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             res = list(res.iloc[0])
             return (fitness, res)
 
-    # TODO: Need to make a version of this that works correctly for SAMC
+    # def evaluate(self, individual):
+    #     """
+    #     Evaluates the fitness of a given model represented by an individual.
+
+    #     This method calculates the fitness of an individual model based on its
+    #     variable transformations. It builds a multi-surface representation of
+    #     the variables and evaluates the model using the ResistanceNetwork's
+    #     parsePairwise method.
+
+    #     Args:
+    #         individual (list): A list representing an individual in the genetic
+    #                            algorithm, containing transformation and weight
+    #                            information for variables.
+
+    #     Returns:
+    #         tuple: A tuple containing the fitness value and the results of the
+    #                evaluation.
+    #     """
+    #     print("EVALUATE")
+    #     multi = self._build_composite_surface(individual)
+    #     print(multi)
+    #     if multi is None:
+    #         return float('-inf'), None
+
+    #     cfpt, res = rd.conditionalFirstPassTime(
+    #         multi, self._R, self._edge_site_indices, self._gendist)
+    #     print(cfpt)
+    #     fitness = res[self.fitmetric].iloc[0]
+    #     res = list(res.iloc[0])
+    #     print(res)
+    #     return fitness, res
+
+    # will need to overload plotting functions for SAMC models as well
     def model_output(self, model):
         """
         Generates the model output for a given model.
@@ -503,55 +535,114 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             tuple: A tuple containing the effective resistance matrix and the
                    multi-surface representation for the model.
         """
+        print("MODEL_OUTPUT")
+        multi = self._build_composite_surface(model)
+        print(multi)
+        if multi is None:
+            return None, None
+
+        cfpt, _ = rd.conditionalFirstPassTime(
+            multi, self._R, self._edge_site_indices, self._gendist)
+
+        trans = self._transition_vectors(multi)
+
+        print(multi)
+        print(trans)
+        #sys.exit()
+
+        return cfpt, multi
+
+    def _transition_vectors(self, mat):
+        n = len(self._edge_order)
+        transition_probs = np.zeros((n, 2))
+        mat_csc = mat.tocsc()  # for column access
+
+        # Downstream transitions (i -> j)
+        for i in range(n):
+            row_start = mat.indptr[i]
+            row_end = mat.indptr[i + 1]
+            if row_start != row_end:
+                transition_probs[i, 0] = mat.data[row_start]
+
+        # Upstream transitions (j -> i)
+        for i in range(n):
+            col_start = mat_csc.indptr[i]
+            col_end = mat_csc.indptr[i + 1]
+            for idx in range(col_start, col_end):
+                j = mat_csc.indices[idx]
+                transition_probs[j, 1] = mat_csc.data[idx]
+
+        return transition_probs
+
+    def _build_composite_surface(self, individual):
+        """
+        Builds a multi-surface representation from a model configuration.
+
+        Args:
+            config (list): A list representing an individual or model in the
+                        genetic algorithm, containing transformation and weight
+                        information for variables.
+
+        Returns:
+            ndarray: The multi-surface representation for the configuration.
+        """
         first = True
         multi = None
-
-        # Combine transformed variables based on model specifications
         for i, variable in enumerate(self._predictors.columns):
-            if model[0::5][i] == 1:
+            var_m = np.zeros_like(self._adj, dtype=float)
+            if individual[0::5][i] == 1:
                 var = self.transform(
-                    self._predictors[variable], model[2::5][i], model[3::5][i]
+                    self._predictors[variable],
+                    individual[2::5][i],
+                    individual[3::5][i]
                 )
+                var = trans.rescaleCols(var, 0, 1)
+                if individual[1::5][i] == 1:
+                    var_m = self._compute_transition(var, directional=True)
+                    var_m = var_m.T
+                else:
+                    var_m = self._compute_transition(var, directional=False)
+                var_m.data = utils.minmax(var_m.data)
                 if first:
-                    multi = var * model[1::5][i]
+                    multi = var_m.copy()
+                    multi.data *= individual[1::5][i]
                     first = False
                 else:
-                    multi += var * model[1::5][i]
-                multi = trans.rescaleCols(multi, 0, 1)
+                    var_m.data *= individual[1::5][i]
+                    multi.data += var_m.data
 
-        # Get pairwise effective resistance matrix
-        r = rd.effectiveResistanceMatrix(
-            self._points_snapped, self._inc, multi
-        )
+        if multi is not None:
+            multi.data = utils.minmax_nonzero(multi.data)
+            multi.data = utils.minmax_nonzero(1 / multi.data)
 
-        return r, multi
+        return multi
 
     def _compute_transition(self, var, directional=False):
-            data = []
-            rows = []
-            cols = []
-            n = self._adj.shape[0]
+        data = []
+        rows = []
+        cols = []
+        n = self._adj.shape[0]
 
-            # Iterating through non-zero elements
-            if directional:
-                for row, col in zip(*self._adj.nonzero()):
-                    value = self._adj[row, col]
-                    if value == 1:
-                        new_value = var.iloc[col] - var.iloc[row]
-                    elif value == -1:
-                        new_value = var.iloc[row] - var.iloc[col]
-                    else:
-                        continue
-                    data.append(new_value)
-                    rows.append(row)
-                    cols.append(col)
-            else:
-                for row, col in zip(*self._adj.nonzero()):
-                    value = self._adj[row, col]
-                    new_value = (var.iloc[row] + var.iloc[col]) / 2.0
-                    data.append(new_value)
-                    rows.append(row)
-                    cols.append(col)
+        # Iterating through non-zero elements
+        if directional:
+            for row, col in zip(*self._adj.nonzero()):
+                value = self._adj[row, col]
+                if value == 1:
+                    new_value = var.iloc[col] - var.iloc[row]
+                elif value == -1:
+                    new_value = var.iloc[row] - var.iloc[col]
+                else:
+                    continue
+                data.append(new_value)
+                rows.append(row)
+                cols.append(col)
+        else:
+            for row, col in zip(*self._adj.nonzero()):
+                value = self._adj[row, col]
+                new_value = (var.iloc[row] + var.iloc[col]) / 2.0
+                data.append(new_value)
+                rows.append(row)
+                cols.append(col)
 
             # Create a sparse matrix from the new values
             return sp.csr_matrix((data, (rows, cols)), shape=(n, n))
@@ -574,7 +665,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         #     else:
         #         return None
 
-        # highlight the origin node 
+        # highlight the origin node
         nx.draw_networkx_nodes(
             self._K, pos, nodelist=[self._origin],
             node_size=50, node_color='orange')
@@ -611,6 +702,43 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # Save the plot to a file
         plt.savefig(f"{oname}.graphDirectionality.pdf")
         plt.close()
+
+    # def output_and_plot_model(self, oname, mat_r, edge_r, plot=True):
+    #     """
+    #     Outputs model results to files and optionally plots the resistance
+    #     network and pairwise models.
+
+    #     This method writes the edge and matrix resistance results to files and,
+    #     if requested, plots the resistance network and pairwise models. The
+    #     plotting is dependent on the availability of genetic distance data.
+
+    #     Args:
+    #         oname (str): The base name for output files.
+    #         mat_r (numpy.ndarray): The average resistance matrix.
+    #         edge_r (DataFrame): The average edge resistance values.
+    #         plot (bool, optional): Boolean to control whether to generate plots
+    #                                Defaults to True.
+    #     """
+
+    #     # Write edge and matrix results to files
+    #     out1 = f"{oname}.ResistanceEdges.tsv"
+    #     utils.write_edges(out1, edge_r, edge_r.index)
+
+    #     out2 = f"{oname}.ResistanceMatrix.tsv"
+    #     utils.write_matrix(out2, mat_r, list(self._points_labels.values()))
+
+    #     # Plot resistance network and pairwise models if required
+    #     if plot:
+    #         edf = pd.DataFrame(
+    #             list(
+    #                 zip(edge_r.index, edge_r)
+    #             ), columns=["EDGE_ID", "Resistance"]
+    #         )
+    #         self.plot_resistance_network(edf, oname)
+
+    #         # Plot pairwise model if genetic distance data is available
+    #         if self._gendist is not None:
+    #             self.plot_pairwise_model(mat_r, oname, partition=False)
 
 class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
     """
