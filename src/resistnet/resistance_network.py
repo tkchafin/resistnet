@@ -1035,7 +1035,7 @@ class ResistanceNetwork:
             tuple: A tuple containing the fitness value and the results of the
                    evaluation.
         """
-        multi = self._build_multi_surface_representation(individual)
+        multi = self._build_composite_surface(individual)
         if multi is None:
             return float('-inf'), []
         r, res = rd.parsePairwise(
@@ -1062,14 +1062,13 @@ class ResistanceNetwork:
             tuple: A tuple containing the effective resistance matrix and the
                    multi-surface representation for the model.
         """
-        multi = self._build_multi_surface_representation(model)
+        multi = self._build_composite_surface(model)
         if multi is not None:
             r = rd.effectiveResistanceMatrix(
                 self._points_snapped, self._inc, multi
             )
             return r, multi
         return None, None
-
 
     def _build_composite_surface(self, config):
         """
