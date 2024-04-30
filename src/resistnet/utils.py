@@ -542,17 +542,32 @@ def write_edges(out, edge, ids):
     Write edge data to a CSV file.
 
     This function creates a DataFrame from edge IDs and their corresponding
-    resistance values, and writes this data to a CSV file.
+    resistance values, and writes this data to a CSV file. If the edge array
+    contains two columns, it treats them as downstream and upstream resistances.
 
     Args:
         out: The file path where the CSV will be written.
-        edge: A list of edge resistance values.
+        edge: A numpy array of edge resistance values, possibly with two columns.
         ids: A list of edge IDs.
 
     Returns:
         str: The output file path.
     """
-    df = pd.DataFrame(list(zip(ids, edge)), columns=["EDGE_ID", "Resistance"])
+    edge = np.array(edge)
+    if edge.ndim == 1:
+        df = pd.DataFrame({
+            "EDGE_ID": ids,
+            "Resistance": edge
+        })
+    elif edge.ndim == 2 and edge.shape[1] == 2:
+        df = pd.DataFrame({
+            "EDGE_ID": ids,
+            "Resistance_Downstream": edge[:, 0],
+            "Resistance_Upstream": edge[:, 1]
+        })
+    else:
+        raise ValueError("Unexpected shape of edge data.")
+
     df.to_csv(out, sep="\t", header=True, index=False)
     return out
 

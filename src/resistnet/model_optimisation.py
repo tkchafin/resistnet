@@ -692,8 +692,14 @@ class ModelRunner:
                 worker_args['origin'] = self.resistance_network._origin
                 worker_args['R'] = self.resistance_network._R
                 worker_args[
+                    'allSymmetric'
+                    ] = self.resistance_network.allSymmetric
+                worker_args[
                     'edge_site_indices'
                     ] = self.resistance_network._edge_site_indices
+                worker_args[
+                    'root_edge_indices'
+                    ] = self.resistance_network._root_edge_indices
 
             worker_process = Process(
                 target=self.worker_task,

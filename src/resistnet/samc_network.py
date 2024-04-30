@@ -1,16 +1,18 @@
-
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
 import scipy.sparse as sp
+import momepy
+import seaborn as sns
 from sortedcontainers import SortedDict
 
 import resistnet.utils as utils
 import resistnet.transform as trans
 import resistnet.resist_dist as rd
 from resistnet.resistance_network import ResistanceNetwork
+
 
 class ResistanceNetworkSAMC(ResistanceNetwork):
     """
@@ -104,6 +106,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self._edge_absorption = None
         self._R = None
         self._edge_site_indices = None
+        self._root_edge_indices = None
 
         # Initialization methods
         self.initialize_network()
@@ -112,7 +115,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         if self.inmat is not None:
             self.parse_input_gen_mat(out=self.output_prefix)
         
-        # direct and detect origin 
+        # direct graph
         self.polarise_network(self._origin)
 
         # calculate edge-wise absorption 
@@ -170,6 +173,15 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # calculations later on
         self.find_confluence()
 
+        # Modify network to contain further downstream edges
+        # This simplifies some things later on...
+        self.extend_confluence(3)
+
+        # add buffer edges around terminal sample points
+        # (makes it easier to plot later)
+        samples = list(self._points_snapped.keys())
+        self.buffer_points(1, points=samples)
+
         # plot graph with detected origin
         self.plot_inferred_origin(self.output_prefix)
 
@@ -185,6 +197,43 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         else:
             network_file_suffix = ".subgraph.net"
         self.network = f"{self.output_prefix}{network_file_suffix}"
+
+    # NOTE: Future version could add recursively so we make sure we cover
+    # all upstream edges in cases of fork
+    # this would make it easier to have a quick projection of resistance 
+    # around the whole sub-network as well
+    def buffer_points(self, buffer_size=1, points=None):
+        if points is None:
+            points = [node for node in self._K.nodes() if self._K.degree(node) == 1]
+            if not points:
+                print("No terminal points found in the subgraph.")
+                return
+
+        # Get the highest EDGE_ID currently in the network
+        max_edge_id = max((data.get('EDGE_ID', -1) for _, _, data in self._G.edges(data=True)), default=-1)
+        max_edge_id += 1
+        # Iterate over sample points provided in the list
+        for node in points:
+            # Check if the node is terminal in the subgraph
+            if self._K.degree(node) == 1:
+                neighbors = list(self._G.neighbors(node))
+                # Exclude neighbors already in the subgraph
+                new_neighbors = [n for n in neighbors if n not in self._K.nodes()]
+
+                # Add edges from the terminal node to its new neighbors up to the specified buffer size
+                for new_neighbor in new_neighbors[:buffer_size]:
+                    if self._G.has_edge(node, new_neighbor):
+                        # Retrieve edge data from the full graph
+                        edge_data = self._G.get_edge_data(node, new_neighbor)
+
+                        # Add new neighbor node if not already present
+                        if not self._K.has_node(new_neighbor):
+                            self._K.add_node(new_neighbor)
+
+                        # Add new edge with copied attributes and incremented EDGE_ID
+                        self._K.add_edge(node, new_neighbor, **edge_data)
+                        max_edge_id += 1  # Increment the EDGE_ID for each new edge
+                        nx.set_edge_attributes(self._K, {(node, new_neighbor): {"EDGE_ID": max_edge_id}})
 
     # scipy.sparse version
     def create_adjacency_matrix(self):
@@ -241,6 +290,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                 if idx_i != idx_j:
                     adjacency_matrix[idx_j, idx_i] = -1
                     adjacency_matrix[idx_i, idx_j] = -1
+        self._root_edge_indices = root_edge_indices
 
         # If non-directional model, take absolute values of adjacency_matrix
         if self.allSymmetric:
@@ -248,53 +298,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         else:
             self._adj = adjacency_matrix.tocsr()
         return
-
-    # DEPRECATED: numpy ndarray version
-    # def create_adjacency_matrix(self):
-    #     n = len(self._edge_order)
-    #     adjacency_matrix = np.zeros((n, n), dtype=int)
-    #     edge_to_idx = {
-    #         edge_id: idx for idx, edge_id in enumerate(self._edge_order)}
-
-    #     id = self.reachid_col
-
-    #     # Helper function to determine adjacency and direction
-    #     def add_edge_adjacency(u, v, edge_data_u_v):
-    #         if id in edge_data_u_v:
-    #             edge_id_u_v = edge_data_u_v[id]
-    #             if edge_id_u_v in edge_to_idx:
-    #                 idx_u_v = edge_to_idx[edge_id_u_v]
-    #                 # Since the graph is oriented towards the root, successors
-    #                 # of v are downstream, predecessors are upstream
-    #                 for succ in self._K.successors(v):  # Downstream edges
-    #                     edge_data_v_succ = self._K.get_edge_data(v, succ)
-    #                     if id in edge_data_v_succ:
-    #                         if edge_data_v_succ[id] in edge_to_idx:
-    #                             idx_v_succ = edge_to_idx[edge_data_v_succ[id]]
-    #                             adjacency_matrix[idx_u_v, idx_v_succ] = 1 
-    #                             adjacency_matrix[idx_v_succ, idx_u_v] = -1 
-
-    #     # Iterate over all edges to populate adjacency relationships
-    #     for u, v, edge_data in self._K.edges(data=True):
-    #         add_edge_adjacency(u, v, edge_data)
-
-    #     # special case for edges connected to origin
-    #     root_edges = self._K.in_edges(self._origin, data=True)
-    #     root_edge_indices = []
-    #     for u, v, data in root_edges:
-    #         if self.reachid_col in data:
-    #             edge_id = data[self.reachid_col]
-    #             if edge_id in edge_to_idx:
-    #                 root_edge_indices.append(edge_to_idx[edge_id])
-    #     for idx_i in root_edge_indices:
-    #         for idx_j in root_edge_indices:
-    #             if idx_i != idx_j:
-    #                 adjacency_matrix[idx_j, idx_i] = -1
-    #                 adjacency_matrix[idx_i, idx_j] = -1
-
-    #     # TODO: If directional model, return abs(adjacency_matrix)
-
-    #     self._adj = adjacency_matrix
 
     def polarise_network(self, origin):
 
@@ -307,9 +310,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         dense_adj_matrix = self._adj.toarray()
         adj_out = self.output_prefix + ".adjacencyMatrix.tsv"
         np.savetxt(adj_out, dense_adj_matrix, delimiter='\t', fmt='%d')
-
-        # work on further steps later
-        pass
 
     def calculate_absorption(self):
         # Initialize the array for absorption values, filled with zeros
@@ -364,7 +364,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # Ensure required columns are present
         required_columns = ['sample', 'size']
         if not all(col in sizes.columns for col in required_columns):
-            raise ValueError(f"Missing required columns in sizes file")
+            raise ValueError("Missing required columns in sizes file")
 
         return sizes
 
@@ -404,86 +404,57 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     self._edge_origin = reach_to_edge[dat[self.reachid_col]]
                     break
 
-    # def evaluate(self, individual):
-    #     """
-    #     Evaluates the fitness of a given model represented by an individual.
+    def extend_confluence(self, increments=1):
+        if not hasattr(self, '_origin') or self._origin is None:
+            raise ValueError("Origin node has not been set.")
 
-    #     This method calculates the fitness of an individual model based on its
-    #     variable transformations. It builds a multi-surface representation of
-    #     the variables and evaluates the model using the ResistanceNetwork's
-    #     parsePairwise method.
+        if increments <= 0:
+            return  # Base case for recursion: no further increments needed
 
-    #     Args:
-    #         individual (list): A list representing an individual in the genetic
-    #                            algorithm, containing transformation and weight
-    #                            information for variables.
+        # Determine the next downstream reach ID from the current origin
+        next_down = None
+        for _, _, data in self._K.edges(self._origin, data=True):
+            next_down = data.get(self.infer_origin)
+            if next_down:
+                break
 
-    #     Returns:
-    #         tuple: A tuple containing the fitness value and the results of the
-    #                evaluation.
-    #     """
-    #     first = True
-    #     multi = None
+        if next_down is None:
+            print("No valid NEXT_DOWN found for origin")
+            return  # Base case: No further node downstream
 
-    #     # Compute any transformations
-    #     for i, variable in enumerate(self._predictors.columns):
-    #         var_m = np.zeros_like(self._adj, dtype=float)
-    #         # Perform variable transformations if the variable is selected
-    #         # (indicated by a value of 1)
-    #         if individual[0::5][i] == 1:
-    #             var = self.transform(
-    #                 self._predictors[variable],
-    #                 individual[2::5][i],
-    #                 individual[3::5][i]
-    #             )
+        # Find the corresponding edge in the full graph
+        next_down_edge = None
+        next_down_data = None
+        for u, v, data in self._G.edges(data=True):
+            if data.get(self.reachid_col) == next_down:
+                next_down_edge = (u, v)
+                next_down_data = data
+                break
 
-    #             # reScale (minmax)
-    #             var = trans.rescaleCols(var, 0, 1)
+        if next_down_edge is None:
+            raise ValueError("Failed to extend confluence using NEXT_DOWN.")
 
-    #             # Compute transition values
-    #             # perform directional calculations
-    #             if individual[1::5][i] == 1:
-    #                 var_m = self._compute_transition(var, directional=True)
-    #                 # transpose for 'backward in time' model
-    #                 var_m = var_m.T
-    #             else:
-    #                 var_m = self._compute_transition(var, directional=False)
+        if not self._K.has_node(next_down_edge[1]):
+            self._K.add_node(next_down_edge[1])
+        self._K.add_edge(
+            next_down_edge[0], next_down_edge[1], **next_down_data)
 
-    #             # var_m = utils.masked_minmax(var_m, mask)
-    #             var_m.data = utils.minmax(var_m.data)
+        # Increment EDGE_ID and add to new edge
+        max_edge_id = max(
+            (data.get('EDGE_ID', -1) for _, _, data in self._K.edges(data=True)),
+            default=-1) + 1
+        nx.set_edge_attributes(
+            self._K,
+            {(next_down_edge[0], next_down_edge[1]): {"EDGE_ID": max_edge_id}}
+        )
 
-    #             # sum within multivariate adjacency
-    #             if first:
-    #                 multi = var_m.copy()
-    #                 multi.data *= individual[1::5][i]
-    #                 first = False
-    #             else:
-    #                 var_m.data *= individual[1::5][i]
-    #                 multi.data += var_m.data
+        # Update origin to the new downstream node
+        self._origin = next_down_edge[1]
+        self._edge_origin = max_edge_id
+        self._reach_origin = next_down_data[self.reachid_col]
 
-    #     # If no layers are selected, return a zero fitness
-    #     if multi is None:
-    #         return float('-inf'), None
-    #     else:
-    #         # complete Q matrix
-    #         # minmax scale 0-1
-    #         multi.data = utils.minmax_nonzero(multi.data)
-
-    #         # inverse to get transition rates
-    #         # avoid divide-by-zero by setting zero to smallest non-zero element
-    #         multi.data = utils.minmax_nonzero(1 / multi.data)
-
-    #         # compute cfpt matrix
-    #         cfpt, res = rd.conditionalFirstPassTime(
-    #             multi, self._R, self._edge_site_indices, self._gendist)
-
-    #         # plot cfpt matrix pairwise regression against genetic distance 
-    #         # matrix held as self._gendist
-    #         # these can be assumed to have the same order
-    #         # fitness = res[self.fitmetric][0]
-    #         fitness = res[self.fitmetric].iloc[0]
-    #         res = list(res.iloc[0])
-    #         return (fitness, res)
+        # Recursive call to process further increments
+        self.extend_confluence(increments - 1)
 
     def evaluate(self, individual):
         """
@@ -503,18 +474,14 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             tuple: A tuple containing the fitness value and the results of the
                    evaluation.
         """
-        print("EVALUATE")
         multi = self._build_composite_surface(individual)
-        print(multi)
         if multi is None:
             return float('-inf'), None
 
         cfpt, res = rd.conditionalFirstPassTime(
             multi, self._R, self._edge_site_indices, self._gendist)
-        print(cfpt)
         fitness = res[self.fitmetric].iloc[0]
         res = list(res.iloc[0])
-        print(res)
         return fitness, res
 
     # will need to overload plotting functions for SAMC models as well
@@ -535,44 +502,59 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             tuple: A tuple containing the effective resistance matrix and the
                    multi-surface representation for the model.
         """
-        print("MODEL_OUTPUT")
+        print(model)
         multi = self._build_composite_surface(model)
         print(multi)
+        sys.exit()
         if multi is None:
             return None, None
 
+        # re-compute cfpt times 
         cfpt, _ = rd.conditionalFirstPassTime(
             multi, self._R, self._edge_site_indices, self._gendist)
-
+        
+        # re-compute transition rates and return as us/ds vectors
         trans = self._transition_vectors(multi)
-
-        print(multi)
         print(trans)
-        #sys.exit()
-
-        return cfpt, multi
+        sys.exit()
+        return cfpt, trans
 
     def _transition_vectors(self, mat):
+        # Poorly named as these are actually 1/trans_prob
         n = len(self._edge_order)
         transition_probs = np.zeros((n, 2))
-        mat_csc = mat.tocsc()  # for column access
-
-        # Downstream transitions (i -> j)
+        print(self._adj)
+        print(mat)
+        if sp.issparse(mat):
+            mat_dense = mat.toarray()
+        else:
+            mat_dense = mat
         for i in range(n):
-            row_start = mat.indptr[i]
-            row_end = mat.indptr[i + 1]
-            if row_start != row_end:
-                transition_probs[i, 0] = mat.data[row_start]
+            # Downstream rate i -> j 
+            downstream_mask_row = self._adj[i, :].toarray().ravel() == 1
+            downstream_mask_col = self._adj[:, i].toarray().ravel() == 1
+            transition_probs[i, 0] = np.sum(mat_dense[i, downstream_mask_row]) + np.sum(mat_dense[downstream_mask_col, i])
 
-        # Upstream transitions (j -> i)
-        for i in range(n):
-            col_start = mat_csc.indptr[i]
-            col_end = mat_csc.indptr[i + 1]
-            for idx in range(col_start, col_end):
-                j = mat_csc.indices[idx]
-                transition_probs[j, 1] = mat_csc.data[idx]
+            # Upstream rate j -> i 
+            upstream_mask_row = self._adj[i, :].toarray().ravel() == -1
+            upstream_mask_col = self._adj[:, i].toarray().ravel() == -1
+            transition_probs[i, 1] = np.sum(mat_dense[i, upstream_mask_col]) + np.sum(mat_dense[upstream_mask_row, i])
 
-        return transition_probs
+        # Handling of edges connected directly to the origin
+        for idx_i in self._root_edge_indices:
+            for idx_j in self._root_edge_indices:
+                if idx_i != idx_j:
+                    transition_probs[idx_i, 0] = mat_dense[idx_i, idx_j]
+                    transition_probs[idx_j, 1] = mat_dense[idx_j, idx_i]
+                    transition_probs[idx_i, 1] = mat_dense[idx_j, idx_i]
+                    transition_probs[idx_j, 0] = mat_dense[idx_i, idx_j]
+        print(transition_probs)
+        # Check if rates are symmetric
+        if self.allSymmetric or np.all(
+                transition_probs[:, 0] == transition_probs[:, 1]):
+            return transition_probs[:, 0]
+        else:
+            return transition_probs
 
     def _build_composite_surface(self, individual):
         """
@@ -597,9 +579,12 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     individual[3::5][i]
                 )
                 var = trans.rescaleCols(var, 0, 1)
-                if individual[1::5][i] == 1:
+                print(individual[4::5][i])
+                if individual[4::5][i] == 1:
                     var_m = self._compute_transition(var, directional=True)
                     var_m = var_m.T
+                    print(var_m)
+                    sys.exit()
                 else:
                     var_m = self._compute_transition(var, directional=False)
                 var_m.data = utils.minmax(var_m.data)
@@ -622,17 +607,11 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         rows = []
         cols = []
         n = self._adj.shape[0]
+        var = var.reset_index(drop=True)
 
-        # Iterating through non-zero elements
         if directional:
             for row, col in zip(*self._adj.nonzero()):
-                value = self._adj[row, col]
-                if value == 1:
-                    new_value = var.iloc[col] - var.iloc[row]
-                elif value == -1:
-                    new_value = var.iloc[row] - var.iloc[col]
-                else:
-                    continue
+                new_value = var.iloc[row] - var.iloc[col]
                 data.append(new_value)
                 rows.append(row)
                 cols.append(col)
@@ -644,8 +623,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                 rows.append(row)
                 cols.append(col)
 
-            # Create a sparse matrix from the new values
-            return sp.csr_matrix((data, (rows, cols)), shape=(n, n))
+        # Create a sparse matrix from the new values
+        result_matrix = sp.csr_matrix((data, (rows, cols)), shape=(n, n))
+        return result_matrix
 
     def plot_inferred_origin(self, oname):
         # Extract the positions of the nodes in the graph
@@ -670,7 +650,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             self._K, pos, nodelist=[self._origin],
             node_size=50, node_color='orange')
 
-
         # Remove the axis
         plt.axis('off')
 
@@ -689,7 +668,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # Draw the DAG with arrows indicating direction
         nx.draw_networkx(self._K, pos, node_color='lightblue',
                          with_labels=False, arrows=True, alpha=0.6,
-                            node_size=10)
+                         node_size=10)
 
         # Highlight the origin node in the DAG
         nx.draw_networkx_nodes(self._K, pos, nodelist=[self._origin],
@@ -703,42 +682,89 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         plt.savefig(f"{oname}.graphDirectionality.pdf")
         plt.close()
 
-    # def output_and_plot_model(self, oname, mat_r, edge_r, plot=True):
-    #     """
-    #     Outputs model results to files and optionally plots the resistance
-    #     network and pairwise models.
+    def output_and_plot_model(self, oname, mat_r, edge_r, plot=True):
+        """
+        Outputs model results to files and optionally plots the resistance
+        network and pairwise models.
 
-    #     This method writes the edge and matrix resistance results to files and,
-    #     if requested, plots the resistance network and pairwise models. The
-    #     plotting is dependent on the availability of genetic distance data.
+        This method writes the edge and matrix resistance results to files and,
+        if requested, plots the resistance network and pairwise models. The
+        plotting is dependent on the availability of genetic distance data.
 
-    #     Args:
-    #         oname (str): The base name for output files.
-    #         mat_r (numpy.ndarray): The average resistance matrix.
-    #         edge_r (DataFrame): The average edge resistance values.
-    #         plot (bool, optional): Boolean to control whether to generate plots
-    #                                Defaults to True.
-    #     """
+        Args:
+            oname (str): The base name for output files.
+            mat_r (numpy.ndarray): The average resistance matrix.
+            edge_r (DataFrame): The average edge resistance values.
+            plot (bool, optional): Boolean to control whether to generate plots
+                                   Defaults to True.
+        """
 
-    #     # Write edge and matrix results to files
-    #     out1 = f"{oname}.ResistanceEdges.tsv"
-    #     utils.write_edges(out1, edge_r, edge_r.index)
+        # Write edge and matrix results to files
+        out1 = f"{oname}.ResistanceEdges.tsv"
+        utils.write_edges(out1, edge_r, self._edge_order)
 
-    #     out2 = f"{oname}.ResistanceMatrix.tsv"
-    #     utils.write_matrix(out2, mat_r, list(self._points_labels.values()))
+        out2 = f"{oname}.CFPTMatrix.tsv"
+        utils.write_matrix(out2, mat_r, list(self._points_labels.values()))
 
-    #     # Plot resistance network and pairwise models if required
-    #     if plot:
-    #         edf = pd.DataFrame(
-    #             list(
-    #                 zip(edge_r.index, edge_r)
-    #             ), columns=["EDGE_ID", "Resistance"]
-    #         )
-    #         self.plot_resistance_network(edf, oname)
+        print(edge_r)
 
-    #         # Plot pairwise model if genetic distance data is available
-    #         if self._gendist is not None:
-    #             self.plot_pairwise_model(mat_r, oname, partition=False)
+        # Plot resistance network and pairwise models if required
+        if plot:
+            edge_r = np.array(edge_r)
+            if edge_r.ndim == 2 and edge_r.shape[1] == 2:
+                edf = pd.DataFrame({
+                    "EDGE_ID": self._edge_order,
+                    "Resistance_Downstream": edge_r[:, 0],
+                    "Resistance_Upstream": edge_r[:, 1]
+                })
+            elif edge_r.ndim == 1 or (edge_r.ndim == 2 and edge_r.shape[1] == 1):
+                edf = pd.DataFrame({
+                    "EDGE_ID": self._edge_order,
+                    "Resistance": edge_r.flatten()
+                })
+            else:
+                raise ValueError("Unexpected shape or type for edge_r data.")
+            print(edf)
+            self.plot_resistance_network(edf, oname)
+
+            # Plot pairwise model if genetic distance data is available
+            if self._gendist is not None:
+                self.plot_pairwise_model(mat_r, oname, partition=False)
+
+    def plot_resistance_network(self, resistance_values, oname):
+        """
+        Plots the resistance network based on given resistance values.
+
+        Args:
+            resistance_values (DataFrame): A DataFrame containing resistance
+                values, which should correspond to the 'EDGE_ID' in the graph.
+            oname (str): The output name for the saved plot file.
+        """
+
+        # Convert the graph to a GeoDataFrame
+        _, edgeDF = momepy.nx_to_gdf(self._K)
+        edgeDF['EDGE_ID'] = edgeDF[self.reachid_col].astype(int)
+        geoDF = edgeDF.merge(resistance_values, on="EDGE_ID")
+        print(geoDF)
+        # Plotting the resistance network
+        sns.set(style="ticks")
+        if 'Resistance_Upstream' in geoDF.columns:
+            fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+            geoDF.plot(ax=ax[0], column='Resistance_Downstream',
+                       cmap="RdYlGn_r", legend=True)
+            ax[0].set_title('Downstream Resistance')
+            geoDF.plot(ax=ax[1], column='Resistance_Upstream',
+                       cmap="RdYlGn_r", legend=True)
+            ax[1].set_title('Upstream Resistance')
+            fig.suptitle("Stream Network Resistance")
+        else:
+            geoDF.plot(column='Resistance', cmap="RdYlGn_r", legend=True)
+            plt.title("Stream network colored by resistance")
+        
+        plt.savefig(f"{oname}.streamsByResistance.pdf")
+        plt.clf()
+        plt.close()
+
 
 class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
     """
@@ -777,7 +803,8 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
                  variables, agg_opts, fitmetric, posWeight, fixWeight,
                  allShapes, fixShape, min_weight, max_shape, inc, point_coords,
                  points_names, points_snapped, points_labels, predictors,
-                 edge_order, gendist, adj, origin, R, edge_site_indices):
+                 edge_order, gendist, adj, origin, R, allSymmetric,
+                 edge_site_indices, root_edge_indices):
 
         self.network = network
         self.pop_agg = pop_agg
@@ -795,6 +822,7 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self.allShapes = allShapes
         self.min_weight = min_weight
         self.max_shape = max_shape
+        self.allSymmetric = allSymmetric
 
         self._inc = inc
         self._origin = origin
@@ -810,3 +838,4 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self._adj = adj
         self._R = R
         self._edge_site_indices = edge_site_indices
+        self._root_edge_indices = root_edge_indices
