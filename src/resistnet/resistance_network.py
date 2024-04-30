@@ -5,6 +5,8 @@ import pickle
 import traceback
 import itertools
 import pandas as pd
+import geopandas as gpd
+import pyogrio
 import numpy as np
 from sortedcontainers import SortedDict
 import seaborn as sns
@@ -701,6 +703,32 @@ class ResistanceNetwork:
                 f"Failed to read input genetic distance matrix: {self.inmat}"
             )
             sys.exit()
+
+    # NOTE: Later add option to join the resistance values
+    # Probably faster to just use momepy.nx_to_gdf...
+    def write_geodataframe(self, output_prefix, output_driver):
+        # extract original geodatabase
+        geoDF = pyogrio.read_dataframe(self.shapefile)
+        mask = geoDF[self.reachid_col].isin(list(self._edge_order))
+        geoDF = geoDF.loc[mask]
+
+        # write with user-provided output engine
+        gpd.options.io_engine = "pyogrio"
+        extension = {
+            "SHP": ".shp",
+            "GPKG": ".gpkg",
+            "GDB": ".gdb"
+        }.get(output_driver.upper(), ".gpkg")  # Default to .gpkg
+        if output_driver.upper() == "SHP":
+            output_driver = "ESRI Shapefile"
+
+        output_path = f"{output_prefix}{extension}"
+
+        if output_driver == 'GDB' and not os.path.exists(output_path):
+            os.makedirs(output_path)
+
+        geoDF.to_file(output_path, driver=output_driver.upper())
+
 
     def build_incidence_matrix(self, edge_id, out=None):
         """

@@ -17,7 +17,7 @@ class parseArgs():
         try:
             options, r = getopt.getopt(
                 sys.argv[1:],
-                'hp:g:s:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:V:Aa:o:Xj:n:',
+                'hp:g:s:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:V:Aa:o:Xj:n:O:',
                 ["shp=", "help", "input=", "genmat=", "shapefile=",
                  "seed=", "procs=", "maxPop=", "maxpop=", "maxgen=", "maxGen=",
                  "size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=",
@@ -30,7 +30,7 @@ class parseArgs():
                  "fixShape", "max_gens=", "max_gen=", "max_pop=", "varFile=",
                  "tournsize=", "tournSize=", "tSize=", "threads=",
                  "minWeight=", "min_weight=", "infer_origin=", "origin=",
-                 "sizes=", "allSymmetric"
+                 "sizes=", "allSymmetric", "gdf_out="
                  ]
             )
         except getopt.GetoptError as err:
@@ -56,6 +56,7 @@ class parseArgs():
         self.fitmetric = "aic"
         self.network = None
         self.predicted = False
+        self.output_driver = "GPKG"
         self.inmat = None
         self.shapefile = None
         self.network = None
@@ -168,6 +169,12 @@ class parseArgs():
                     self.fitmetric = arg.lower()
             elif opt in ('b', 'burn'):
                 self.burnin = int(arg)
+            elif opt in ("O", "gdf_out"):
+                arg_upper = str(arg).upper()
+                if arg_upper not in ["GPKG", "SHP", "GDB"]:
+                    self.display_help(f"Invalid option {arg_upper} for \
+                                      option <--gdf_out>")
+                self.output_driver = arg_upper
             elif opt == "dist_col":
                 self.dist_col = arg
             elif opt == "infer":
@@ -288,7 +295,9 @@ class parseArgs():
             "    -t, --procs: Number of parallel processors\n"
             "    -X, --noPlot: Turn off plotting\n"
             "    -o, --out: Output file prefix\n"
-            "    -h, --help: Displays help menu\n\n"
+            "    -h, --help: Displays help menu\n"
+            "    -O, --gdf_out   : Output driver for annotated geodataframe \
+(options \"SHP\", \"GPKG\", \"GDB\")\n\n"
 
             "Aggregation options:\n"
             "    --edge_agg: Method for combining variables across segments\n"
