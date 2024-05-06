@@ -1,53 +1,86 @@
 import sys
 import warnings
 import numpy as np
-from scipy.sparse import diags, eye, csr_matrix, SparseEfficiencyWarning
-from scipy.sparse.linalg import spsolve, lgmres, cg
+from scipy.sparse import diags, SparseEfficiencyWarning
+from scipy.sparse.linalg import spsolve, lgmres
+from scipy.sparse.linalg import LinearOperator, gmres, spilu
 from scipy.sparse import SparseEfficiencyWarning
 
 warnings.simplefilter('ignore', SparseEfficiencyWarning)
 
-def CFPT(Q, R, edge_site_indices):
+def CFPT(Q, R, edge_site_indices, solver="iterative", max_iter=1000,
+         max_fail=1, rtol=1e-5):
     N = len(edge_site_indices)
     cfpt_matrix = np.zeros((N, N))
+    failure_count = 0
 
     for i, dest in enumerate(edge_site_indices):
         Q_temp = Q.copy().tolil()
         absorption_factor = R[dest]
 
-        # Get indices and data for the dest row
-        for j in range(Q.shape[1]):
-            if j != dest:  # Avoid altering the diagonal element at this step
-                Q_temp[dest, j] *= (1 - absorption_factor)
+        # old method that could potentially lead to negative values
+        # for j in range(Q.shape[1]):
+        #     if j != dest:  # Avoid altering the diagonal element
+        #         Q_temp[dest, j] *= (1 - absorption_factor)
+
+        # Proportionally reduce non-destination transitions to adjust for absorption
+        non_dest_transitions = [j for j in range(Q.shape[1]) if j != dest]
+        total_non_dest_transition = sum(Q_temp[dest, j] for j in non_dest_transitions)
+        if total_non_dest_transition > 0:  # Avoid division by zero
+            scale_factor = (1 - absorption_factor * Q_temp[dest, dest]) / total_non_dest_transition
+            for j in non_dest_transitions:
+                Q_temp[dest, j] *= scale_factor
+
         Q_temp = Q_temp.tocsr()
+
         # Ensure diagonals make row sums to 1
         Q_temp = _set_diags(Q_temp)
 
         for j, orig in enumerate(edge_site_indices):
             if orig != dest:
-                # Extract Qj and qj for current destination
                 mask = np.ones(Q.shape[0], dtype=bool)
                 mask[dest] = False
                 Qj = Q_temp[mask, :][:, mask]
                 qj = Q_temp[mask, dest]
-                
-                # Apply numeric transformations to Qj for solving
                 Qj.data *= -1
                 Qj.setdiag(Qj.diagonal() + 1)
-                
-                # Solve for passage times using the adjusted Qj
+
+                # lgmres for iterative and sparselu/sparseqr if direct
                 try:
-                    solution, info = lgmres(Qj, qj.toarray().flatten())
-                    if info == 0:
+                    if solver == "iterative":
+                        # trying with pre-conditioning to see if this improves 
+                        # the non-convergence issue when Q is asymmetric 
+                        ilu = spilu(Qj.tocsc())
+                        M_x = LinearOperator(Qj.shape, lambda x: ilu.solve(x))
+                        solution, info = lgmres(Qj,
+                                                qj.toarray().flatten(),
+                                                maxiter=max_iter,
+                                                rtol=rtol,
+                                                )
+                                                #M=M_x)
+                        if info == 0:
+                            adjusted_index = np.where(mask)[0].tolist().index(orig)
+                            cfpt_matrix[j, i] = solution[adjusted_index]
+                        else:
+                            raise ValueError(f"Convergence failed for dest={dest}, orig={orig}, maxiter={info}")
+                    elif solver == "direct":
+                        solution = spsolve(Qj, qj.toarray().flatten())
                         adjusted_index = np.where(mask)[0].tolist().index(orig)
                         cfpt_matrix[j, i] = solution[adjusted_index]
-                    else:
-                        print(f"Convergence issue with dest={dest}, orig={orig}, info={info}")
-                        cfpt_matrix[j, i] = np.nan
-                except Exception as e:
-                    print(f"Solver failed for dest={dest}, orig={orig}: {e}")
+                except Exception:
+                    #print(f"Solver failed for dest={dest}, orig={orig}: {e}")
                     cfpt_matrix[j, i] = np.nan
+                    failure_count += 1
+                    if failure_count >= max_fail:
+                        # print("Q input:")
+                        # print(Q)
+                        # print("Q after adjustment")
+                        # print(Q_temp)
+                        # print("Qj:")
+                        # print(Qj)
+                        return None
     return cfpt_matrix
+
 
 # def CFPT(Q, R, edge_site_indices):
 #     """

@@ -70,9 +70,9 @@ class HallOfFame:
             pop (list): A list of models to be considered for inclusion in the
                         hall of fame.
         """
+        # only consider models w/ non neg-inf fitnesses
         popDF = pd.DataFrame(pop, columns=self.data.columns)
         popDF = popDF[popDF.fitness > float("-inf")]
-
         if popDF.shape[0] < 1:
             return
 

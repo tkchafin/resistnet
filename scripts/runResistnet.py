@@ -23,25 +23,10 @@ def main():
     random.seed(params.seed)
 
     # Step 1: Initialise network data
-    network = ResistanceNetworkSAMC(
-        network=params.network,
-        shapefile=params.shapefile,
-        sizes=params.sizefile,
-        coords=params.coords,
-        variables=params.variables,
-        agg_opts=params.agg_opts,
-        pop_agg=params.pop_agg,
-        inmat=params.inmat,
-        reachid_col=params.reachid_col,
-        length_col=params.length_col,
-        infer_origin=params.infer_origin,
-        origin=params.origin,
-        out=params.out,
-        verbose=True
-    )
-    # network = ResistanceNetwork(
+    # network = ResistanceNetworkSAMC(
     #     network=params.network,
     #     shapefile=params.shapefile,
+    #     sizes=params.sizefile,
     #     coords=params.coords,
     #     variables=params.variables,
     #     agg_opts=params.agg_opts,
@@ -49,9 +34,27 @@ def main():
     #     inmat=params.inmat,
     #     reachid_col=params.reachid_col,
     #     length_col=params.length_col,
+    #     infer_origin=params.infer_origin,
+    #     origin=params.origin,
     #     out=params.out,
     #     verbose=True
     # )
+    network = ResistanceNetwork(
+        network=params.network,
+        shapefile=params.shapefile,
+        coords=params.coords,
+        variables=params.variables,
+        agg_opts=params.agg_opts,
+        pop_agg=params.pop_agg,
+        inmat=params.inmat,
+        reachid_col=params.reachid_col,
+        length_col=params.length_col,
+        out=params.out,
+        verbose=True
+    )
+
+    # write new output geodatabase 
+    network.write_geodataframe(params.out, params.output_driver)
 
     # Step 2: Initialise ModelRunner
     runner = ModelRunner(

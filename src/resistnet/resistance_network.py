@@ -753,9 +753,12 @@ class ResistanceNetwork:
         # Map edge IDs to indices
         edge_to_index = {e: idx for idx, e in enumerate(self._edge_order)}
 
-        # Function to calculate weights for Dijkstra's shortest path algorithm
         def dijkstra_weight(left, right, attributes):
-            return attributes[self.length_col]
+            # Calculates weights for Dijkstra's shortest path algorithm by
+            # inverting the edge length with a small constant to avoid division by
+            # zero.
+            epsilon = 1e-9
+            return 1 / (attributes[self.length_col] + epsilon)
 
         # Compute the incidence matrix
         index = 0
@@ -807,10 +810,13 @@ class ResistanceNetwork:
 
         k = nx.Graph()
 
-        # Function to calculate weights for Dijkstra's shortest path algorithm
         def dijkstra_weight(left, right, attributes):
-            return attributes[len_col]
-
+            # Calculates weights for Dijkstra's shortest path algorithm by
+            # inverting the edge length with a small constant to avoid division by
+            # zero.
+            epsilon = 1e-9
+            return 1 / (attributes[len_col] + epsilon)
+        
         # Process each pair of points
         p1 = list(nodes.values())[0]
         for p2 in list(nodes.values())[1:]:
@@ -1069,9 +1075,11 @@ class ResistanceNetwork:
         r, res = rd.parsePairwise(
             self._points_snapped, self._inc, multi, self._gendist
         )
-        fitness = res[self.fitmetric].iloc[0]
-        res = list(res.iloc[0])
-        return (fitness, res)
+        if r is not None:
+            fitness = res[self.fitmetric].iloc[0]
+            res = list(res.iloc[0])
+            return (fitness, res)
+        return (float('-inf'), [])  
 
     def model_output(self, model):
         """

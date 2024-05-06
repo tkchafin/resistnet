@@ -194,7 +194,7 @@ class parseArgs():
             elif opt in ('a', 'awsum'):
                 self.awsum = float(arg)
             elif opt in ("max_shape", "maxShape"):
-                self.max_shape = float(arg)
+                self.max_shape = int(arg)
             elif opt == "report_all":
                 self.report_all = True
             elif opt in ('X', 'noPlot'):
@@ -340,7 +340,8 @@ class parseArgs():
             "    --max_hof_size: Maximum models retained [default=100]\n\n"
 
             "SAMC options:\n"
-            "TODO origin,infer_origin, sizefile,fixedSize,allSymmetric\n\n"
+            "TODO origin,infer_origin, sizefile,fixedSize,allSymmetric\n"
+            "solver, max_iter, rthresh\n\n"
 
             "Multi-model inference options:\n"
             "    -a, --awsum: Cumulative Akaike weight threshold [def.=0.95]\n"

@@ -106,7 +106,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self._edge_absorption = None
         self._R = None
         self._edge_site_indices = None
-        self._root_edge_indices = None
+        #self._root_edge_indices = None
 
         # Initialization methods
         self.initialize_network()
@@ -173,14 +173,23 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # calculations later on
         self.find_confluence()
 
-        # Modify network to contain further downstream edges
-        # This simplifies some things later on...
-        self.extend_confluence(3)
+        # # Modify network to contain further downstream edges
+        # # This simplifies some things later on...
+        # new_edge = max((data.get('EDGE_ID', -1) for _, _, data in self._K.edges(data=True)), default=-1) + 1
+        # self.extend_confluence(1, new_edge)
 
-        # add buffer edges around terminal sample points
-        # (makes it easier to plot later)
-        samples = list(self._points_snapped.keys())
-        self.buffer_points(1, points=samples)
+        # # add buffer edges around terminal sample points
+        # # (makes it easier to plot later)
+        # samples = list(self._points_snapped.keys())
+        # self.buffer_points(1, points=samples)
+
+        # Check for disconnected components
+        if nx.is_connected(self._K):
+            pass
+        else:
+            print("The network is not connected.")
+            components = list(nx.connected_components(self._K))
+            print(f"There are {len(components)} disconnected components.")
 
         # plot graph with detected origin
         self.plot_inferred_origin(self.output_prefix)
@@ -204,36 +213,38 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
     # around the whole sub-network as well
     def buffer_points(self, buffer_size=1, points=None):
         if points is None:
+            # Identify all terminal points in the subgraph if none are explicitly provided
             points = [node for node in self._K.nodes() if self._K.degree(node) == 1]
             if not points:
                 print("No terminal points found in the subgraph.")
                 return
 
-        # Get the highest EDGE_ID currently in the network
-        max_edge_id = max((data.get('EDGE_ID', -1) for _, _, data in self._G.edges(data=True)), default=-1)
-        max_edge_id += 1
-        # Iterate over sample points provided in the list
-        for node in points:
-            # Check if the node is terminal in the subgraph
-            if self._K.degree(node) == 1:
-                neighbors = list(self._G.neighbors(node))
-                # Exclude neighbors already in the subgraph
-                new_neighbors = [n for n in neighbors if n not in self._K.nodes()]
+        # Get the highest EDGE_ID currently in the network to ensure new edges have unique IDs
+        max_edge_id = max((data.get('EDGE_ID', -1) for _, _, data in self._K.edges(data=True)), default=-1) + 1
 
-                # Add edges from the terminal node to its new neighbors up to the specified buffer size
+        # Iterate over the provided terminal points
+        for node in points:
+            if self._K.degree(node) == 1:
+                # Determine the single neighbor in the subgraph to ensure extension in the correct direction
+                current_neighbor = list(self._K.neighbors(node))[0]
+
+                # Identify potential new neighbors from the full graph
+                neighbors = list(self._G.neighbors(node))
+                new_neighbors = [n for n in neighbors if n not in self._K.nodes() and n != current_neighbor]
+
+                # Limit the number of new neighbors to add based on the buffer_size
                 for new_neighbor in new_neighbors[:buffer_size]:
                     if self._G.has_edge(node, new_neighbor):
                         # Retrieve edge data from the full graph
                         edge_data = self._G.get_edge_data(node, new_neighbor)
 
-                        # Add new neighbor node if not already present
+                        # Add new node if not already in the subgraph
                         if not self._K.has_node(new_neighbor):
                             self._K.add_node(new_neighbor)
 
-                        # Add new edge with copied attributes and incremented EDGE_ID
-                        self._K.add_edge(node, new_neighbor, **edge_data)
-                        max_edge_id += 1  # Increment the EDGE_ID for each new edge
-                        nx.set_edge_attributes(self._K, {(node, new_neighbor): {"EDGE_ID": max_edge_id}})
+                        # Add new edge with the original attributes and assign a new unique EDGE_ID
+                        self._K.add_edge(node, new_neighbor, **edge_data, EDGE_ID=max_edge_id)
+                max_edge_id += 1
 
     # scipy.sparse version
     def create_adjacency_matrix(self):
@@ -277,20 +288,20 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         for u, v, edge_data in self._K.edges(data=True):
             add_edge_adjacency(u, v, edge_data)
 
-        # special case for edges connected to origin
-        root_edges = self._K.in_edges(self._origin, data=True)
-        root_edge_indices = []
-        for u, v, data in root_edges:
-            if self.reachid_col in data:
-                edge_id = data[self.reachid_col]
-                if edge_id in edge_to_idx:
-                    root_edge_indices.append(edge_to_idx[edge_id])
-        for idx_i in root_edge_indices:
-            for idx_j in root_edge_indices:
-                if idx_i != idx_j:
-                    adjacency_matrix[idx_j, idx_i] = -1
-                    adjacency_matrix[idx_i, idx_j] = -1
-        self._root_edge_indices = root_edge_indices
+        # # special case for edges connected to origin
+        # root_edges = self._K.in_edges(self._origin, data=True)
+        # root_edge_indices = []
+        # for u, v, data in root_edges:
+        #     if self.reachid_col in data:
+        #         edge_id = data[self.reachid_col]
+        #         if edge_id in edge_to_idx:
+        #             root_edge_indices.append(edge_to_idx[edge_id])
+        # for idx_i in root_edge_indices:
+        #     for idx_j in root_edge_indices:
+        #         if idx_i != idx_j:
+        #             adjacency_matrix[idx_j, idx_i] = -1
+        #             adjacency_matrix[idx_i, idx_j] = -1
+        # self._root_edge_indices = root_edge_indices
 
         # If non-directional model, take absolute values of adjacency_matrix
         if self.allSymmetric:
@@ -323,7 +334,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         sites = list(self._points_snapped.keys())
         tips = [None] * len(sites)
         # Iterate over edges in the graph
-        for u, v, edge_data in self._K.edges(data=True):
+        for u, _, edge_data in self._K.edges(data=True):
             # Get the edge ID from edge_data using the identifier column name
             if self.reachid_col in edge_data:
                 edge_id = edge_data[self.reachid_col]
@@ -404,7 +415,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     self._edge_origin = reach_to_edge[dat[self.reachid_col]]
                     break
 
-    def extend_confluence(self, increments=1):
+    def extend_confluence(self, increments=1, new_edge_id=0):
         if not hasattr(self, '_origin') or self._origin is None:
             raise ValueError("Origin node has not been set.")
 
@@ -440,17 +451,14 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             next_down_edge[0], next_down_edge[1], **next_down_data)
 
         # Increment EDGE_ID and add to new edge
-        max_edge_id = max(
-            (data.get('EDGE_ID', -1) for _, _, data in self._K.edges(data=True)),
-            default=-1) + 1
         nx.set_edge_attributes(
             self._K,
-            {(next_down_edge[0], next_down_edge[1]): {"EDGE_ID": max_edge_id}}
+            {(next_down_edge[0], next_down_edge[1]): {"EDGE_ID": new_edge_id}}
         )
 
         # Update origin to the new downstream node
         self._origin = next_down_edge[1]
-        self._edge_origin = max_edge_id
+        self._edge_origin = new_edge_id
         self._reach_origin = next_down_data[self.reachid_col]
 
         # Recursive call to process further increments
@@ -476,13 +484,19 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         """
         multi = self._build_composite_surface(individual)
         if multi is None:
-            return float('-inf'), None
-
+            return (float('-inf'), [])
+        
+        # TODO: Having some non-convergence issue here
+        # Should add some options for tolerance, max_iter, etc
+        # or explore other solvers
         cfpt, res = rd.conditionalFirstPassTime(
             multi, self._R, self._edge_site_indices, self._gendist)
-        fitness = res[self.fitmetric].iloc[0]
-        res = list(res.iloc[0])
-        return fitness, res
+        
+        if cfpt is not None:
+            fitness = res[self.fitmetric].iloc[0]
+            res = list(res.iloc[0])
+            return fitness, res
+        return (float('-inf'), [])
 
     # will need to overload plotting functions for SAMC models as well
     def model_output(self, model):
@@ -502,29 +516,29 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             tuple: A tuple containing the effective resistance matrix and the
                    multi-surface representation for the model.
         """
-        print(model)
+        print("output")
         multi = self._build_composite_surface(model)
-        print(multi)
-        sys.exit()
         if multi is None:
             return None, None
 
         # re-compute cfpt times 
         cfpt, _ = rd.conditionalFirstPassTime(
             multi, self._R, self._edge_site_indices, self._gendist)
-        
-        # re-compute transition rates and return as us/ds vectors
-        trans = self._transition_vectors(multi)
-        print(trans)
-        sys.exit()
-        return cfpt, trans
+        print(cfpt)
+        if cfpt is not None:
+            print("TRANSITION RATES")
+            print(multi)
+            # re-compute transition rates and return as us/ds vectors
+            trans = self._transition_vectors(multi)
+            print(trans)
+            sys.exit()
+            return cfpt, trans
+        return None, None
 
     def _transition_vectors(self, mat):
         # Poorly named as these are actually 1/trans_prob
         n = len(self._edge_order)
         transition_probs = np.zeros((n, 2))
-        print(self._adj)
-        print(mat)
         if sp.issparse(mat):
             mat_dense = mat.toarray()
         else:
@@ -540,15 +554,15 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             upstream_mask_col = self._adj[:, i].toarray().ravel() == -1
             transition_probs[i, 1] = np.sum(mat_dense[i, upstream_mask_col]) + np.sum(mat_dense[upstream_mask_row, i])
 
-        # Handling of edges connected directly to the origin
-        for idx_i in self._root_edge_indices:
-            for idx_j in self._root_edge_indices:
-                if idx_i != idx_j:
-                    transition_probs[idx_i, 0] = mat_dense[idx_i, idx_j]
-                    transition_probs[idx_j, 1] = mat_dense[idx_j, idx_i]
-                    transition_probs[idx_i, 1] = mat_dense[idx_j, idx_i]
-                    transition_probs[idx_j, 0] = mat_dense[idx_i, idx_j]
-        print(transition_probs)
+        # # Handling of edges connected directly to the origin
+        # for idx_i in self._root_edge_indices:
+        #     for idx_j in self._root_edge_indices:
+        #         if idx_i != idx_j:
+        #             transition_probs[idx_i, 0] = mat_dense[idx_i, idx_j]
+        #             transition_probs[idx_j, 1] = mat_dense[idx_j, idx_i]
+        #             transition_probs[idx_i, 1] = mat_dense[idx_j, idx_i]
+        #             transition_probs[idx_j, 0] = mat_dense[idx_i, idx_j]
+
         # Check if rates are symmetric
         if self.allSymmetric or np.all(
                 transition_probs[:, 0] == transition_probs[:, 1]):
@@ -579,12 +593,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     individual[3::5][i]
                 )
                 var = trans.rescaleCols(var, 0, 1)
-                print(individual[4::5][i])
                 if individual[4::5][i] == 1:
                     var_m = self._compute_transition(var, directional=True)
                     var_m = var_m.T
-                    print(var_m)
-                    sys.exit()
                 else:
                     var_m = self._compute_transition(var, directional=False)
                 var_m.data = utils.minmax(var_m.data)
@@ -617,7 +628,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                 cols.append(col)
         else:
             for row, col in zip(*self._adj.nonzero()):
-                value = self._adj[row, col]
                 new_value = (var.iloc[row] + var.iloc[col]) / 2.0
                 data.append(new_value)
                 rows.append(row)
@@ -698,15 +708,14 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             plot (bool, optional): Boolean to control whether to generate plots
                                    Defaults to True.
         """
-
+        if mat_r is None or edge_r is None:
+            return
         # Write edge and matrix results to files
         out1 = f"{oname}.ResistanceEdges.tsv"
         utils.write_edges(out1, edge_r, self._edge_order)
 
         out2 = f"{oname}.CFPTMatrix.tsv"
         utils.write_matrix(out2, mat_r, list(self._points_labels.values()))
-
-        print(edge_r)
 
         # Plot resistance network and pairwise models if required
         if plot:
@@ -804,7 +813,7 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
                  allShapes, fixShape, min_weight, max_shape, inc, point_coords,
                  points_names, points_snapped, points_labels, predictors,
                  edge_order, gendist, adj, origin, R, allSymmetric,
-                 edge_site_indices, root_edge_indices):
+                 edge_site_indices):
 
         self.network = network
         self.pop_agg = pop_agg
@@ -838,4 +847,4 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self._adj = adj
         self._R = R
         self._edge_site_indices = edge_site_indices
-        self._root_edge_indices = root_edge_indices
+        #self.root_edge_indices = root_edge_indices

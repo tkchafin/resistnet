@@ -66,8 +66,11 @@ def conditionalFirstPassTime(Q, R, sites_i, gendist):
 
     # get cfpt matrix
     cfpt = cfpt_samc.CFPT(Q, R, sites_i)
-    cfpt = np.array(cfpt)
 
     # fit MLPE
-    res = mlpe_rga.MLPE_R(gendist, cfpt, scale=True)
-    return cfpt, res
+    if cfpt is not None:
+        cfpt = np.array(cfpt)
+        res = mlpe_rga.MLPE_R(gendist, cfpt, scale=True)
+        return cfpt, res
+    else:
+        return None, float('-inf')

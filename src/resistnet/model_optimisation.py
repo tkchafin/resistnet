@@ -89,14 +89,15 @@ class ModelRunner:
         self.init_ga_attributes()
 
         # Initialize population
-        popsize = len(self.resistance_network.variables) * 5 * 15
+        popsize = int(len(self.resistance_network.variables) * 5 * 15)  # Ensuring it's an integer
         if self.popsize:
-            popsize = self.popsize
+            popsize = int(self.popsize)
         if popsize > self.maxpopsize:
-            popsize = self.maxpopsize
+            popsize = int(self.maxpopsize)
 
         if self.verbose:
             print("Establishing a population of size:", str(popsize))
+        print(popsize)
         self.population = self.toolbox.population(n=popsize)
 
     def set_ga_parameters(self, mutpb, cxpb, indpb, popsize, maxpopsize,
@@ -387,6 +388,7 @@ class ModelRunner:
         self.bests.relative_variable_importance(self.only_keep)
         self.bests.model_average_weights()
 
+
         # Printing and writing the results
         if verbose:
             self.bests.printHOF()
@@ -396,6 +398,7 @@ class ModelRunner:
         if out:
             self.bests.writeMAW(out)
             self.bests.writeRVI(out)
+            self.bests.writeBest(out)
             # Plotting, if enabled
             if plot:
                 self.bests.plot_ICprofile(out)
@@ -488,7 +491,6 @@ class ModelRunner:
                 self.resistance_network.output_and_plot_model(
                     oname, matrix_r, edge_r
                 )
-
         oname = f"{out}.Model-Average"
         self.resistance_network.output_and_plot_model(
             oname, matrix_avg, edge_avg
@@ -594,7 +596,7 @@ class ModelRunner:
         if not self.fixShape:
             self.toolbox.register("feature_transform", random.randint, 0, 8)
             self.toolbox.register(
-                "feature_shape", random.randint, 1, self.max_shape
+                "feature_shape", random.randint, 1, int(self.max_shape)
             )
         else:
             self.toolbox.register("feature_transform", random.randint, 0, 0)
@@ -697,9 +699,9 @@ class ModelRunner:
                 worker_args[
                     'edge_site_indices'
                     ] = self.resistance_network._edge_site_indices
-                worker_args[
-                    'root_edge_indices'
-                    ] = self.resistance_network._root_edge_indices
+                # worker_args[
+                #     'root_edge_indices'
+                #     ] = self.resistance_network._root_edge_indices
 
             worker_process = Process(
                 target=self.worker_task,
