@@ -89,7 +89,7 @@ class ModelRunner:
         self.init_ga_attributes()
 
         # Initialize population
-        popsize = int(len(self.resistance_network.variables) * 5 * 15)  # Ensuring it's an integer
+        popsize = int(len(self.resistance_network.variables) * 5 * 15)
         if self.popsize:
             popsize = int(self.popsize)
         if popsize > self.maxpopsize:
@@ -388,7 +388,6 @@ class ModelRunner:
         self.bests.relative_variable_importance(self.only_keep)
         self.bests.model_average_weights()
 
-
         # Printing and writing the results
         if verbose:
             self.bests.printHOF()
@@ -592,7 +591,7 @@ class ModelRunner:
             self.toolbox.register("feature_asym", random.randint, 0, 1)
         else:
             self.toolbox.register("feature_asym", random.randint, 0, 0)
-        
+
         # shape
         if not self.fixShape:
             self.toolbox.register("feature_transform", random.randint, 0, 8)

@@ -43,7 +43,9 @@ class HallOfFame:
         """
         cols = ["fitness"]
         for v in variables:
-            cols.extend([str(v), f"{v}_weight", f"{v}_trans", f"{v}_shape", f"{v}_asym"])
+            cols.extend([
+                str(v), f"{v}_weight", f"{v}_trans", f"{v}_shape", f"{v}_asym"
+            ])
         cols.extend(["loglik", "r2m", "aic", "delta_aic_null"])
         self.data = pd.DataFrame(columns=cols)
         self.variables = variables

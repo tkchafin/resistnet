@@ -39,7 +39,7 @@ def graph_to_dag(K, origin):
 def graph_to_dag_converging(K, origin):
     """
     Convert an undirected graph to a Directed Acyclic Graph (DAG) where all
-    edges are directed to converge on a specified root node. 
+    edges are directed to converge on a specified root node.
 
     Args:
         K (networkx.Graph): The undirected graph to be converted.
@@ -97,7 +97,8 @@ def minmax_lil(lil_matrix):
 
 def minmax(X):
     """
-    Perform min-max scaling on a NumPy array, scaling all values to be between 0 and 1.
+    Perform min-max scaling on a NumPy array, scaling all values to be between
+    0 and 1.
 
     Args:
         X (numpy.ndarray): The input array to be scaled.
@@ -113,9 +114,9 @@ def minmax(X):
 
 def minmax_nonzero(X):
     """
-    Perform min-max scaling on a NumPy array, initially scaling all values to be between 0 and 1,
-    and then adjusting the scale so that the smallest non-zero value becomes 1 and other values
-    are adjusted accordingly.
+    Perform min-max scaling on a NumPy array, initially scaling all values to
+    be between 0 and 1, and then adjusting the scale so that the smallest
+    non-zero value becomes 1 and other values are adjusted accordingly.
 
     Args:
         X (numpy.ndarray): The input array to be scaled.
@@ -151,7 +152,7 @@ def masked_minmax(X, mask):
     min_val = masked_values.min()
     max_val = masked_values.max()
     scaled_values = (
-        (masked_values - min_val) / (max_val - min_val) 
+        (masked_values - min_val) / (max_val - min_val)
         if max_val != min_val else masked_values
     )
     X_scaled = np.copy(X)
@@ -543,11 +544,13 @@ def write_edges(out, edge, ids):
 
     This function creates a DataFrame from edge IDs and their corresponding
     resistance values, and writes this data to a CSV file. If the edge array
-    contains two columns, it treats them as downstream and upstream resistances.
+    contains two columns, it treats them as downstream and upstream
+    resistances.
 
     Args:
         out: The file path where the CSV will be written.
-        edge: A numpy array of edge resistance values, possibly with two columns.
+        edge: A numpy array of edge resistance values, possibly with two
+              columns.
         ids: A list of edge IDs.
 
     Returns:

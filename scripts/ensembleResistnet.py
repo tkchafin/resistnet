@@ -49,7 +49,7 @@ def main():
     )
 
     if params.only_keep:
-        hofs = hofs[hofs['keep'] == True]
+        hofs = hofs[hofs['keep']]
     if params.hof_max is not None:
         hofs = hofs.head(params.hof_max)
 

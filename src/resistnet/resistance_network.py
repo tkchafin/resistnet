@@ -11,7 +11,6 @@ import numpy as np
 from sortedcontainers import SortedDict
 import seaborn as sns
 import matplotlib.pyplot as plt
-import pyogrio
 import momepy
 import networkx as nx
 
@@ -196,7 +195,7 @@ class ResistanceNetwork:
 
         # Annotate edges of the network graph
         self._K = self.annotate_edges(self.output_prefix)
-        
+
         # Clean up to save memory by removing unnecessary graph copies
         del self._G
         del self.minimized_subgraph
@@ -729,7 +728,6 @@ class ResistanceNetwork:
 
         geoDF.to_file(output_path, driver=output_driver.upper())
 
-
     def build_incidence_matrix(self, edge_id, out=None):
         """
         Builds an incidence matrix for the network based on Dijkstra's
@@ -755,8 +753,8 @@ class ResistanceNetwork:
 
         def dijkstra_weight(left, right, attributes):
             # Calculates weights for Dijkstra's shortest path algorithm by
-            # inverting the edge length with a small constant to avoid division by
-            # zero.
+            # inverting the edge length with a small constant to avoid
+            # division by zero.
             epsilon = 1e-9
             return 1 / (attributes[self.length_col] + epsilon)
 
@@ -811,12 +809,9 @@ class ResistanceNetwork:
         k = nx.Graph()
 
         def dijkstra_weight(left, right, attributes):
-            # Calculates weights for Dijkstra's shortest path algorithm by
-            # inverting the edge length with a small constant to avoid division by
-            # zero.
             epsilon = 1e-9
             return 1 / (attributes[len_col] + epsilon)
-        
+
         # Process each pair of points
         p1 = list(nodes.values())[0]
         for p2 in list(nodes.values())[1:]:
@@ -1079,7 +1074,7 @@ class ResistanceNetwork:
             fitness = res[self.fitmetric].iloc[0]
             res = list(res.iloc[0])
             return (fitness, res)
-        return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])  
+        return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
 
     def model_output(self, model):
         """
@@ -1135,6 +1130,7 @@ class ResistanceNetwork:
         if not first:
             multi = trans.rescaleCols(multi, 0, 1)
         return multi
+
 
 class ResistanceNetworkWorker(ResistanceNetwork):
     """

@@ -1,12 +1,10 @@
-import sys
 import warnings
 import numpy as np
 from scipy.sparse import diags, SparseEfficiencyWarning
 from scipy.sparse.linalg import spsolve, lgmres
-from scipy.sparse.linalg import LinearOperator, spilu
-from scipy.sparse import SparseEfficiencyWarning
 
 warnings.simplefilter('ignore', SparseEfficiencyWarning)
+
 
 def CFPT(Q, R, edge_site_indices, rtol=1e-5, max_iter=1000,
          max_fail=1, solver="iterative", ):
@@ -23,11 +21,14 @@ def CFPT(Q, R, edge_site_indices, rtol=1e-5, max_iter=1000,
         #     if j != dest:  # Avoid altering the diagonal element
         #         Q_temp[dest, j] *= (1 - absorption_factor)
 
-        # Proportionally reduce non-destination transitions to adjust for absorption
+        # Proportionally reduce non-destination transitions to adjust for abs
         non_dest_transitions = [j for j in range(Q.shape[1]) if j != dest]
-        total_non_dest_transition = sum(Q_temp[dest, j] for j in non_dest_transitions)
+        total_non_dest_transition = sum(
+            Q_temp[dest, j] for j in non_dest_transitions)
         if total_non_dest_transition > 0:  # Avoid division by zero
-            scale_factor = (1 - absorption_factor * Q_temp[dest, dest]) / total_non_dest_transition
+            scale_factor = (
+                1 - absorption_factor * Q_temp[dest, dest]
+            ) / total_non_dest_transition
             for j in non_dest_transitions:
                 Q_temp[dest, j] *= scale_factor
 
@@ -48,92 +49,35 @@ def CFPT(Q, R, edge_site_indices, rtol=1e-5, max_iter=1000,
                 # lgmres for iterative and sparselu/sparseqr if direct
                 try:
                     if solver == "iterative":
-                        # trying with pre-conditioning to see if this improves 
-                        # the non-convergence issue when Q is asymmetric 
-                        ilu = spilu(Qj.tocsc())
-                        M_x = LinearOperator(Qj.shape, lambda x: ilu.solve(x))
+                        # trying with pre-conditioning to see if this improves
+                        # the non-convergence issue when Q is asymmetric
+                        # ilu = spilu(Qj.tocsc())
+                        # M_x = LinearOperator(
+                        # Qj.shape, lambda x: ilu.solve(x))
                         solution, info = lgmres(Qj,
                                                 qj.toarray().flatten(),
                                                 maxiter=max_iter,
                                                 rtol=rtol,
-                                                )
-                                                #M=M_x)
+                                                )  # M=M_x)
                         if info == 0:
-                            adjusted_index = np.where(mask)[0].tolist().index(orig)
+                            adjusted_index = np.where(mask)[0].tolist().index(
+                                orig)
                             cfpt_matrix[j, i] = solution[adjusted_index]
                         else:
-                            raise ValueError(f"Convergence failed for dest={dest}, orig={orig}, maxiter={info}")
+                            raise ValueError(
+                                f"Convergence failed {dest}-{orig}: {info}"
+                            )
                     elif solver == "direct":
                         solution = spsolve(Qj, qj.toarray().flatten())
                         adjusted_index = np.where(mask)[0].tolist().index(orig)
                         cfpt_matrix[j, i] = solution[adjusted_index]
                 except Exception:
-                    #print(f"Solver failed for dest={dest}, orig={orig}: {e}")
                     cfpt_matrix[j, i] = np.nan
                     failure_count += 1
                     if failure_count >= max_fail:
                         return None
     return cfpt_matrix
 
-
-# def CFPT(Q, R, edge_site_indices):
-#     """
-#     Calculate conditional first passage times for a Markov chain represented by matrix Q
-#     with absorption probabilities R for each state specified in edge_site_indices.
-    
-#     Parameters:
-#     - Q (csr_matrix): Transition probability matrix without absorption (diagonals adjusted).
-#     - R (numpy.ndarray): Absorption probabilities for each state.
-#     - edge_site_indices (list): Indices of states for which to calculate CFPT.
-    
-#     Returns:
-#     - cfpt_matrix (numpy.ndarray): Matrix of conditional first passage times.
-#     """
-
-#     # create Q_scaled
-#     # if more efficient can stack these
-#     abs_vec = np.ravel(R)
-#     # NOTE: I don't think we need the below part currently
-#     # for each row (1 - abs_vec[i]) * row_values / np.sum(row_values)
-
-#     # set diagonals
-#     Q = _set_diags(Q)
-
-#     # validate Q
-#     row_sums = Q.sum(axis=1).A1
-#     if not np.allclose(row_sums, 1):
-#         raise ValueError("Row sums in Q should sum to 1.")
-
-#     # in-place modifications for downstream steps
-#     _opt_prep(Q)
-
-#     # compute cfpt
-#     Np = len(edge_site_indices)
-#     cfpt_matrix = np.zeros((Np, Np))
-    
-#     for i, dest in enumerate(edge_site_indices):
-#         # Mask to exclude 'dest'
-#         mask = np.ones(Q.shape[0], dtype=bool)
-#         mask[dest] = False
-
-#         # Create Qj by excluding the 'dest' state
-#         Qj = Q[mask, :][:, mask]
-
-#         # Create qj as the 'dest' column, excluding itself
-#         qj = Q[mask, dest]
-
-#         for j, orig in enumerate(edge_site_indices):
-#             if orig != dest:
-#                 try:
-#                     passage_times = spsolve(Qj, qj.toarray().flatten())
-#                     print(passage_times)
-#                     cfpt_matrix[j, i] = passage_times[orig]
-#                 except Exception as e:
-#                     print(f"Solver failed for dest={dest}, orig={orig}: {e}")
-#                     cfpt_matrix[j, i] = np.nan
-#     print(cfpt_matrix)
-#     sys.exit()
-#     return cfpt_matrix
 
 def _set_diags(sm, offset=None):
     """

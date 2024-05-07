@@ -62,7 +62,7 @@ def effectiveResistanceMatrix(points, inc_matrix, edge_resistance):
     return r
 
 
-def conditionalFirstPassTime(Q, R, sites_i, gendist, 
+def conditionalFirstPassTime(Q, R, sites_i, gendist,
                              rtol=0.00001, max_iter=1000, max_fail=1,
                              solver="iterative"):
 
@@ -78,9 +78,9 @@ def conditionalFirstPassTime(Q, R, sites_i, gendist,
             res = mlpe_rga.MLPE_R(gendist, cfpt_a, scale=True)
             return cfpt, res
         except Exception as e:
-            # NOTE: This is often caused by most of the CFPT values 
+            # NOTE: This is often caused by most of the CFPT values
             # being 0
-            print("Unexpected error fitting MLPE:",e)
+            print("Unexpected error fitting MLPE:", e)
             return None, float('-inf')
     else:
         return None, float('-inf')

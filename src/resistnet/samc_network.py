@@ -1,4 +1,3 @@
-import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -110,7 +109,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self._edge_absorption = None
         self._R = None
         self._edge_site_indices = None
-        #self._root_edge_indices = None
 
         # Initialization methods
         self.initialize_network()
@@ -118,11 +116,11 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self.build_incidence_matrix(self.reachid_col, out=self.output_prefix)
         if self.inmat is not None:
             self.parse_input_gen_mat(out=self.output_prefix)
-        
+
         # direct graph
         self.polarise_network(self._origin)
 
-        # calculate edge-wise absorption 
+        # calculate edge-wise absorption
         self.calculate_absorption()
 
     def initialize_network(self):
@@ -164,7 +162,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         for key, pops in self._points_names.items():
             this_sizes = sizes[sizes['sample'].isin(pops)]
             if this_sizes.empty:
-                raise ValueError(f"Population in {pops} missing size") 
+                raise ValueError(f"Population in {pops} missing size")
             self._sizes[key] = this_sizes['size'].mean()
 
         # Compute the subgraph based on the snapped points
@@ -179,7 +177,13 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
         # # Modify network to contain further downstream edges
         # # This simplifies some things later on...
-        new_edge = max((data.get('EDGE_ID', -1) for _, _, data in self._K.edges(data=True)), default=-1) + 1
+        new_edge = max(
+            (
+                data.get('EDGE_ID', -1)
+                for _, _, data in self._K.edges(data=True)
+            ),
+            default=-1
+        ) + 1
         self.extend_confluence(1, new_edge)
 
         # # add buffer edges around terminal sample points
@@ -213,30 +217,39 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
     # NOTE: Future version could add recursively so we make sure we cover
     # all upstream edges in cases of fork
-    # this would make it easier to have a quick projection of resistance 
+    # this would make it easier to have a quick projection of resistance
     # around the whole sub-network as well
     def buffer_points(self, buffer_size=1, points=None):
         if points is None:
-            # Identify all terminal points in the subgraph if none are explicitly provided
-            points = [node for node in self._K.nodes() if self._K.degree(node) == 1]
+            # Identify all terminal nodes if none specified for extension
+            points = [
+                node for node in self._K.nodes() if self._K.degree(node) == 1
+            ]
             if not points:
                 print("No terminal points found in the subgraph.")
                 return
 
-        # Get the highest EDGE_ID currently in the network to ensure new edges have unique IDs
-        max_edge_id = max((data.get('EDGE_ID', -1) for _, _, data in self._K.edges(data=True)), default=-1) + 1
+        # Get the highest EDGE_ID currently in the network
+        max_edge_id = max(
+            (
+                data.get('EDGE_ID', -1)
+                for _, _, data in self._K.edges(data=True)
+            ),
+            default=-1
+        ) + 1
 
         # Iterate over the provided terminal points
         for node in points:
             if self._K.degree(node) == 1:
-                # Determine the single neighbor in the subgraph to ensure extension in the correct direction
                 current_neighbor = list(self._K.neighbors(node))[0]
 
                 # Identify potential new neighbors from the full graph
                 neighbors = list(self._G.neighbors(node))
-                new_neighbors = [n for n in neighbors if n not in self._K.nodes() and n != current_neighbor]
-
-                # Limit the number of new neighbors to add based on the buffer_size
+                new_neighbors = [
+                    n for n in neighbors
+                    if n not in self._K.nodes() and n != current_neighbor
+                ]
+                # Limit neighbors to add based on the buffer_size
                 for new_neighbor in new_neighbors[:buffer_size]:
                     if self._G.has_edge(node, new_neighbor):
                         # Retrieve edge data from the full graph
@@ -246,8 +259,11 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                         if not self._K.has_node(new_neighbor):
                             self._K.add_node(new_neighbor)
 
-                        # Add new edge with the original attributes and assign a new unique EDGE_ID
-                        self._K.add_edge(node, new_neighbor, **edge_data, EDGE_ID=max_edge_id)
+                        # Add new edge
+                        self._K.add_edge(
+                            node, new_neighbor, **edge_data,
+                            EDGE_ID=max_edge_id
+                        )
                 max_edge_id += 1
 
     # scipy.sparse version
@@ -285,8 +301,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                         if id in edge_data_v_succ:
                             if edge_data_v_succ[id] in edge_to_idx:
                                 idx_v_succ = edge_to_idx[edge_data_v_succ[id]]
-                                adjacency_matrix[idx_u_v, idx_v_succ] = 1 
-                                adjacency_matrix[idx_v_succ, idx_u_v] = -1 
+                                adjacency_matrix[idx_u_v, idx_v_succ] = 1
+                                adjacency_matrix[idx_v_succ, idx_u_v] = -1
 
         # Iterate over all edges to populate adjacency relationships
         for u, v, edge_data in self._K.edges(data=True):
@@ -532,13 +548,13 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         return cfpt, trans
 
     def _transition_vectors(self, mat):
-        n = len(self._edge_order)  # assuming _edge_order gives the list of edges/nodes
+        n = len(self._edge_order)
         # Initialize arrays with NaNs
         downstream_transitions = np.full(n, 0.0)
         upstream_transitions = np.full(n, 0.0)
 
         # Process the sparse matrix directly
-        mat_coo = mat.tocoo()  # Convert to COOrdinate format for easy traversal
+        mat_coo = mat.tocoo()  # coo easier traversal
         for i, j, rate in zip(mat_coo.row, mat_coo.col, mat_coo.data):
             # Check adjacency for direction of flow
             if self._adj[i, j] == 1:  # i -> j is downstream
@@ -546,7 +562,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             elif self._adj[i, j] == -1:  # i -> j is upstream for node j
                 upstream_transitions[j] += rate
 
-        # Correctly handling terminal edges with either no downstream or no upstream neighbors
+        # Correctly handling terminal edges w/ no neighbors
         adj_coo = self._adj.tocoo()
         has_downstream = np.zeros(n, dtype=bool)
         has_upstream = np.zeros(n, dtype=bool)
@@ -721,7 +737,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                     "Resistance_Downstream": edge_r[:, 0],
                     "Resistance_Upstream": edge_r[:, 1]
                 })
-            elif edge_r.ndim == 1 or (edge_r.ndim == 2 and edge_r.shape[1] == 1):
+            elif edge_r.ndim == 1 or (
+                    edge_r.ndim == 2 and edge_r.shape[1] == 1):
                 edf = pd.DataFrame({
                     "EDGE_ID": self._edge_order,
                     "Resistance": edge_r.flatten()
@@ -764,7 +781,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         else:
             geoDF.plot(column='Resistance', cmap="RdYlGn_r", legend=True)
             plt.title("Stream network colored by resistance")
-        
+
         plt.savefig(f"{oname}.streamsByResistance.pdf")
         plt.clf()
         plt.close()
@@ -847,4 +864,3 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self._adj = adj
         self._R = R
         self._edge_site_indices = edge_site_indices
-        #self.root_edge_indices = root_edge_indices

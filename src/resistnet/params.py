@@ -99,7 +99,6 @@ class parseArgs():
         self.solver = "iterative"
         self.rtol = 0.00001
 
-
         # First pass to see if help menu was called
         for o, a in options:
             if o in ("-h", "-help", "--help"):
@@ -354,6 +353,9 @@ class parseArgs():
             "        NOTE: Case-insensitive\n"
             "    -b, --burn: Number of generations for pre-burnin [def.=0]\n"
             "    --max_hof_size: Maximum models retained [default=100]\n\n"
+
+            "natural vs. full RVI\n"
+            "shape pre-optimisation (for use with --fixShape)\n"
 
             "SAMC options:\n"
             "TODO origin,infer_origin, sizefile,fixedSize,allSymmetric\n"
