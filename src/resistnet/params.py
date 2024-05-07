@@ -30,7 +30,8 @@ class parseArgs():
                  "fixShape", "max_gens=", "max_gen=", "max_pop=", "varFile=",
                  "tournsize=", "tournSize=", "tSize=", "threads=",
                  "minWeight=", "min_weight=", "infer_origin=", "origin=",
-                 "sizes=", "allSymmetric", "gdf_out="
+                 "sizes=", "allSymmetric", "gdf_out=", "rtol=", "max_iter=",
+                 "max_fail=", "solver="
                  ]
             )
         except getopt.GetoptError as err:
@@ -93,6 +94,10 @@ class parseArgs():
         self.infer_origin = "NEXT_DOWN"
         self.origin = None
         self.sizefile = None
+        self.max_iter = 1000
+        self.max_fail = 1
+        self.solver = "iterative"
+        self.rtol = 0.00001
 
 
         # First pass to see if help menu was called
@@ -154,6 +159,17 @@ class parseArgs():
                 self.indpb = float(arg)
             elif opt == "cxpb":
                 self.cxpb = float(arg)
+            elif opt == "rtol":
+                self.rtol = float(arg)
+            elif opt == "max_iter":
+                self.max_iter = int(arg)
+            elif opt == "max_fail":
+                self.max_fail = int(arg)
+            elif opt == "solver":
+                if arg.lower() not in ["iterative", "direct"]:
+                    self.diplay_help("Unrecognized solver <--solver>")
+                else:
+                    self.solver = arg.lower()
             elif opt in ('T', 'tSize', 'tournSize', "tourn", "tournsize"):
                 self.tournsize = int(arg)
             elif opt in ('F', 'nfail', 'nFail'):

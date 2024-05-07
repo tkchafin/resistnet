@@ -1071,7 +1071,7 @@ class ResistanceNetwork:
         """
         multi = self._build_composite_surface(individual)
         if multi is None:
-            return (float('-inf'), [])
+            return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
         r, res = rd.parsePairwise(
             self._points_snapped, self._inc, multi, self._gendist
         )
@@ -1079,7 +1079,7 @@ class ResistanceNetwork:
             fitness = res[self.fitmetric].iloc[0]
             res = list(res.iloc[0])
             return (fitness, res)
-        return (float('-inf'), [])  
+        return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])  
 
     def model_output(self, model):
         """

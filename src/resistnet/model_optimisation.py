@@ -484,7 +484,8 @@ class ModelRunner:
                 edge_avg = edge_r * weight
             else:
                 edge_avg = np.add(edge_avg, edge_r * weight)
-            matrix_avg += matrix_r * weight
+            if matrix_r is not None:
+                matrix_avg += matrix_r * weight
 
             if self.report_all:
                 oname = f"{out}.Model-{model_num}"
@@ -693,6 +694,10 @@ class ModelRunner:
                 worker_args['adj'] = self.resistance_network._adj
                 worker_args['origin'] = self.resistance_network._origin
                 worker_args['R'] = self.resistance_network._R
+                worker_args['rtol'] = self.resistance_network.rtol
+                worker_args['solver'] = self.resistance_network.solver
+                worker_args['max_iter'] = self.resistance_network.max_iter
+                worker_args['max_fail'] = self.resistance_network.max_fail
                 worker_args[
                     'allSymmetric'
                     ] = self.resistance_network.allSymmetric

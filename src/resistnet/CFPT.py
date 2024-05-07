@@ -3,13 +3,13 @@ import warnings
 import numpy as np
 from scipy.sparse import diags, SparseEfficiencyWarning
 from scipy.sparse.linalg import spsolve, lgmres
-from scipy.sparse.linalg import LinearOperator, gmres, spilu
+from scipy.sparse.linalg import LinearOperator, spilu
 from scipy.sparse import SparseEfficiencyWarning
 
 warnings.simplefilter('ignore', SparseEfficiencyWarning)
 
-def CFPT(Q, R, edge_site_indices, solver="iterative", max_iter=1000,
-         max_fail=1, rtol=1e-5):
+def CFPT(Q, R, edge_site_indices, rtol=1e-5, max_iter=1000,
+         max_fail=1, solver="iterative", ):
     N = len(edge_site_indices)
     cfpt_matrix = np.zeros((N, N))
     failure_count = 0
@@ -72,12 +72,6 @@ def CFPT(Q, R, edge_site_indices, solver="iterative", max_iter=1000,
                     cfpt_matrix[j, i] = np.nan
                     failure_count += 1
                     if failure_count >= max_fail:
-                        # print("Q input:")
-                        # print(Q)
-                        # print("Q after adjustment")
-                        # print(Q_temp)
-                        # print("Qj:")
-                        # print(Qj)
                         return None
     return cfpt_matrix
 

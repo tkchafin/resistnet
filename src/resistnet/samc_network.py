@@ -42,8 +42,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
     def __init__(self, network, shapefile, sizes, coords, variables, inmat,
                  agg_opts, pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
-                 origin=None, out="out", verbose=True,
-                 minimize=False):
+                 origin=None, rtol=0.00001, max_iter=1000, max_fail=1,
+                 solver="iterative", out="out", verbose=True, minimize=False):
         """
         Constructs all the necessary attributes for the ResistanceNetwork
         object.
@@ -84,6 +84,10 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self.infer_origin = infer_origin
         self.origin = origin
         self.allSymmetric = False
+        self.rtol = rtol
+        self.max_iter = max_iter
+        self.max_fail = max_fail
+        self.solver = solver
 
         # Additional attributes for internal use
         self.minimized_subgraph = None
@@ -175,13 +179,13 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
         # # Modify network to contain further downstream edges
         # # This simplifies some things later on...
-        # new_edge = max((data.get('EDGE_ID', -1) for _, _, data in self._K.edges(data=True)), default=-1) + 1
-        # self.extend_confluence(1, new_edge)
+        new_edge = max((data.get('EDGE_ID', -1) for _, _, data in self._K.edges(data=True)), default=-1) + 1
+        self.extend_confluence(1, new_edge)
 
         # # add buffer edges around terminal sample points
         # # (makes it easier to plot later)
-        # samples = list(self._points_snapped.keys())
-        # self.buffer_points(1, points=samples)
+        samples = list(self._points_snapped.keys())
+        self.buffer_points(1, points=samples)
 
         # Check for disconnected components
         if nx.is_connected(self._K):
@@ -484,19 +488,17 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         """
         multi = self._build_composite_surface(individual)
         if multi is None:
-            return (float('-inf'), [])
-        
-        # TODO: Having some non-convergence issue here
-        # Should add some options for tolerance, max_iter, etc
-        # or explore other solvers
+            return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
+
         cfpt, res = rd.conditionalFirstPassTime(
-            multi, self._R, self._edge_site_indices, self._gendist)
-        
+            multi, self._R, self._edge_site_indices, self._gendist,
+            self.rtol, self.max_iter, self.max_fail, self.solver)
+
         if cfpt is not None:
             fitness = res[self.fitmetric].iloc[0]
             res = list(res.iloc[0])
             return fitness, res
-        return (float('-inf'), [])
+        return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
 
     # will need to overload plotting functions for SAMC models as well
     def model_output(self, model):
@@ -516,59 +518,52 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             tuple: A tuple containing the effective resistance matrix and the
                    multi-surface representation for the model.
         """
-        print("output")
         multi = self._build_composite_surface(model)
         if multi is None:
             return None, None
 
-        # re-compute cfpt times 
+        # re-compute cfpt times
         cfpt, _ = rd.conditionalFirstPassTime(
-            multi, self._R, self._edge_site_indices, self._gendist)
-        print(cfpt)
-        if cfpt is not None:
-            print("TRANSITION RATES")
-            print(multi)
-            # re-compute transition rates and return as us/ds vectors
-            trans = self._transition_vectors(multi)
-            print(trans)
-            sys.exit()
-            return cfpt, trans
-        return None, None
+            multi, self._R, self._edge_site_indices, self._gendist,
+            self.rtol, self.max_iter, self.max_fail, self.solver)
+
+        # re-compute transition rates and return as us/ds vectors
+        trans = self._transition_vectors(multi)
+        return cfpt, trans
 
     def _transition_vectors(self, mat):
-        # Poorly named as these are actually 1/trans_prob
-        n = len(self._edge_order)
-        transition_probs = np.zeros((n, 2))
-        if sp.issparse(mat):
-            mat_dense = mat.toarray()
-        else:
-            mat_dense = mat
+        n = len(self._edge_order)  # assuming _edge_order gives the list of edges/nodes
+        # Initialize arrays with NaNs
+        downstream_transitions = np.full(n, 0.0)
+        upstream_transitions = np.full(n, 0.0)
+
+        # Process the sparse matrix directly
+        mat_coo = mat.tocoo()  # Convert to COOrdinate format for easy traversal
+        for i, j, rate in zip(mat_coo.row, mat_coo.col, mat_coo.data):
+            # Check adjacency for direction of flow
+            if self._adj[i, j] == 1:  # i -> j is downstream
+                downstream_transitions[i] += rate
+            elif self._adj[i, j] == -1:  # i -> j is upstream for node j
+                upstream_transitions[j] += rate
+
+        # Correctly handling terminal edges with either no downstream or no upstream neighbors
+        adj_coo = self._adj.tocoo()
+        has_downstream = np.zeros(n, dtype=bool)
+        has_upstream = np.zeros(n, dtype=bool)
+
+        for i, j, value in zip(adj_coo.row, adj_coo.col, adj_coo.data):
+            if value == 1:
+                has_downstream[i] = True
+            elif value == -1:
+                has_upstream[j] = True
+
         for i in range(n):
-            # Downstream rate i -> j 
-            downstream_mask_row = self._adj[i, :].toarray().ravel() == 1
-            downstream_mask_col = self._adj[:, i].toarray().ravel() == 1
-            transition_probs[i, 0] = np.sum(mat_dense[i, downstream_mask_row]) + np.sum(mat_dense[downstream_mask_col, i])
+            if not has_downstream[i]:
+                downstream_transitions[i] = np.nan
+            if not has_upstream[i]:
+                upstream_transitions[i] = np.nan
 
-            # Upstream rate j -> i 
-            upstream_mask_row = self._adj[i, :].toarray().ravel() == -1
-            upstream_mask_col = self._adj[:, i].toarray().ravel() == -1
-            transition_probs[i, 1] = np.sum(mat_dense[i, upstream_mask_col]) + np.sum(mat_dense[upstream_mask_row, i])
-
-        # # Handling of edges connected directly to the origin
-        # for idx_i in self._root_edge_indices:
-        #     for idx_j in self._root_edge_indices:
-        #         if idx_i != idx_j:
-        #             transition_probs[idx_i, 0] = mat_dense[idx_i, idx_j]
-        #             transition_probs[idx_j, 1] = mat_dense[idx_j, idx_i]
-        #             transition_probs[idx_i, 1] = mat_dense[idx_j, idx_i]
-        #             transition_probs[idx_j, 0] = mat_dense[idx_i, idx_j]
-
-        # Check if rates are symmetric
-        if self.allSymmetric or np.all(
-                transition_probs[:, 0] == transition_probs[:, 1]):
-            return transition_probs[:, 0]
-        else:
-            return transition_probs
+        return np.vstack((downstream_transitions, upstream_transitions)).T
 
     def _build_composite_surface(self, individual):
         """
@@ -813,7 +808,8 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
                  allShapes, fixShape, min_weight, max_shape, inc, point_coords,
                  points_names, points_snapped, points_labels, predictors,
                  edge_order, gendist, adj, origin, R, allSymmetric,
-                 edge_site_indices):
+                 edge_site_indices, rtol=0.00001, max_iter=1000, max_fail=1,
+                 solver="iterative"):
 
         self.network = network
         self.pop_agg = pop_agg
@@ -832,6 +828,10 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self.min_weight = min_weight
         self.max_shape = max_shape
         self.allSymmetric = allSymmetric
+        self.rtol = rtol
+        self.max_iter = max_iter
+        self.max_fail = max_fail
+        self.solver = solver
 
         self._inc = inc
         self._origin = origin
