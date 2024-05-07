@@ -68,5 +68,5 @@ jobs:
         context: .
         file: ./docker/Dockerfile
         push: true
-        tags: tkchafin/autostreamtree:latest,tkchafin/autostreamtree:${{ github.event.release.tag_name }}
+        tags: tkchafin/resistnet:latest,tkchafin/resistnet:${{ github.event.release.tag_name }}
 
