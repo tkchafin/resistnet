@@ -19,6 +19,7 @@ def create_fake_population(num_models, num_variables):
             model[f'var{var+1}_weight'] = 1.0
             model[f'var{var+1}_trans'] = 0
             model[f'var{var+1}_shape'] = 1.0
+            model[f'var{var+1}_asym'] = 0
         model.update(
             {'loglik': np.random.rand(), 'r2m': np.random.rand(),
              'aic': -1 * np.random.rand(), 'delta_aic_null': np.random.rand()}
@@ -74,7 +75,7 @@ def test_hall_of_fame_initialization():
     expected_columns = ["fitness"]
     for v in variables:
         expected_columns.extend(
-            [str(v), f"{v}_weight", f"{v}_trans", f"{v}_shape"]
+            [str(v), f"{v}_weight", f"{v}_trans", f"{v}_shape", f"{v}_asym"]
         )
     expected_columns.extend(["loglik", "r2m", "aic", "delta_aic_null"])
 
