@@ -5,11 +5,12 @@ import pickle
 import traceback
 import itertools
 import pandas as pd
+import geopandas as gpd
+import pyogrio
 import numpy as np
 from sortedcontainers import SortedDict
 import seaborn as sns
 import matplotlib.pyplot as plt
-import pyogrio
 import momepy
 import networkx as nx
 
@@ -46,7 +47,8 @@ class ResistanceNetwork:
 
     def __init__(self, network, shapefile, coords, variables, inmat, agg_opts,
                  pop_agg="ARITH", reachid_col="HYRIV_ID",
-                 length_col="LENGTH_KM", out="out", verbose=True,
+                 length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
+                 origin=None, out="out", verbose=True,
                  minimize=False):
         """
         Constructs all the necessary attributes for the ResistanceNetwork
@@ -62,6 +64,10 @@ class ResistanceNetwork:
             pop_agg (str): Population aggregation method. Defaults to "ARITH".
             reachid_col (str): Column name for reach ID. Defaults to "HYRIV_ID"
             length_col (str): Column name for length. Defaults to "LENGTH_KM".
+            infer_origin (str): Column name used to infer origin.
+                                Default "NEXT_DOWN"
+            origin (int): reachid corresponding to the origin.
+                            Defaults to None.
             out (str): Prefix for output files. Defaults to "out".
             verbose (bool): Flag to enable verbose output. Defaults to True.
             minimize (bool): Flag to minimize subgraph. Defaults to False.
@@ -79,6 +85,8 @@ class ResistanceNetwork:
         self.variables = variables
         self.agg_opts = agg_opts
         self.fitmetric = "aic"
+        self.infer_origin = infer_origin
+        self.origin = origin
 
         # Additional attributes for internal use
         self.minimized_subgraph = None
@@ -457,6 +465,13 @@ class ResistanceNetwork:
 
         return formatted_table
 
+    def create_reach_to_edge_dict(self):
+        reach_to_edge = {}
+        for p1, p2, dat in self._K.edges(data=True):
+            reach = dat[self.reachid_col]
+            reach_to_edge[reach] = dat['EDGE_ID']
+        return reach_to_edge
+
     def output_and_plot_model(self, oname, mat_r, edge_r, plot=True):
         """
         Outputs model results to files and optionally plots the resistance
@@ -688,6 +703,31 @@ class ResistanceNetwork:
             )
             sys.exit()
 
+    # NOTE: Later add option to join the resistance values
+    # Probably faster to just use momepy.nx_to_gdf...
+    def write_geodataframe(self, output_prefix, output_driver):
+        # extract original geodatabase
+        geoDF = pyogrio.read_dataframe(self.shapefile)
+        mask = geoDF[self.reachid_col].isin(list(self._edge_order))
+        geoDF = geoDF.loc[mask]
+
+        # write with user-provided output engine
+        gpd.options.io_engine = "pyogrio"
+        extension = {
+            "SHP": ".shp",
+            "GPKG": ".gpkg",
+            "GDB": ".gdb"
+        }.get(output_driver.upper(), ".gpkg")  # Default to .gpkg
+        if output_driver.upper() == "SHP":
+            output_driver = "ESRI Shapefile"
+
+        output_path = f"{output_prefix}{extension}"
+
+        if output_driver == 'GDB' and not os.path.exists(output_path):
+            os.makedirs(output_path)
+
+        geoDF.to_file(output_path, driver=output_driver.upper())
+
     def build_incidence_matrix(self, edge_id, out=None):
         """
         Builds an incidence matrix for the network based on Dijkstra's
@@ -711,9 +751,12 @@ class ResistanceNetwork:
         # Map edge IDs to indices
         edge_to_index = {e: idx for idx, e in enumerate(self._edge_order)}
 
-        # Function to calculate weights for Dijkstra's shortest path algorithm
         def dijkstra_weight(left, right, attributes):
-            return attributes[self.length_col]
+            # Calculates weights for Dijkstra's shortest path algorithm by
+            # inverting the edge length with a small constant to avoid
+            # division by zero.
+            epsilon = 1e-9
+            return 1 / (attributes[self.length_col] + epsilon)
 
         # Compute the incidence matrix
         index = 0
@@ -765,9 +808,9 @@ class ResistanceNetwork:
 
         k = nx.Graph()
 
-        # Function to calculate weights for Dijkstra's shortest path algorithm
         def dijkstra_weight(left, right, attributes):
-            return attributes[len_col]
+            epsilon = 1e-9
+            return 1 / (attributes[len_col] + epsilon)
 
         # Process each pair of points
         p1 = list(nodes.values())[0]
@@ -968,40 +1011,40 @@ class ResistanceNetwork:
 
         # Apply transformation based on the specified type
         if transformation == 1:
-            d = trans.ricker(dat, shape, 10)
+            d = trans.ricker(dat, shape, 1)
         elif transformation == 2:
             if self.allShapes:
-                d = trans.revRicker(dat, shape, 10)
+                d = trans.revRicker(dat, shape, 1)
             else:
-                d = trans.ricker(dat, shape, 10)
+                d = trans.ricker(dat, shape, 1)
         elif transformation == 3:
             if self.allShapes:
-                d = trans.invRicker(dat, shape, 10)
+                d = trans.invRicker(dat, shape, 1)
             else:
-                d = trans.revInvRicker(dat, shape, 10)
+                d = trans.revInvRicker(dat, shape, 1)
         elif transformation == 4:
-            d = trans.revInvRicker(dat, shape, 10)
+            d = trans.revInvRicker(dat, shape, 1)
         elif transformation == 5:
-            d = trans.monomolecular(dat, shape, 10)
+            d = trans.monomolecular(dat, shape, 1)
         elif transformation == 6:
             if self.allShapes:
-                d = trans.revMonomolecular(dat, shape, 10)
+                d = trans.revMonomolecular(dat, shape, 1)
             else:
-                d = trans.monomolecular(dat, shape, 10)
+                d = trans.monomolecular(dat, shape, 1)
         elif transformation == 7:
             if self.allShapes:
-                d = trans.invMonomolecular(dat, shape, 10)
+                d = trans.invMonomolecular(dat, shape, 1)
             else:
-                d = trans.revInvMonomolecular(dat, shape, 10)
+                d = trans.revInvMonomolecular(dat, shape, 1)
         elif transformation == 8:
-            d = trans.revInvMonomolecular(dat, shape, 10)
+            d = trans.revInvMonomolecular(dat, shape, 1)
         elif transformation <= 0:
             # No transformation applied
             pass
         else:
             print("WARNING: Invalid transformation type.")
 
-        return trans.rescaleCols(d, 0, 10)
+        return trans.rescaleCols(d, 0, 1)
 
     def evaluate(self, individual):
         """
@@ -1021,43 +1064,17 @@ class ResistanceNetwork:
             tuple: A tuple containing the fitness value and the results of the
                    evaluation.
         """
-        fitness = 0
-        res = None
-        multi = None
-        first = True
-
-        # Build multi-surface representation of variables
-        for i, variable in enumerate(self._predictors.columns):
-            # Perform variable transformations if the variable is selected
-            # (indicated by a value of 1)
-            if individual[0::4][i] == 1:
-                var = self.transform(
-                    self._predictors[variable],
-                    individual[2::4][i],
-                    individual[3::4][i]
-                )
-                if first:
-                    multi = var * individual[1::4][i]
-                    first = False
-                else:
-                    multi += var * individual[1::4][i]
-
-        # If no layers are selected, return a zero fitness
-        if first:
-            fitness = float('-inf')
-        else:
-            # Rescale multi-surface for circuitscape and evaluate using simple
-            # resistance distance
-            multi = trans.rescaleCols(multi, 1, 10)
-            r, res = rd.parsePairwise(
-                self._points_snapped, self._inc, multi, self._gendist
-            )
-            # fitness = res[self.fitmetric][0]
+        multi = self._build_composite_surface(individual)
+        if multi is None:
+            return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
+        r, res = rd.parsePairwise(
+            self._points_snapped, self._inc, multi, self._gendist
+        )
+        if r is not None:
             fitness = res[self.fitmetric].iloc[0]
             res = list(res.iloc[0])
-
-        # Return fitness value and results
-        return (fitness, res)
+            return (fitness, res)
+        return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
 
     def model_output(self, model):
         """
@@ -1076,28 +1093,43 @@ class ResistanceNetwork:
             tuple: A tuple containing the effective resistance matrix and the
                    multi-surface representation for the model.
         """
-        first = True
-        multi = None
+        multi = self._build_composite_surface(model)
+        if multi is not None:
+            r = rd.effectiveResistanceMatrix(
+                self._points_snapped, self._inc, multi
+            )
+            return r, multi
+        return None, None
 
-        # Combine transformed variables based on model specifications
+    def _build_composite_surface(self, config):
+        """
+        Builds a multi-surface representation from a model configuration.
+
+        Args:
+            config (list): A list representing an individual or model in the
+                        genetic algorithm, containing transformation and weight
+                        information for variables.
+
+        Returns:
+            ndarray: The multi-surface representation for the configuration.
+        """
+        multi = None
+        first = True
         for i, variable in enumerate(self._predictors.columns):
-            if model[0::4][i] == 1:
+            if config[0::5][i] == 1:
                 var = self.transform(
-                    self._predictors[variable], model[2::4][i], model[3::4][i]
+                    self._predictors[variable],
+                    config[2::5][i],
+                    config[3::5][i]
                 )
                 if first:
-                    multi = var * model[1::4][i]
+                    multi = var * config[1::5][i]
                     first = False
                 else:
-                    multi += var * model[1::4][i]
-                multi = trans.rescaleCols(multi, 1, 10)
-
-        # Get pairwise effective resistance matrix
-        r = rd.effectiveResistanceMatrix(
-            self._points_snapped, self._inc, multi
-        )
-
-        return r, multi
+                    multi += var * config[1::5][i]
+        if not first:
+            multi = trans.rescaleCols(multi, 0, 1)
+        return multi
 
 
 class ResistanceNetworkWorker(ResistanceNetwork):
@@ -1261,7 +1293,7 @@ class SimResistanceNetwork(ResistanceNetwork):
         self._edge_order = df.index
 
         # Rescale variables
-        predictors = trans.rescaleCols(df[vars['VAR']], 0, 10)
+        predictors = trans.rescaleCols(df[vars['VAR']], 0, 1)
 
         # Generate composite resistance
         multi = None

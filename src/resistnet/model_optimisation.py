@@ -1,11 +1,16 @@
 import traceback
 import random
+import math
 import pandas as pd
 import numpy as np
 from queue import Empty
 from multiprocessing import Process, Queue
 from deap import base, creator, tools
+
+from resistnet.resistance_network import ResistanceNetwork
 from resistnet.resistance_network import ResistanceNetworkWorker
+from resistnet.samc_network import ResistanceNetworkSAMC
+from resistnet.samc_network import ResistanceNetworkSAMCWorker
 from resistnet.hall_of_fame import HallOfFame
 
 
@@ -16,8 +21,8 @@ class ModelRunner:
 
     Attributes:
         seed (int): Seed for random number generator.
-        resistance_network (ResistanceNetworkWorker): An instance of
-                                                      ResistanceNetworkWorker.
+        resistance_network (ResistanceNetwork): An instance of
+                                                ResistanceNetwork or subclass.
         verbose (bool): Flag to control verbosity of output.
         task_queue (Queue): Queue for tasks.
         result_queue (Queue): Queue for results.
@@ -34,7 +39,7 @@ class ModelRunner:
         verbosity.
 
         Args:
-            resistance_network (ResistanceNetworkWorker): The resistance
+            resistance_network (ResistanceNetwork or subclass): The resistance
                                                           network to optimize.
             seed (int): Seed for random number generator.
             verbose (bool): Flag to control verbosity of output.
@@ -59,6 +64,7 @@ class ModelRunner:
         self.fixWeight = None
         self.fixShape = None
         self.allShapes = None
+        self.fixAsym = False
         self.min_weight = None
         self.max_shape = None
         self.max_hof_size = None
@@ -83,14 +89,15 @@ class ModelRunner:
         self.init_ga_attributes()
 
         # Initialize population
-        popsize = len(self.resistance_network.variables) * 4 * 15
+        popsize = int(len(self.resistance_network.variables) * 5 * 15)
         if self.popsize:
-            popsize = self.popsize
+            popsize = int(self.popsize)
         if popsize > self.maxpopsize:
-            popsize = self.maxpopsize
+            popsize = int(self.maxpopsize)
 
         if self.verbose:
             print("Establishing a population of size:", str(popsize))
+        print(popsize)
         self.population = self.toolbox.population(n=popsize)
 
     def set_ga_parameters(self, mutpb, cxpb, indpb, popsize, maxpopsize,
@@ -251,12 +258,15 @@ class ModelRunner:
                 # Replace population with offspring
                 self.population[:] = offspring
 
+                # update Hall of Fame
+                self.bests.check_population(pop_list)
+
                 # Gather all the fitnesses in one list and print the stats
                 fits = [ind.fitness.values[0] for ind in self.population]
 
                 # Evaluate for stopping criteria after burn-in period
                 if g > burnin:
-                    if fitmetric == "AIC":
+                    if fitmetric.upper() == "AIC":
                         fits = [-element for element in fits]
                         worst = max(fits)
                         best = min(fits)
@@ -278,19 +288,19 @@ class ModelRunner:
                             )
 
                     length = len(self.population)
-                    if length > 0 and all(isinstance(
-                            fit, (int, float)) for fit in fits
-                    ):
-                        mean = sum(fits) / length
-                        sum2 = sum(x * x for x in fits)
-                        variance = sum2 / length - mean**2
+                    if length > 0:
+                        if any(math.isinf(fit) for fit in fits):
+                            # Set stats to NaN if any values are inf or -inf
+                            mean = variance = std = float('nan')
+                        else:
+                            mean = sum(fits) / length
+                            sum2 = sum(x * x for x in fits)
+                            variance = sum2 / length - mean**2
 
-                        # Check for negative variance due to floating-point
-                        # arithmetic issues
-                        std = (abs(variance) ** 0.5) if variance >= 0 else 0
+                            std = (math.sqrt(variance)
+                                   if variance >= 0 else float('nan'))
                     else:
-                        mean = float('nan')
-                        std = float('nan')
+                        mean = variance = std = float('nan')
 
                     if self.verbose:
                         print("  Worst %s" % worst)
@@ -387,6 +397,7 @@ class ModelRunner:
         if out:
             self.bests.writeMAW(out)
             self.bests.writeRVI(out)
+            self.bests.writeBest(out)
             # Plotting, if enabled
             if plot:
                 self.bests.plot_ICprofile(out)
@@ -435,7 +446,7 @@ class ModelRunner:
         weights = {}
         hof = self.bests.getHOF(only_keep=self.only_keep)
         for _, row in hof.iterrows():
-            n = len(self.resistance_network._predictors.columns) * 4
+            n = len(self.resistance_network._predictors.columns) * 5
             model_string = row.iloc[1:n + 1].to_list()
             models.append([mod_num, model_string])
             weights[mod_num] = row["akaike_weight"]
@@ -472,14 +483,14 @@ class ModelRunner:
                 edge_avg = edge_r * weight
             else:
                 edge_avg = np.add(edge_avg, edge_r * weight)
-            matrix_avg += matrix_r * weight
+            if matrix_r is not None:
+                matrix_avg += matrix_r * weight
 
             if self.report_all:
                 oname = f"{out}.Model-{model_num}"
                 self.resistance_network.output_and_plot_model(
                     oname, matrix_r, edge_r
                 )
-
         oname = f"{out}.Model-Average"
         self.resistance_network.output_and_plot_model(
             oname, matrix_avg, edge_avg
@@ -564,6 +575,8 @@ class ModelRunner:
         """
         # Register attributes
         self.toolbox.register("feature_sel", random.randint, 0, 1)
+
+        # weight
         if self.posWeight:
             self.toolbox.register(
                 "feature_weight", random.uniform, self.min_weight, 1.0
@@ -572,10 +585,18 @@ class ModelRunner:
             self.toolbox.register("feature_weight", random.uniform, 1.0, 1.0)
         if not self.fixWeight and not self.posWeight:
             self.toolbox.register("feature_weight", random.uniform, -1.0, 1.0)
+
+        # asymmetry parameter
+        if not self.fixAsym:
+            self.toolbox.register("feature_asym", random.randint, 0, 1)
+        else:
+            self.toolbox.register("feature_asym", random.randint, 0, 0)
+
+        # shape
         if not self.fixShape:
             self.toolbox.register("feature_transform", random.randint, 0, 8)
             self.toolbox.register(
-                "feature_shape", random.randint, 1, self.max_shape
+                "feature_shape", random.randint, 1, int(self.max_shape)
             )
         else:
             self.toolbox.register("feature_transform", random.randint, 0, 0)
@@ -585,9 +606,11 @@ class ModelRunner:
             "individual",
             tools.initCycle,
             creator.Individual,
-            (self.toolbox.feature_sel, self.toolbox.feature_weight,
+            (self.toolbox.feature_sel,
+                self.toolbox.feature_weight,
                 self.toolbox.feature_transform,
-                self.toolbox.feature_shape),
+                self.toolbox.feature_shape,
+                self.toolbox.feature_asym),
             n=len(self.resistance_network.variables)
         )
         self.toolbox.register(
@@ -625,6 +648,16 @@ class ModelRunner:
         if self.verbose:
             print()
 
+        # get worker type
+        # NOTE: THe order is important here, have to do subclass before
+        # parent check (since both will return true)
+        if isinstance(self.resistance_network, ResistanceNetworkSAMC):
+            worker_type = "samc"
+        elif isinstance(self.resistance_network, ResistanceNetwork):
+            worker_type = "base"
+        else:
+            raise ValueError("Could not set worker type")
+
         for i in range(threads):
             worker_seed = self.seed + i
             if self.verbose:
@@ -632,6 +665,7 @@ class ModelRunner:
 
             # Pass only necessary and picklable information
             worker_args = {
+                'worker_type': worker_type,
                 'network': self.resistance_network.network,
                 'pop_agg': self.resistance_network.pop_agg,
                 'reachid_col': self.resistance_network.reachid_col,
@@ -649,11 +683,30 @@ class ModelRunner:
                 "fitmetric": self.fitmetric,
                 "posWeight": self.posWeight,
                 "fixWeight": self.fixWeight,
+                # "fixAsym": self.fixAsym,
                 "allShapes": self.allShapes,
                 "fixShape": self.fixShape,
                 "min_weight": self.min_weight,
                 "max_shape": self.max_shape
             }
+            if worker_type == "samc":
+                worker_args['adj'] = self.resistance_network._adj
+                worker_args['origin'] = self.resistance_network._origin
+                worker_args['R'] = self.resistance_network._R
+                worker_args['rtol'] = self.resistance_network.rtol
+                worker_args['solver'] = self.resistance_network.solver
+                worker_args['max_iter'] = self.resistance_network.max_iter
+                worker_args['max_fail'] = self.resistance_network.max_fail
+                worker_args[
+                    'allSymmetric'
+                    ] = self.resistance_network.allSymmetric
+                worker_args[
+                    'edge_site_indices'
+                    ] = self.resistance_network._edge_site_indices
+                # worker_args[
+                #     'root_edge_indices'
+                #     ] = self.resistance_network._root_edge_indices
+
             worker_process = Process(
                 target=self.worker_task,
                 args=(self.task_queue, self.result_queue, worker_args,
@@ -661,7 +714,6 @@ class ModelRunner:
             )
             worker_process.start()
             self.workers.append(worker_process)
-
         if self.verbose:
             print()
 
@@ -678,7 +730,16 @@ class ModelRunner:
             seed (int): The seed value for random number generation.
         """
         random.seed(seed)
-        worker = ResistanceNetworkWorker(**worker_args)
+
+        worker_type = worker_args.get('worker_type', 'base')
+        del worker_args['worker_type']
+        if worker_type == "base":
+            worker = ResistanceNetworkWorker(**worker_args)
+        elif worker_type == "samc":
+            worker = ResistanceNetworkSAMCWorker(**worker_args)
+        else:
+            raise ValueError("Worker type not implemented")
+
         while True:
             try:
                 task, id, data = task_queue.get()
@@ -706,14 +767,16 @@ class ModelRunner:
         Returns:
             A tuple containing the mutated individual.
         """
-        length = len(individual) // 4  # number of covariates
+        length = len(individual) // 5  # number of covariates
         for i in range(length):
             if random.random() < self.mutpb:
-                individual[i * 4] = self.toolbox.feature_sel()
+                individual[i * 5] = self.toolbox.feature_sel()
             if random.random() < self.mutpb:
-                individual[i * 4 + 1] = self.toolbox.feature_weight()
+                individual[i * 5 + 1] = self.toolbox.feature_weight()
             if random.random() < self.mutpb:
-                individual[i * 4 + 2] = self.toolbox.feature_transform()
+                individual[i * 5 + 2] = self.toolbox.feature_transform()
             if random.random() < self.mutpb:
-                individual[i * 4 + 3] = self.toolbox.feature_shape()
+                individual[i * 5 + 3] = self.toolbox.feature_shape()
+            if random.random() < self.mutpb:
+                individual[i * 5 + 4] = self.toolbox.feature_asym()
         return individual,

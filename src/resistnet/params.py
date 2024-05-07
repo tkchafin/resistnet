@@ -17,7 +17,7 @@ class parseArgs():
         try:
             options, r = getopt.getopt(
                 sys.argv[1:],
-                'hp:g:s:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:V:Aa:o:Xj:n:',
+                'hp:g:s:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:V:Aa:o:Xj:n:O:',
                 ["shp=", "help", "input=", "genmat=", "shapefile=",
                  "seed=", "procs=", "maxPop=", "maxpop=", "maxgen=", "maxGen=",
                  "size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=",
@@ -29,7 +29,9 @@ class parseArgs():
                  "length_col=", "reachid_col=", "minimize", "network=",
                  "fixShape", "max_gens=", "max_gen=", "max_pop=", "varFile=",
                  "tournsize=", "tournSize=", "tSize=", "threads=",
-                 "minWeight=", "min_weight="
+                 "minWeight=", "min_weight=", "infer_origin=", "origin=",
+                 "sizes=", "allSymmetric", "gdf_out=", "rtol=", "max_iter=",
+                 "max_fail=", "solver="
                  ]
             )
         except getopt.GetoptError as err:
@@ -55,6 +57,7 @@ class parseArgs():
         self.fitmetric = "aic"
         self.network = None
         self.predicted = False
+        self.output_driver = "GPKG"
         self.inmat = None
         self.shapefile = None
         self.network = None
@@ -77,13 +80,24 @@ class parseArgs():
         self.report_all = False
         self.plot = True
         self.only_keep = True
+        self.allSymmetric = False
 
         self.posWeight = False
         self.fixWeight = False
         self.allShapes = False
         self.fixShape = False
+        self.fixAsym = True
         self.max_shape = 100
         self.min_weight = 0.0
+
+        # SAMC options
+        self.infer_origin = "NEXT_DOWN"
+        self.origin = None
+        self.sizefile = None
+        self.max_iter = 1000
+        self.max_fail = 1
+        self.solver = "iterative"
+        self.rtol = 0.00001
 
         # First pass to see if help menu was called
         for o, a in options:
@@ -144,6 +158,17 @@ class parseArgs():
                 self.indpb = float(arg)
             elif opt == "cxpb":
                 self.cxpb = float(arg)
+            # elif opt == "rtol":
+            #     self.rtol = float(arg)
+            # elif opt == "max_iter":
+            #     self.max_iter = int(arg)
+            # elif opt == "max_fail":
+            #     self.max_fail = int(arg)
+            # elif opt == "solver":
+            #     if arg.lower() not in ["iterative", "direct"]:
+            #         self.diplay_help("Unrecognized solver <--solver>")
+            #     else:
+            #         self.solver = arg.lower()
             elif opt in ('T', 'tSize', 'tournSize', "tourn", "tournsize"):
                 self.tournsize = int(arg)
             elif opt in ('F', 'nfail', 'nFail'):
@@ -159,6 +184,12 @@ class parseArgs():
                     self.fitmetric = arg.lower()
             elif opt in ('b', 'burn'):
                 self.burnin = int(arg)
+            elif opt in ("O", "gdf_out"):
+                arg_upper = str(arg).upper()
+                if arg_upper not in ["GPKG", "SHP", "GDB"]:
+                    self.display_help(f"Invalid option {arg_upper} for \
+                                      option <--gdf_out>")
+                self.output_driver = arg_upper
             elif opt == "dist_col":
                 self.dist_col = arg
             elif opt == "infer":
@@ -178,7 +209,7 @@ class parseArgs():
             elif opt in ('a', 'awsum'):
                 self.awsum = float(arg)
             elif opt in ("max_shape", "maxShape"):
-                self.max_shape = float(arg)
+                self.max_shape = int(arg)
             elif opt == "report_all":
                 self.report_all = True
             elif opt in ('X', 'noPlot'):
@@ -205,6 +236,14 @@ class parseArgs():
                 self.allShapes = True
             elif opt == "fixShape":
                 self.fixShape = True
+            elif opt == "infer_origin":
+                self.infer_origin = str(arg)
+            elif opt == "origin":
+                self.origin = int(arg)
+            elif opt == "allSymmetric":
+                self.allSymmetric = True
+            elif opt == "sizes":
+                self.sizefile = str(arg)
             elif opt in ('h', 'help'):
                 pass
             else:
@@ -271,7 +310,9 @@ class parseArgs():
             "    -t, --procs: Number of parallel processors\n"
             "    -X, --noPlot: Turn off plotting\n"
             "    -o, --out: Output file prefix\n"
-            "    -h, --help: Displays help menu\n\n"
+            "    -h, --help: Displays help menu\n"
+            "    -O, --gdf_out   : Output driver for annotated geodataframe \
+(options \"SHP\", \"GPKG\", \"GDB\")\n\n"
 
             "Aggregation options:\n"
             "    --edge_agg: Method for combining variables across segments\n"
@@ -312,6 +353,13 @@ class parseArgs():
             "        NOTE: Case-insensitive\n"
             "    -b, --burn: Number of generations for pre-burnin [def.=0]\n"
             "    --max_hof_size: Maximum models retained [default=100]\n\n"
+
+            "natural vs. full RVI\n"
+            "shape pre-optimisation (for use with --fixShape)\n"
+
+            "SAMC options:\n"
+            "TODO origin,infer_origin, sizefile,fixedSize,allSymmetric\n"
+            "solver, max_iter, rthresh\n\n"
 
             "Multi-model inference options:\n"
             "    -a, --awsum: Cumulative Akaike weight threshold [def.=0.95]\n"
