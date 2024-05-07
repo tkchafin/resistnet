@@ -433,7 +433,7 @@ class HallOfFame:
         for v in self.variables:
             mask = ret[v] == 0
             for attr in ["_weight", "_trans", "_shape", "_asym"]:
-                ret[f"{v}{attr}"][mask] = np.nan
+                ret.loc[mask, f"{v}{attr}"] = np.nan
 
         if ret.iloc[0]["fitness"] == (ret.iloc[0]["aic"] * -1):
             ret["fitness"] = ret["fitness"] * -1
