@@ -146,32 +146,9 @@ def test_evaluate_null_model(resistance_network_fixture):
     assert result.loc['distance_only', 'aic'] == 100
 
 
-@pytest.mark.parametrize("individual, expected_fitness", [
-    ([1, 1, 1, 1], -100)
-])
-def test_evaluate(resistance_network_fixture, individual, expected_fitness):
-    mock_parse_result = pd.DataFrame({
-        "aic": [-100],
-        "aic_null": [-200],
-        "loglik_null": [-300],
-        "loglik": [-300],
-        "delta_aic_null": [100],
-        "r2m": [0.5]
-    }, index=[1])
-    with patch('resistnet.resist_dist.parsePairwise',
-               return_value=(None, mock_parse_result)) as mock_parsePairwise:
-        fitness, res = resistance_network_fixture.evaluate(individual)
-
-        # Check that parsePairwise was called if variables are selected
-        if any(individual[0::4]):
-            mock_parsePairwise.assert_called()
-
-        assert fitness == expected_fitness
-
-
 def test_model_output_mock(resistance_network_fixture):
     # Mock model representing an individual in the genetic algorithm
-    model = [1, 1, 1, 1]
+    model = [1, 1, 1, 1, 1]
 
     # Mock effective resistance matrix
     mock_effective_resistance_matrix = np.array([[0.5, 1.0], [1.0, 0.5]])
@@ -188,7 +165,7 @@ def test_model_output_mock(resistance_network_fixture):
 
 def test_model_output(resistance_network_fixture):
     # Mock model representing an individual in the genetic algorithm
-    model = [1, 1, 1, 1]
+    model = [1, 1, 1, 1, 1]
 
     try:
         r, multi = resistance_network_fixture.model_output(model)

@@ -31,13 +31,13 @@ requirements:
   - momepy
   - networkx>3
   - pyogrio
-  - deap
+  - deap>=1.4
   - nlopt
   - r-base
   - r-tidyverse
   - rpy2
   - r-lme4
-  - r-matrix
+  - r-matrix >=1.6.2
   - r-mumin
   - mantel
 

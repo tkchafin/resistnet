@@ -43,7 +43,9 @@ class HallOfFame:
         """
         cols = ["fitness"]
         for v in variables:
-            cols.extend([str(v), f"{v}_weight", f"{v}_trans", f"{v}_shape"])
+            cols.extend([
+                str(v), f"{v}_weight", f"{v}_trans", f"{v}_shape", f"{v}_asym"
+            ])
         cols.extend(["loglik", "r2m", "aic", "delta_aic_null"])
         self.data = pd.DataFrame(columns=cols)
         self.variables = variables
@@ -70,9 +72,9 @@ class HallOfFame:
             pop (list): A list of models to be considered for inclusion in the
                         hall of fame.
         """
+        # only consider models w/ non neg-inf fitnesses
         popDF = pd.DataFrame(pop, columns=self.data.columns)
         popDF = popDF[popDF.fitness > float("-inf")]
-
         if popDF.shape[0] < 1:
             return
 
@@ -129,6 +131,9 @@ class HallOfFame:
             )
             self.data[f"{v_str}_shape"] = (
                 self.data[v_str] * self.data[f"{v_str}_shape"]
+            )
+            self.data[f"{v_str}_asym"] = (
+                self.data[v_str] * self.data[f"{v_str}_asym"]
             )
             temp = self.data[f"{v_str}_trans"]
             temp[temp > 1] = 1
@@ -369,6 +374,7 @@ class HallOfFame:
                 "Weight": best_model[f"{var}_weight"],
                 "Shape": best_model[f"{var}_shape"],
                 "Transformation": best_model[f"{var}_trans"],
+                "Asymmetry": best_model[f"{var}_asym"],
             }
             for var in self.variables
         ]
@@ -426,8 +432,8 @@ class HallOfFame:
 
         for v in self.variables:
             mask = ret[v] == 0
-            for attr in ["_weight", "_trans", "_shape"]:
-                ret[f"{v}{attr}"][mask] = np.nan
+            for attr in ["_weight", "_trans", "_shape", "_asym"]:
+                ret.loc[mask, f"{v}{attr}"] = np.nan
 
         if ret.iloc[0]["fitness"] == (ret.iloc[0]["aic"] * -1):
             ret["fitness"] = ret["fitness"] * -1
@@ -694,7 +700,7 @@ class HallOfFame:
                         the DataFrame.
         """
         # Extract variable names from the DataFrame column names
-        variable_prefixes = ["_weight", "_trans", "_shape"]
+        variable_prefixes = ["_weight", "_trans", "_shape", "_asym"]
         variables = set()
         for col in df.columns:
             for prefix in variable_prefixes:

@@ -9,6 +9,157 @@ import pandas as pd
 from sortedcontainers import SortedDict
 
 
+def graph_to_dag(K, origin):
+    """
+    Convert an undirected graph to a Directed Acyclic Graph (DAG) where all
+    edges are directed toward the tips from the root/ source node.
+
+    Args:
+        K (networkx.Graph): The undirected graph to be converted.
+        origin (node): The node in the graph that will act as the source point
+                       or root.
+
+    Returns:
+        networkx.DiGraph: A directed version of the input graph with all paths
+                          oriented away from the specified root node.
+    """
+    # Create an empty Directed Graph
+    D = nx.DiGraph()
+
+    # Start BFS from the root node, adding edges to D
+    for parent, child in nx.bfs_edges(K, source=origin):
+        D.add_edge(parent, child)  # direction is root -> tips
+        # copy attributes
+        if K.has_edge(parent, child):
+            for key, value in K[parent][child].items():
+                D[child][parent][key] = value
+    return D
+
+
+def graph_to_dag_converging(K, origin):
+    """
+    Convert an undirected graph to a Directed Acyclic Graph (DAG) where all
+    edges are directed to converge on a specified root node.
+
+    Args:
+        K (networkx.Graph): The undirected graph to be converted.
+        origin (node): The node in the graph that will act as the convergence
+                       point or root.
+
+    Returns:
+        networkx.DiGraph: A directed version of the input graph with all paths
+                          oriented to converge on the specified root node.
+    """
+    # Create an empty Directed Graph
+    D = nx.DiGraph()
+
+    # Start BFS from the root node, adding edges w direction towards the root
+    for parent, child in nx.bfs_edges(K, source=origin):
+        D.add_edge(child, parent)  # Reverse direction
+
+        # Copy attributes to the new directed graph
+        if K.has_edge(parent, child):
+            for key, value in K[parent][child].items():
+                D[child][parent][key] = value
+    return D
+
+
+def minmax_lil(lil_matrix):
+    """
+    Perform min-max scaling on the non-zero values of a lil_matrix, scaling
+    all values to be between 0 and 1. This function modifies the matrix in
+    place.
+
+    Args:
+        lil_matrix (scipy.sparse.lil_matrix): The input sparse matrix
+
+    Returns:
+        None: The matrix is modified in place.
+    """
+    # Flatten all data to find global min and max
+    all_data = np.hstack(lil_matrix.data)
+
+    if all_data.size == 0:
+        return  # No data to scale, exit the function
+
+    X_min = all_data.min()
+    X_max = all_data.max()
+
+    # Avoid division by zero if all values are the same
+    if X_min == X_max:
+        return
+
+    # Scale each non-zero value in lil_matrix.data
+    for row_data in lil_matrix.data:
+        for i in range(len(row_data)):
+            row_data[i] = (row_data[i] - X_min) / (X_max - X_min)
+
+
+def minmax(X):
+    """
+    Perform min-max scaling on a NumPy array, scaling all values to be between
+    0 and 1.
+
+    Args:
+        X (numpy.ndarray): The input array to be scaled.
+
+    Returns:
+        numpy.ndarray: The scaled array, with all values between 0 and 1.
+    """
+    X_min = X.min()
+    X_max = X.max()
+    X_scaled = (X - X_min) / (X_max - X_min)
+    return X_scaled
+
+
+def minmax_nonzero(X):
+    """
+    Perform min-max scaling on a NumPy array, initially scaling all values to
+    be between 0 and 1, and then adjusting the scale so that the smallest
+    non-zero value becomes 1 and other values are adjusted accordingly.
+
+    Args:
+        X (numpy.ndarray): The input array to be scaled.
+
+    Returns:
+        numpy.ndarray: The scaled array, with values adjusted as described.
+    """
+    X_min = X.min()
+    X_max = X.max()
+    X_scaled = (X - X_min) / (X_max - X_min)
+    smallest_nonzero = np.min(X_scaled[X_scaled > 0])
+    X_scaled[X_scaled == 0] = smallest_nonzero
+    return X_scaled
+
+
+def masked_minmax(X, mask):
+    """
+    Perform min-max scaling on selected elements of a NumPy array. Selection
+    is determined by a boolean mask, and only elements where the mask is True
+    are scaled. Elements where the mask is False remain unchanged.
+
+    Args:
+        X (numpy.ndarray): The input array containing elements to be scaled.
+        mask (numpy.ndarray): A boolean array with the same shape as X. True
+            values indicate the positions in X that should be scaled.
+
+    Returns:
+        numpy.ndarray: An array with the same shape as X, where selected
+                       elements have been scaled to be between 0 and 1, and
+                       other elements are unchanged.
+    """
+    masked_values = X[mask]
+    min_val = masked_values.min()
+    max_val = masked_values.max()
+    scaled_values = (
+        (masked_values - min_val) / (max_val - min_val)
+        if max_val != min_val else masked_values
+    )
+    X_scaled = np.copy(X)
+    X_scaled[mask] = scaled_values
+    return X_scaled
+
+
 def haversine(coord1, coord2):
     """
     Calculate the great circle distance in kilometers between two points
@@ -392,17 +543,34 @@ def write_edges(out, edge, ids):
     Write edge data to a CSV file.
 
     This function creates a DataFrame from edge IDs and their corresponding
-    resistance values, and writes this data to a CSV file.
+    resistance values, and writes this data to a CSV file. If the edge array
+    contains two columns, it treats them as downstream and upstream
+    resistances.
 
     Args:
         out: The file path where the CSV will be written.
-        edge: A list of edge resistance values.
+        edge: A numpy array of edge resistance values, possibly with two
+              columns.
         ids: A list of edge IDs.
 
     Returns:
         str: The output file path.
     """
-    df = pd.DataFrame(list(zip(ids, edge)), columns=["EDGE_ID", "Resistance"])
+    edge = np.array(edge)
+    if edge.ndim == 1:
+        df = pd.DataFrame({
+            "EDGE_ID": ids,
+            "Resistance": edge
+        })
+    elif edge.ndim == 2 and edge.shape[1] == 2:
+        df = pd.DataFrame({
+            "EDGE_ID": ids,
+            "Resistance_Downstream": edge[:, 0],
+            "Resistance_Upstream": edge[:, 1]
+        })
+    else:
+        raise ValueError("Unexpected shape of edge data.")
+
     df.to_csv(out, sep="\t", header=True, index=False)
     return out
 

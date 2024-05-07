@@ -15,9 +15,6 @@ os.environ['USE_PYGEOS'] = '0'
 
 
 def main():
-    """
-    Main function to run the resistnet application.
-    """
     # Step 0: Read/format input args
     params = ParseArgs()
 
@@ -40,6 +37,10 @@ def main():
         params.paths, ".HallOfFame.tsv", local_rows=local_rows
     )
 
+    hofs.replace('-', '0.0', inplace=True)
+    for col in hofs.columns:
+        hofs[col] = pd.to_numeric(hofs[col], errors='coerce')
+
     if (hofs['fitness'] == hofs['aic']).all():
         hofs["fitness"] = hofs["fitness"] * -1
     hofs["aic"] = hofs["aic"] * -1
@@ -48,7 +49,7 @@ def main():
     )
 
     if params.only_keep:
-        hofs = hofs[hofs['keep'] is True]
+        hofs = hofs[hofs['keep']]
     if params.hof_max is not None:
         hofs = hofs.head(params.hof_max)
 
