@@ -526,7 +526,7 @@ class ResistanceNetwork:
         """
 
         # Convert the graph to a GeoDataFrame
-        _, edgeDF = momepy.nx_to_gdf(self._K, approach='primal')
+        _, edgeDF = momepy.nx_to_gdf(self._K)
 
         # Ensure EDGE_ID is of the correct type and merge with resistance
         edgeDF['EDGE_ID'] = edgeDF[self.reachid_col].astype(int)
