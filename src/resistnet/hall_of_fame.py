@@ -80,7 +80,7 @@ class HallOfFame:
             return
 
         popDF = popDF.sort_values("fitness", ascending=False)
-        popDF = popDF.drop_duplicates(keep="first", ignore_index=True)
+        #popDF = popDF.drop_duplicates(keep="first", ignore_index=True)
         popDF = self.drop_active_duplicates(popDF, self.variables)
         popDF = popDF.reset_index(drop=True)
         space = self.max_size - self.data.shape[0]
@@ -111,38 +111,7 @@ class HallOfFame:
         self.data = self.data.sort_values("fitness", ascending=False)
         self.data = self.drop_active_duplicates(self.data, self.variables)
         self.data = self.data.reset_index(drop=True)
-        self.custom_drop()
         self.min_fitness = self.data["fitness"].min()
-
-    def custom_drop(self):
-        """
-        Perform custom operations on the hall of fame data.
-
-        This method applies custom transformations and drops duplicates in the
-        data. For each variable, it updates the weight, trans, and shape
-        columns by multiplying them with the variable's value and performs
-        additional adjustments.
-        """
-        for v in self.variables:
-            v_str = str(v)
-            self.data[f"{v_str}_weight"] = (
-                self.data[v_str] * self.data[f"{v_str}_weight"]
-            )
-            self.data[f"{v_str}_trans"] = (
-                self.data[v_str] * self.data[f"{v_str}_trans"]
-            )
-            self.data[f"{v_str}_shape"] = (
-                self.data[v_str] * self.data[f"{v_str}_shape"]
-            )
-            self.data[f"{v_str}_asym"] = (
-                self.data[v_str] * self.data[f"{v_str}_asym"]
-            )
-            temp = self.data[f"{v_str}_trans"]
-            temp[temp > 1] = 1
-            self.data[f"{v_str}_shape"] = self.data[v_str] * temp
-
-        self.data = self.data.drop_duplicates(keep="first", ignore_index=True)
-        self.data = self.data.reset_index(drop=True)
 
     def printHOF(self, max_row=None, max_col=None):
         """
