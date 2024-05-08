@@ -642,7 +642,7 @@ class ModelRunner:
                         var_name, "transform", 0, 0, is_int=True))
                 self.toolbox.register(
                     f"{var_name}_shape", feature_generator(
-                        var_name, "shape", 1, 1, is_int=True))
+                        var_name, "shape", 0, 0, is_int=True))
 
         # Define how to create an individual
         def create_individual():
@@ -664,62 +664,6 @@ class ModelRunner:
         self.toolbox.register("mutate", self.mutate)
         self.toolbox.register(
             "select", tools.selTournament, tournsize=self.tournsize)
-
-    # def init_ga_attributes(self):
-    #     """
-    #     Initializes the genetic algorithm's attributes and registers
-    #     necessary functions with the toolbox.
-    #     """
-    #     # Register attributes
-    #     self.toolbox.register("feature_sel", random.randint, 0, 1)
-
-    #     # weight
-    #     if self.posWeight:
-    #         self.toolbox.register(
-    #             "feature_weight", random.uniform, self.min_weight, 1.0
-    #         )
-    #     if self.fixWeight:
-    #         self.toolbox.register("feature_weight", random.uniform, 1.0, 1.0)
-    #     if not self.fixWeight and not self.posWeight:
-    #         self.toolbox.register(
-    #           "feature_weight", random.uniform, -1.0, 1.0)
-
-    #     # asymmetry parameter
-    #     if not self.fixAsym:
-    #         self.toolbox.register("feature_asym", random.randint, 0, 1)
-    #     else:
-    #         self.toolbox.register("feature_asym", random.randint, 0, 0)
-
-    #     # shape
-    #     if not self.fixShape:
-    #         self.toolbox.register("feature_transform", random.randint, 0, 8)
-    #         self.toolbox.register(
-    #             "feature_shape", random.randint, 1, int(self.max_shape)
-    #         )
-    #     else:
-    #         self.toolbox.register("feature_transform", random.randint, 0, 0)
-    #         self.toolbox.register("feature_shape", random.randint, 1, 1)
-
-    #     self.toolbox.register(
-    #         "individual",
-    #         tools.initCycle,
-    #         creator.Individual,
-    #         (self.toolbox.feature_sel,
-    #             self.toolbox.feature_weight,
-    #             self.toolbox.feature_transform,
-    #             self.toolbox.feature_shape,
-    #             self.toolbox.feature_asym),
-    #         n=len(self.resistance_network.variables)
-    #     )
-    #     self.toolbox.register(
-    #         "population", tools.initRepeat, list, self.toolbox.individual
-    #     )
-    #     self.toolbox.register("evaluate", lambda ind: ind)
-    #     self.toolbox.register("mate", tools.cxTwoPoint)
-    #     self.toolbox.register("mutate", self.mutate)
-    #     self.toolbox.register(
-    #         "select", tools.selTournament, tournsize=self.tournsize
-    #     )
 
     def terminate_workers(self):
         """
@@ -884,3 +828,65 @@ class ModelRunner:
                     self.toolbox, f"{var_name}_asym")()
 
         return individual,
+
+    def optimise_transformations(self, fitmetric="aic", threads=1, 
+                                 posWeight=False, fixWeight=False, 
+                                 fixShape=False, allShapes=True,
+                                 min_weight=0.0, max_shape=None, out=None,
+                                 plot=True, verbose=True):
+        """
+        Performs a grid search over transformations and shapes for each variable
+        to find the optimal settings, using the given configuration parameters.
+
+        Args:
+            threads (int): Number of parallel processes to use.
+            posWeight (bool): Constrain parameter weights to between 0.0-1.0.
+            fixWeight (bool): Constrain parameter weights to 1.0 (unweighted).
+            fixShape (bool): Turn off feature transformation.
+            allShapes (bool): Allow inverse and reverse transformations.
+            max_shape (int): Maximum shape value to consider in the grid search.
+            verbose (bool): Enable verbose output during the process.
+            fitmetric (str): Fitness metric to be used for evaluating models.
+
+        Returns:
+            dict: A dictionary containing the best transform and shape parameters for each variable.
+        """
+
+        # Define the range for transformations and shapes
+        transformation_range = range(0, 9) if not fixShape else range(0, 0)
+        shape_range = range(1, max_shape + 1) if not fixShape else range(1, 1)
+
+        # Dictionary to hold the best parameters found
+        best_params = {}
+
+        for var_name in self.resistance_network.variables:
+            best_fitness = float('inf')  # Assuming we are minimizing the fitness
+            best_combination = None
+
+            for transform in transformation_range:
+                for shape in shape_range:
+                    # Set the fixed parameters for the current combination
+                    self.fixed_params = {var_name: {"transform": transform, "shape": shape}}
+                    self.init_ga_attributes()  # Initialize GA attributes using the new fixed parameters
+                    self.initialize_ga()  # Reinitialize GA to use these parameters
+
+                    # Run the genetic algorithm with the current settings
+                    self.run_ga(maxgens=10)  # Assuming a reasonable number of generations for testing
+                    
+                    # Evaluate the result
+                    current_fitness = self.evaluate_current_setting()  # Implement this method to get the fitness
+
+                    # Determine if the current setting is better
+                    if current_fitness < best_fitness:
+                        best_fitness = current_fitness
+                        best_combination = (transform, shape)
+
+            # Store the best parameters for the variable
+            best_params[var_name] = best_combination
+
+        # Optionally set these best parameters as fixed parameters for future use
+        self.fixed_params = {var: {"transform": p[0], "shape": p[1]} for var, p in best_params.items()}
+        if verbose:
+            print(f"Optimal parameters found and set: {self.fixed_params}")
+
+        return best_params

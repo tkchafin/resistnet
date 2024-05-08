@@ -66,6 +66,18 @@ def main():
         verbose=True
     )
 
+    # # Optionally optimise transformations for each parameter 
+    # runner.optimise_transformations(
+    #     fitmetric=params.fitmetric,
+    #     threads=params.GA_procs,
+    #     posWeight=params.posWeight,
+    #     fixWeight=params.fixWeight,
+    #     fixShape=params.fixShape,
+    #     allShapes=params.allShapes,
+    #     max_shape=params.max_shape,
+    #     verbose=True
+    # )
+
     # Step 3: Run GA optimisation
     runner.run_ga(
         maxgens=params.maxGens,

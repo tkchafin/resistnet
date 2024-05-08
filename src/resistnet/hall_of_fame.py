@@ -388,7 +388,7 @@ class HallOfFame:
                 # Natural model averaging
                 relevant_models = sub.dropna(subset=[weight_col])
                 relevant_models = relevant_models[
-                    relevant_models[weight_col] != 0
+                    relevant_models[v] != 0
                 ]
 
                 if not relevant_models.empty:
