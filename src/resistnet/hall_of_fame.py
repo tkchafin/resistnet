@@ -81,6 +81,7 @@ class HallOfFame:
 
         popDF = popDF.sort_values("fitness", ascending=False)
         popDF = popDF.drop_duplicates(keep="first", ignore_index=True)
+        popDF = self.drop_active_duplicates(popDF, self.variables)
         popDF = popDF.reset_index(drop=True)
         space = self.max_size - self.data.shape[0]
 
@@ -108,7 +109,8 @@ class HallOfFame:
         fame data.
         """
         self.data = self.data.sort_values("fitness", ascending=False)
-        self.data = self.data.drop_duplicates(keep="first", ignore_index=True)
+        #self.data = self.data.drop_duplicates(keep="first", ignore_index=True)
+        self.data = self.drop_active_duplicates(self.data, self.variables)
         self.data = self.data.reset_index(drop=True)
         self.custom_drop()
         self.min_fitness = self.data["fitness"].min()
@@ -709,6 +711,37 @@ class HallOfFame:
         self.best.to_csv(
             f"{oname}.bestModel.tsv", sep="\t", index=False, na_rep="-"
         )
+
+    @staticmethod
+    def drop_active_duplicates(data, variable_prefixes, selection_suffix=''):
+        if data.empty:
+            return data
+
+        # Initialize a list to store indices of non-duplicate rows
+        non_duplicate_indices = []
+
+        # Iterate over each row to find active columns
+        for index, row in data.iterrows():
+            active_columns = ['fitness', 'loglik']
+            for prefix in variable_prefixes:
+                sel_col = f"{prefix}{selection_suffix}"
+                if sel_col in data.columns and row[sel_col] == 1:
+                    # If the variable is selected, add all related params
+                    active_columns.extend(
+                        col for col in data.columns
+                        if (
+                            col.startswith(prefix) and
+                            not col.endswith(selection_suffix)
+                        )
+                    )
+
+            # Use the active columns to drop duplicates dynamically
+            mask = (data[active_columns] == row[active_columns]).all(axis=1)
+            if not data.loc[mask].index.isin(non_duplicate_indices).any():
+                non_duplicate_indices.append(index)
+
+        # Return a new DataFrame containing only non-duplicate rows
+        return data.loc[non_duplicate_indices].reset_index(drop=True)
 
     @classmethod
     def from_dataframe(cls, df, max_size=None):
