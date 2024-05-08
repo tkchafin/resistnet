@@ -74,7 +74,7 @@ class ModelRunner:
         self.only_keep = None
         self.report_all = None
         self.use_full = False
-        self.fixed_parameters = None
+        self.fixed_params = None
 
     def initialize_ga(self):
         """
@@ -88,6 +88,13 @@ class ModelRunner:
 
         if self.verbose:
             print("Initializing genetic algorithm parameters...\n")
+
+        # # NOTE: Spoof fixed_params for testing 
+        # fixed_shape = 3
+        # fixed_transform = 5
+        # self.fixed_params = {
+        #     var_name: {"shape": fixed_shape, "transform": fixed_transform}
+        #     for var_name in self.resistance_network.variables}
         self.init_ga_attributes()
 
         # Initialize population
@@ -585,11 +592,11 @@ class ModelRunner:
         # Helper functions to generate attributes
         def feature_generator(
                 var_name, feature_type, lower, upper, is_int=False):
-            if (self.fixed_parameters and
-                var_name in self.fixed_parameters and
-                    feature_type in self.fixed_parameters[var_name]):
+            if (self.fixed_params and
+                var_name in self.fixed_params and
+                    feature_type in self.fixed_params[var_name]):
                 # Return a lambda that always returns the fixed value
-                return lambda: self.fixed_parameters[var_name][feature_type]
+                return lambda: self.fixed_params[var_name][feature_type]
             elif is_int:
                 return lambda: random.randint(lower, upper)
             else:
