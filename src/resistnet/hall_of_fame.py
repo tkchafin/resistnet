@@ -30,7 +30,7 @@ class HallOfFame:
         zero_threshold (float): Threshold value to consider as zero.
     """
 
-    def __init__(self, variables, max_size, init_pop=None):
+    def __init__(self, variables, max_size, use_full=False, init_pop=None):
         """
         Initialize the Hall of Fame class with variables, maximum size, and an
         initial population.
@@ -55,6 +55,7 @@ class HallOfFame:
         self.maw = None
         self.best = None
         self.zero_threshold = 1e-17
+        self.use_full = use_full
 
         if init_pop is not None:
             self.check_population(init_pop)
@@ -384,16 +385,14 @@ class HallOfFame:
 
     def model_average_weights(self, ignore_keep=False):
         """
-        Calculate the model average weights (MAW) based on Akaike weights.
-
-        This method computes the sum of weighted Akaike weights for each
-        variable and ranks them, providing an insight into the average weight
-        of each variable across models.
+        Calculate the model average weights (MAW) based on Akaike weights,
+        using either full or natural model averaging depending on the
+        self.use_full setting.
 
         Args:
             ignore_keep (bool, optional): If True, includes all models in the
-                                          calculation regardless of their
-                                          'keep' status. Defaults to False.
+                                        calculation regardless of their 'keep'
+                                        status. Defaults to False.
         """
         # Clear previous calculations
         self.maw = pd.DataFrame(columns=["variable", "MAW"])
@@ -405,16 +404,43 @@ class HallOfFame:
         rows = []
         for v in self.variables:
             weight_col = f"{v}_weight"
-            sum_weights = (sub[weight_col] * sub["akaike_weight"]).sum()
-            rows.append({"variable": v, "MAW": sum_weights})
 
-        # Concatenate all rows into the DataFrame
+            if self.use_full:
+                # Full model averaging
+                weighted_sums = (sub[weight_col] * sub["akaike_weight"]).sum()
+                total_weights = sub["akaike_weight"].sum()
+                average_weight = (
+                    weighted_sums / total_weights
+                    if total_weights != 0
+                    else np.nan
+                )
+            else:
+                # Natural model averaging
+                relevant_models = sub.dropna(subset=[weight_col])
+                relevant_models = relevant_models[
+                    relevant_models[weight_col] != 0
+                ]
+
+                if not relevant_models.empty:
+                    weighted_sums = (
+                        relevant_models[weight_col] *
+                        relevant_models["akaike_weight"]
+                    ).sum()
+                    total_weights = relevant_models["akaike_weight"].sum()
+                    average_weight = (
+                        weighted_sums / total_weights
+                        if total_weights != 0
+                        else np.nan
+                    )
+                else:
+                    average_weight = np.nan  # No relevant models found
+
+            rows.append({"variable": v, "MAW": average_weight})
+
+        # Concatenate all rows into the DataFrame and sort by MAW
         self.maw = pd.concat([self.maw, pd.DataFrame(rows)], ignore_index=True)
-
-        # Sorting and resetting index
-        self.maw = self.maw.sort_values(
-            "MAW", ascending=False
-        ).reset_index(drop=True)
+        self.maw.sort_values("MAW", ascending=False, inplace=True)
+        self.maw.reset_index(drop=True, inplace=True)
 
     def cleanHOF(self):
         """

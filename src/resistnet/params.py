@@ -31,7 +31,7 @@ class parseArgs():
                  "tournsize=", "tournSize=", "tSize=", "threads=",
                  "minWeight=", "min_weight=", "infer_origin=", "origin=",
                  "sizes=", "allSymmetric", "gdf_out=", "rtol=", "max_iter=",
-                 "max_fail=", "solver="
+                 "max_fail=", "solver=", "use_full", "avgall"
                  ]
             )
         except getopt.GetoptError as err:
@@ -90,6 +90,9 @@ class parseArgs():
         self.max_shape = 100
         self.min_weight = 0.0
 
+        # new model averaging options 
+        self.use_full = False
+
         # SAMC options
         self.infer_origin = "NEXT_DOWN"
         self.origin = None
@@ -132,6 +135,8 @@ class parseArgs():
                 self.min_weight = float(arg)
             elif opt == "max_hof_size":
                 self.max_hof_size = int(arg)
+            elif opt == "use_full":
+                self.use_full = True
             elif opt == "pop_agg":
                 self.pop_agg = arg.upper()
                 if self.pop_agg not in [
@@ -358,11 +363,12 @@ class parseArgs():
             "shape pre-optimisation (for use with --fixShape)\n"
 
             "SAMC options:\n"
-            "TODO origin,infer_origin, sizefile,fixedSize,allSymmetric\n"
-            "solver, max_iter, rthresh\n\n"
+            "Not currently implemented\n\n"
 
             "Multi-model inference options:\n"
             "    -a, --awsum: Cumulative Akaike weight threshold [def.=0.95]\n"
+            "    --use_full: Use full rather than natural model averaging\n"
+            "    --avgall: Include all models in averaging (negates -a)\n"
             "    --report_all: Plot outputs for all retained models\n\n"
         )
         print()

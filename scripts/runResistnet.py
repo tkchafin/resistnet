@@ -89,6 +89,7 @@ def main():
         max_hof_size=params.max_hof_size,
         awsum=params.awsum,
         only_keep=params.only_keep,
+        use_full=params.use_full,
         out=params.out,
         plot=True,
         verbose=True

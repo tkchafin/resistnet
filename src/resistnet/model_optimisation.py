@@ -73,6 +73,7 @@ class ModelRunner:
         self.awsum = None
         self.only_keep = None
         self.report_all = None
+        self.use_full = False
 
     def initialize_ga(self):
         """
@@ -103,7 +104,8 @@ class ModelRunner:
     def set_ga_parameters(self, mutpb, cxpb, indpb, popsize, maxpopsize,
                           posWeight, fixWeight, fixShape, allShapes,
                           min_weight, max_shape, max_hof_size, tournsize,
-                          fitmetric, awsum, only_keep, verbose, report_all):
+                          fitmetric, awsum, only_keep, use_full, verbose,
+                          report_all):
         """
         Sets the genetic algorithm parameters.
 
@@ -146,6 +148,7 @@ class ModelRunner:
         self.fitmetric = fitmetric
         self.awsum = awsum
         self.only_keep = only_keep
+        self.use_full = use_full
         self.verbose = verbose
         self.report_all = report_all
 
@@ -154,6 +157,7 @@ class ModelRunner:
                popsize=None, maxpopsize=1000, posWeight=False, fixWeight=False,
                fixShape=False, allShapes=False, min_weight=0.0, max_shape=None,
                max_hof_size=100, tournsize=10, awsum=0.95, only_keep=True,
+               use_full=False,
                out=None, plot=True, verbose=True, report_all=False, threads=1):
         """
         Runs the genetic algorithm for optimizing the ResistNet model.
@@ -202,7 +206,7 @@ class ModelRunner:
                                    posWeight, fixWeight, fixShape, allShapes,
                                    min_weight, max_shape, max_hof_size,
                                    tournsize, fitmetric, awsum, only_keep,
-                                   verbose, report_all)
+                                   use_full, verbose, report_all)
 
             # Initialize GA components and worker pool
             self.initialize_ga()
@@ -338,8 +342,8 @@ class ModelRunner:
             # Terminate worker processes
             self.terminate_workers()
 
-    def build_ensemble(self, bests, awsum=0.95, only_keep=True, out=None,
-                       threads=1, verbose=True):
+    def build_ensemble(self, bests, awsum=0.95, only_keep=True, use_full=False,
+                       out=None, threads=1, verbose=True):
         """
         Builds the ensemble model from the best models.
 
@@ -354,6 +358,7 @@ class ModelRunner:
         try:
             self.awsum = awsum
             self.only_keep = only_keep
+            self.use_full = use_full
             self.verbose = verbose
             self.bests = bests
             self.report_all = False
@@ -382,11 +387,12 @@ class ModelRunner:
             plot (bool): Flag to enable or disable plotting.
         """
         # Various calculations and print/write operations
+        self.bests.use_full = self.use_full
         self.bests.delta_aic()
         self.bests.akaike_weights()
         self.bests.cumulative_akaike(threshold=self.awsum)
-        self.bests.relative_variable_importance(self.only_keep)
-        self.bests.model_average_weights()
+        self.bests.relative_variable_importance(not self.only_keep)
+        self.bests.model_average_weights(not self.only_keep)
 
         # Printing and writing the results
         if verbose:
@@ -566,6 +572,7 @@ class ModelRunner:
         self.bests = HallOfFame(
             self.resistance_network._predictors.columns,
             self.max_hof_size,
+            self.use_full,
             pop_list)
 
     def init_ga_attributes(self):

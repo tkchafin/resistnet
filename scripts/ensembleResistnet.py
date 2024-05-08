@@ -105,6 +105,7 @@ def main():
         bests=bests,
         awsum=params.awsum,
         only_keep=params.only_keep,
+        use_full=params.use_full,
         out=params.out,
         threads=params.GA_procs,
         verbose=True
