@@ -74,6 +74,7 @@ class ModelRunner:
         self.only_keep = None
         self.report_all = None
         self.use_full = False
+        self.fixed_parameters = None
 
     def initialize_ga(self):
         """
@@ -98,7 +99,6 @@ class ModelRunner:
 
         if self.verbose:
             print("Establishing a population of size:", str(popsize))
-        print(popsize)
         self.population = self.toolbox.population(n=popsize)
 
     def set_ga_parameters(self, mutpb, cxpb, indpb, popsize, maxpopsize,
@@ -578,57 +578,141 @@ class ModelRunner:
     def init_ga_attributes(self):
         """
         Initializes the genetic algorithm's attributes and registers necessary
-        functions with the toolbox.
+        functions with the toolbox, allowing dynamic specification of fixed
+        parameters per variable and attribute.
         """
-        # Register attributes
-        self.toolbox.register("feature_sel", random.randint, 0, 1)
 
-        # weight
-        if self.posWeight:
+        # Helper functions to generate attributes
+        def feature_generator(
+                var_name, feature_type, lower, upper, is_int=False):
+            if (self.fixed_parameters and
+                var_name in self.fixed_parameters and
+                    feature_type in self.fixed_parameters[var_name]):
+                # Return a lambda that always returns the fixed value
+                return lambda: self.fixed_parameters[var_name][feature_type]
+            elif is_int:
+                return lambda: random.randint(lower, upper)
+            else:
+                return lambda: random.uniform(lower, upper)
+
+        # Registering attribute generators for each variable and each attribute
+        for var_name in self.resistance_network.variables:
             self.toolbox.register(
-                "feature_weight", random.uniform, self.min_weight, 1.0
+                f"{var_name}_sel", feature_generator(
+                    var_name, "sel", 0, 1, is_int=True))
+            if self.posWeight:
+                self.toolbox.register(
+                    f"{var_name}_weight", feature_generator(
+                        var_name, "weight", self.min_weight, 1.0))
+            elif self.fixWeight:
+                self.toolbox.register(
+                    f"{var_name}_weight", feature_generator(
+                        var_name, "weight", 1.0, 1.0))
+            else:
+                self.toolbox.register(
+                    f"{var_name}_weight", feature_generator(
+                        var_name, "weight", -1.0, 1.0))
+
+            if not self.fixAsym:
+                self.toolbox.register(
+                    f"{var_name}_asym", feature_generator(
+                        var_name, "asym", 0, 1, is_int=True))
+            else:
+                self.toolbox.register(
+                    f"{var_name}_asym", feature_generator(
+                        var_name, "asym", 0, 0, is_int=True))
+
+            if not self.fixShape:
+                self.toolbox.register(
+                    f"{var_name}_transform", feature_generator(
+                        var_name, "transform", 0, 8, is_int=True))
+                self.toolbox.register(
+                    f"{var_name}_shape", feature_generator(
+                        var_name, "shape", 1, self.max_shape, is_int=True))
+            else:
+                self.toolbox.register(
+                    f"{var_name}_transform", feature_generator(
+                        var_name, "transform", 0, 0, is_int=True))
+                self.toolbox.register(
+                    f"{var_name}_shape", feature_generator(
+                        var_name, "shape", 1, 1, is_int=True))
+
+        # Define how to create an individual
+        def create_individual():
+            return creator.Individual(
+                [getattr(self.toolbox, f"{var_name}_{attr}")()
+                    for var_name in self.resistance_network.variables
+                    for attr in [
+                        'sel', 'weight', 'transform', 'shape', 'asym']]
             )
-        if self.fixWeight:
-            self.toolbox.register("feature_weight", random.uniform, 1.0, 1.0)
-        if not self.fixWeight and not self.posWeight:
-            self.toolbox.register("feature_weight", random.uniform, -1.0, 1.0)
 
-        # asymmetry parameter
-        if not self.fixAsym:
-            self.toolbox.register("feature_asym", random.randint, 0, 1)
-        else:
-            self.toolbox.register("feature_asym", random.randint, 0, 0)
-
-        # shape
-        if not self.fixShape:
-            self.toolbox.register("feature_transform", random.randint, 0, 8)
-            self.toolbox.register(
-                "feature_shape", random.randint, 1, int(self.max_shape)
-            )
-        else:
-            self.toolbox.register("feature_transform", random.randint, 0, 0)
-            self.toolbox.register("feature_shape", random.randint, 1, 1)
-
+        # Registering individual and population creation methods
+        self.toolbox.register("individual", create_individual)
         self.toolbox.register(
-            "individual",
-            tools.initCycle,
-            creator.Individual,
-            (self.toolbox.feature_sel,
-                self.toolbox.feature_weight,
-                self.toolbox.feature_transform,
-                self.toolbox.feature_shape,
-                self.toolbox.feature_asym),
-            n=len(self.resistance_network.variables)
-        )
-        self.toolbox.register(
-            "population", tools.initRepeat, list, self.toolbox.individual
-        )
-        self.toolbox.register("evaluate", lambda ind: ind)
+            "population", tools.initRepeat, list, self.toolbox.individual)
+
+        # Evaluation, mating, mutation, and selection methods remain unchanged
+        self.toolbox.register("evaluate", lambda ind: ind)  # spoof
         self.toolbox.register("mate", tools.cxTwoPoint)
         self.toolbox.register("mutate", self.mutate)
         self.toolbox.register(
-            "select", tools.selTournament, tournsize=self.tournsize
-        )
+            "select", tools.selTournament, tournsize=self.tournsize)
+
+    # def init_ga_attributes(self):
+    #     """
+    #     Initializes the genetic algorithm's attributes and registers
+    #     necessary functions with the toolbox.
+    #     """
+    #     # Register attributes
+    #     self.toolbox.register("feature_sel", random.randint, 0, 1)
+
+    #     # weight
+    #     if self.posWeight:
+    #         self.toolbox.register(
+    #             "feature_weight", random.uniform, self.min_weight, 1.0
+    #         )
+    #     if self.fixWeight:
+    #         self.toolbox.register("feature_weight", random.uniform, 1.0, 1.0)
+    #     if not self.fixWeight and not self.posWeight:
+    #         self.toolbox.register(
+    #           "feature_weight", random.uniform, -1.0, 1.0)
+
+    #     # asymmetry parameter
+    #     if not self.fixAsym:
+    #         self.toolbox.register("feature_asym", random.randint, 0, 1)
+    #     else:
+    #         self.toolbox.register("feature_asym", random.randint, 0, 0)
+
+    #     # shape
+    #     if not self.fixShape:
+    #         self.toolbox.register("feature_transform", random.randint, 0, 8)
+    #         self.toolbox.register(
+    #             "feature_shape", random.randint, 1, int(self.max_shape)
+    #         )
+    #     else:
+    #         self.toolbox.register("feature_transform", random.randint, 0, 0)
+    #         self.toolbox.register("feature_shape", random.randint, 1, 1)
+
+    #     self.toolbox.register(
+    #         "individual",
+    #         tools.initCycle,
+    #         creator.Individual,
+    #         (self.toolbox.feature_sel,
+    #             self.toolbox.feature_weight,
+    #             self.toolbox.feature_transform,
+    #             self.toolbox.feature_shape,
+    #             self.toolbox.feature_asym),
+    #         n=len(self.resistance_network.variables)
+    #     )
+    #     self.toolbox.register(
+    #         "population", tools.initRepeat, list, self.toolbox.individual
+    #     )
+    #     self.toolbox.register("evaluate", lambda ind: ind)
+    #     self.toolbox.register("mate", tools.cxTwoPoint)
+    #     self.toolbox.register("mutate", self.mutate)
+    #     self.toolbox.register(
+    #         "select", tools.selTournament, tournsize=self.tournsize
+    #     )
 
     def terminate_workers(self):
         """
@@ -766,24 +850,30 @@ class ModelRunner:
 
     def mutate(self, individual):
         """
-        Custom mutation function for an individual.
-
-        Args:
-            individual: An individual to be mutated.
-
-        Returns:
-            A tuple containing the mutated individual.
+        Custom mutation function for an individual that aligns with the dynamic
+        toolbox registration.
         """
-        length = len(individual) // 5  # number of covariates
-        for i in range(length):
+        num_attributes = 5
+        num_vars = len(individual) // num_attributes
+
+        for var_index in range(num_vars):
+            var_name = self.resistance_network.variables[var_index]
+            idx_base = var_index * num_attributes
+
             if random.random() < self.mutpb:
-                individual[i * 5] = self.toolbox.feature_sel()
+                individual[idx_base] = getattr(
+                    self.toolbox, f"{var_name}_sel")()
             if random.random() < self.mutpb:
-                individual[i * 5 + 1] = self.toolbox.feature_weight()
+                individual[idx_base + 1] = getattr(
+                    self.toolbox, f"{var_name}_weight")()
             if random.random() < self.mutpb:
-                individual[i * 5 + 2] = self.toolbox.feature_transform()
+                individual[idx_base + 2] = getattr(
+                    self.toolbox, f"{var_name}_transform")()
             if random.random() < self.mutpb:
-                individual[i * 5 + 3] = self.toolbox.feature_shape()
+                individual[idx_base + 3] = getattr(
+                    self.toolbox, f"{var_name}_shape")()
             if random.random() < self.mutpb:
-                individual[i * 5 + 4] = self.toolbox.feature_asym()
+                individual[idx_base + 4] = getattr(
+                    self.toolbox, f"{var_name}_asym")()
+
         return individual,

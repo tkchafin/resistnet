@@ -90,7 +90,7 @@ class parseArgs():
         self.max_shape = 100
         self.min_weight = 0.0
 
-        # new model averaging options 
+        # new model averaging options
         self.use_full = False
 
         # SAMC options
