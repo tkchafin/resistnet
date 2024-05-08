@@ -109,7 +109,6 @@ class HallOfFame:
         fame data.
         """
         self.data = self.data.sort_values("fitness", ascending=False)
-        #self.data = self.data.drop_duplicates(keep="first", ignore_index=True)
         self.data = self.drop_active_duplicates(self.data, self.variables)
         self.data = self.data.reset_index(drop=True)
         self.custom_drop()
