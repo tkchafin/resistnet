@@ -35,7 +35,9 @@ jobs:
       - name: Install Dependencies
         shell: bash -l {0} 
         run: |
-          conda install -y anaconda::conda-build>=24.1.0 anaconda-client conda-verify
+          conda update -n base -c defaults conda
+          conda install -y anaconda::conda-build>=24.3.0 anaconda-client conda-verify
+          conda update --all
 
       - name: Build Conda Package
         shell: bash -l {0} 
@@ -68,5 +70,5 @@ jobs:
         context: .
         file: ./docker/Dockerfile
         push: true
-        tags: tkchafin/autostreamtree:latest,tkchafin/autostreamtree:${{ github.event.release.tag_name }}
+        tags: tkchafin/resistnet:latest,tkchafin/resistnet:${{ github.event.release.tag_name }}
 
