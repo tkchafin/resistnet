@@ -208,7 +208,7 @@ class ParseArgs:
                 ["help", "out=", "in=", "network=", "reps=", "shp=",
                  "len_col=", "id_col=", "split_samples", "max_keep=",
                  "awsum=", "list=", "threads=", "edge_agg=", "varFile=",
-                 "allShapes", "report_all", "noPlot", "only_best",
+                 "report_all", "noPlot", "only_best",
                  "only_keep", "coords=", "seed="]
             )
 
@@ -251,7 +251,6 @@ class ParseArgs:
         self.seed = None
         self.GA_procs = 1
         self.minimize = False
-        self.allShapes = False
         self.report_all = False
         self.plot = True
         self.coords = None
@@ -329,8 +328,6 @@ class ParseArgs:
                     )
             elif opt in ("V", "varFile"):
                 self.varFile = arg
-            elif opt == "allShapes":
-                self.allShapes = True
             else:
                 assert False, f"Unhandled option {opt!r}"
 
@@ -370,7 +367,6 @@ class ParseArgs:
             "-c, --id_col: Reach ID attribute (def=EDGE_ID)\n"
             "-o, --out: Output file prefix (default=ensemble)\n"
             "--report_all: Plot full outputs for all retained models\n"
-            "--allShapes: Allow inverse and reverse transformations\n"
             "-V, --varfile: Optional file with variables provided like so:\n"
             "          var1 \t <Optional aggregator function>\n"
             "          var2 \t <Optional aggregator function>\n"

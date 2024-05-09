@@ -31,7 +31,8 @@ class parseArgs():
                  "tournsize=", "tournSize=", "tSize=", "threads=",
                  "minWeight=", "min_weight=", "infer_origin=", "origin=",
                  "sizes=", "allSymmetric", "gdf_out=", "rtol=", "max_iter=",
-                 "max_fail=", "solver=", "use_full", "avgall"
+                 "max_fail=", "solver=", "use_full", "avgall", "gridSearch",
+                 "transFile="
                  ]
             )
         except getopt.GetoptError as err:
@@ -82,9 +83,9 @@ class parseArgs():
         self.only_keep = True
         self.allSymmetric = False
 
-        self.posWeight = False
+        self.posWeight = True
         self.fixWeight = False
-        self.allShapes = False
+        self.allShapes = True
         self.fixShape = False
         self.fixAsym = True
         self.max_shape = 100
@@ -101,6 +102,10 @@ class parseArgs():
         self.max_fail = 1
         self.solver = "iterative"
         self.rtol = 0.00001
+
+        # univariate opt
+        self.gridSearch = False
+        self.transFile = None
 
         # First pass to see if help menu was called
         for o, a in options:
@@ -219,6 +224,10 @@ class parseArgs():
                 self.report_all = True
             elif opt in ('X', 'noPlot'):
                 self.plot = False
+            elif opt == "gridSearch":
+                self.gridSearch = True
+            elif opt == "transFile":
+                self.transFile = str(arg)
             elif opt in ('o', 'out'):
                 self.out = arg
             elif opt == "avgall":
@@ -233,12 +242,8 @@ class parseArgs():
                         "Invalid option " + str(arg).upper() +
                         " for option <--efit_agg>"
                     )
-            elif opt == "posWeight":
-                self.posWeight = True
             elif opt == "fixWeight":
                 self.fixWeight = True
-            elif opt == "allShapes":
-                self.allShapes = True
             elif opt == "fixShape":
                 self.fixShape = True
             elif opt == "infer_origin":
@@ -336,12 +341,14 @@ class parseArgs():
             "    --indpb: Mutation probability per individual [default=0.5]\n"
             "    --cxpb: Cross-over probability [default=0.5]\n"
             "    -T, --tSize: Tournament size [default=10]\n"
-            "    --posWeight: Constrain parameter weights to between 0.0-1.0\n"
-            "    --minWeight: Sets minimum allowable weight (w/--posWeight)\n"
+            "    --minWeight: Sets minimum weight (as absolute value)\n"
             "    --fixWeight: Constrain parameter weights to 1.0\n"
             "    --fixShape: Turn off feature transformation\n"
-            "    --allShapes: Allow inverse and reverse transformations\n"
             "    --maxShape: Maximum shape value [default=100]\n\n"
+
+            "Univariate parameter settings:\n"
+            "    --gridSearch: Run grid-search to find fixed transformations\n"
+            "    --transFile: Read fixed transformations from file\n\n"
 
             "Model optimization/selection options:\n"
             "    -v, --vars: Comma-separated list of variables to use\n"

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import sys
 import random
 from datetime import datetime
 
@@ -66,17 +67,17 @@ def main():
         verbose=True
     )
 
-    # # Optionally optimise transformations for each parameter 
-    # runner.optimise_transformations(
-    #     fitmetric=params.fitmetric,
-    #     threads=params.GA_procs,
-    #     posWeight=params.posWeight,
-    #     fixWeight=params.fixWeight,
-    #     fixShape=params.fixShape,
-    #     allShapes=params.allShapes,
-    #     max_shape=params.max_shape,
-    #     verbose=True
-    # )
+    # Optionally optimise transformations for each parameter
+    if params.gridSearch:
+        fixed_params = runner.optimise_univariate(
+            fitmetric=params.fitmetric,
+            threads=params.GA_procs,
+            max_shape=params.max_shape,
+            out=params.out,
+            plot=True,
+            verbose=True
+        )
+        # write fixed params to file
 
     # Step 3: Run GA optimisation
     runner.run_ga(
@@ -92,10 +93,8 @@ def main():
         nFail=params.nfail,
         popsize=params.popsize,
         maxpopsize=params.maxpopsize,
-        posWeight=params.posWeight,
         fixWeight=params.fixWeight,
         fixShape=params.fixShape,
-        allShapes=params.allShapes,
         min_weight=params.min_weight,
         max_shape=params.max_shape,
         max_hof_size=params.max_hof_size,

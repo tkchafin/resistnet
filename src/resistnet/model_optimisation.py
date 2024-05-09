@@ -6,6 +6,10 @@ import numpy as np
 from queue import Empty
 from multiprocessing import Process, Queue
 from deap import base, creator, tools
+import matplotlib.pyplot as plt
+import seaborn as sns
+import matplotlib.patches as patches
+from matplotlib.backends.backend_pdf import PdfPages
 
 from resistnet.resistance_network import ResistanceNetwork
 from resistnet.resistance_network import ResistanceNetworkWorker
@@ -60,10 +64,8 @@ class ModelRunner:
         self.indpb = None
         self.popsize = None
         self.maxpopsize = None
-        self.posWeight = None
         self.fixWeight = None
         self.fixShape = None
-        self.allShapes = None
         self.fixAsym = False
         self.min_weight = None
         self.max_shape = None
@@ -109,7 +111,7 @@ class ModelRunner:
         self.population = self.toolbox.population(n=popsize)
 
     def set_ga_parameters(self, mutpb, cxpb, indpb, popsize, maxpopsize,
-                          posWeight, fixWeight, fixShape, allShapes,
+                          fixWeight, fixShape,
                           min_weight, max_shape, max_hof_size, tournsize,
                           fitmetric, awsum, only_keep, use_full, verbose,
                           report_all):
@@ -122,11 +124,9 @@ class ModelRunner:
             indpb (float): Probability of mutation per individual.
             popsize (int): Population size.
             maxpopsize (int): Maximum population size.
-            posWeight (bool): Constrain parameter weights to between 0.0-1.0.
             fixWeight (bool): Constrain parameter weights to 1.0 (i.e.,
                               unweighted).
             fixShape (bool): Turn off feature transformation.
-            allShapes (bool): Allow inverse and reverse transformations.
             min_weight (float): Minimum allowable weight.
             max_shape (float): Maximum shape value.
             max_hof_size (int): Maximum Hall of Fame size.
@@ -144,10 +144,8 @@ class ModelRunner:
         self.indpb = indpb
         self.popsize = popsize
         self.maxpopsize = maxpopsize
-        self.posWeight = posWeight
         self.fixWeight = fixWeight
         self.fixShape = fixShape
-        self.allShapes = allShapes
         self.min_weight = min_weight
         self.max_shape = max_shape
         self.max_hof_size = max_hof_size
@@ -161,8 +159,8 @@ class ModelRunner:
 
     def run_ga(self, maxgens=1, fitmetric="aic", burnin=0, deltaB=None,
                deltaB_perc=0.001, indpb=0.5, mutpb=0.5, cxpb=0.5, nFail=50,
-               popsize=None, maxpopsize=1000, posWeight=False, fixWeight=False,
-               fixShape=False, allShapes=False, min_weight=0.0, max_shape=None,
+               popsize=None, maxpopsize=1000, fixWeight=False,
+               fixShape=False, min_weight=0.0, max_shape=None,
                max_hof_size=100, tournsize=10, awsum=0.95, only_keep=True,
                use_full=False,
                out=None, plot=True, verbose=True, report_all=False, threads=1):
@@ -185,11 +183,9 @@ class ModelRunner:
                          optimization.
             popsize (int): Population size.
             maxpopsize (int): Maximum population size.
-            posWeight (bool): Constrain parameter weights to between 0.0-1.0.
             fixWeight (bool): Constrain parameter weights to 1.0 (i.e.,
                               unweighted).
             fixShape (bool): Turn off feature transformation.
-            allShapes (bool): Allow inverse and reverse transformations.
             min_weight (float): Minimum allowable weight.
             max_shape (float): Maximum shape value.
             max_hof_size (int): Maximum Hall of Fame size.
@@ -210,7 +206,7 @@ class ModelRunner:
         try:
             # Set GA parameters
             self.set_ga_parameters(mutpb, cxpb, indpb, popsize, maxpopsize,
-                                   posWeight, fixWeight, fixShape, allShapes,
+                                   fixWeight, fixShape,
                                    min_weight, max_shape, max_hof_size,
                                    tournsize, fitmetric, awsum, only_keep,
                                    use_full, verbose, report_all)
@@ -596,7 +592,7 @@ class ModelRunner:
                 var_name in self.fixed_params and
                     feature_type in self.fixed_params[var_name]):
                 # Return a lambda that always returns the fixed value
-                return lambda: self.fixed_params[var_name][feature_type]
+                return lambda: int(self.fixed_params[var_name][feature_type])
             elif is_int:
                 if custom_range is not None:
                     return lambda: random.choice(custom_range)
@@ -610,40 +606,30 @@ class ModelRunner:
             self.toolbox.register(
                 f"{var_name}_sel", feature_generator(
                     var_name, "sel", 0, 1, is_int=True))
-            if self.posWeight:
-                self.toolbox.register(
-                    f"{var_name}_weight", feature_generator(
-                        var_name, "weight", self.min_weight, 1.0))
-            elif self.fixWeight:
+            if self.fixWeight:
                 self.toolbox.register(
                     f"{var_name}_weight", feature_generator(
                         var_name, "weight", 1.0, 1.0))
+            elif self.min_weight:
+                self.toolbox.register(
+                    f"{var_name}_weight", feature_generator(
+                        var_name, "weight", self.min_weight, 1.0))
             else:
-                if self.min_weight:
-                    # custom weight generator function
-                    self.toolbox.register(
-                        f"{var_name}_weight",
-                        weight_generator(self.min_weight)
-                    )
-                else:
-                    self.toolbox.register(
-                        f"{var_name}_weight", feature_generator(
-                            var_name, "weight", -1.0, 1.0))
+                self.toolbox.register(
+                    f"{var_name}_weight", feature_generator(
+                        var_name, "weight", 0.0, 1.0))
 
-            if not self.fixAsym:
-                self.toolbox.register(
-                    f"{var_name}_asym", feature_generator(
-                        var_name, "asym", 0, 1, is_int=True))
-            else:
-                self.toolbox.register(
-                    f"{var_name}_asym", feature_generator(
-                        var_name, "asym", 0, 0, is_int=True))
+            # if not self.fixAsym:
+            #     self.toolbox.register(
+            #         f"{var_name}_asym", feature_generator(
+            #             var_name, "asym", 0, 1, is_int=True))
+            # else:
+            self.toolbox.register(
+                f"{var_name}_asym", feature_generator(
+                    var_name, "asym", 0, 0, is_int=True))
 
             if not self.fixShape:
-                if not self.allShapes:
-                    transform_range = [0, 1, 4, 5, 8]
-                else:
-                    transform_range = list(range(0, 9))
+                transform_range = list(range(0, 9))
                 self.toolbox.register(
                     f"{var_name}_transform", feature_generator(
                         var_name, "transform", 0, 8, is_int=True,
@@ -738,10 +724,8 @@ class ModelRunner:
                 'edge_order': self.resistance_network._edge_order,
                 'gendist': self.resistance_network._gendist,
                 "fitmetric": self.fitmetric,
-                "posWeight": self.posWeight,
                 "fixWeight": self.fixWeight,
                 # "fixAsym": self.fixAsym,
-                "allShapes": self.allShapes,
                 "fixShape": self.fixShape,
                 "min_weight": self.min_weight,
                 "max_shape": self.max_shape
@@ -844,11 +828,9 @@ class ModelRunner:
 
         return individual,
 
-    def optimise_univariate(self, fitmetric="aic", threads=1, 
-                                 posWeight=False, fixWeight=False, 
-                                 fixShape=False, allShapes=True,
-                                 min_weight=0.0, max_shape=None, out=None,
-                                 plot=True, verbose=True):
+    def optimise_univariate(self, fitmetric="aic", threads=1,
+                            min_weight=0.0, max_shape=None,
+                            out=None, plot=True, verbose=True):
         """
         Performs a grid search over transformations and shapes for each
         variable to find the optimal settings, using the given configuration
@@ -856,25 +838,19 @@ class ModelRunner:
 
         Args:
             threads (int): Number of parallel processes to use.
-            posWeight (bool): Constrain parameter weights to between 0.0-1.0.
-            fixWeight (bool): Constrain parameter weights to 1.0 (unweighted).
-            fixShape (bool): Turn off feature transformation.
-            allShapes (bool): Allow inverse and reverse transformations.
             max_shape (int): Maximum shape value to consider in the grid search
             verbose (bool): Enable verbose output during the process.
             fitmetric (str): Fitness metric to be used for evaluating models.
+            out (str or None): If provided, saves the detailed results to a
+                               DataFrame with optional PDF plots
 
         Returns:
             dict: A dictionary containing the best transform and shape
-                  parameters for each variable.
+                parameters for each variable.
         """
 
         try:
             self.fitmetric = fitmetric
-            self.posWeight = posWeight
-            self.fixWeight = fixWeight
-            self.fixShape = fixShape
-            self.allShapes = allShapes
             self.min_weight = min_weight
             self.max_shape = max_shape
             self.verbose = verbose
@@ -886,12 +862,10 @@ class ModelRunner:
             self.start_workers(threads)
 
             best_params = dict()
+            results_data = []
 
             # Define the range for transformations and shapes
-            if self.allShapes:
-                trans_range = range(0, 9)
-            else:
-                trans_range = [0, 1, 4, 5, 8]
+            trans_range = range(0, 9)
             shape_range = range(1, max_shape+1) if max_shape else range(1, 101)
 
             # Iterate over each variable individually
@@ -900,45 +874,88 @@ class ModelRunner:
                 if self.verbose:
                     print("Performing grid search for", var)
 
-                if self.fixShape:
-                    best_params[var] = {'shape': 0, 'transform': 0}
-                    continue
-
-                var_best_params = {'fitness': float('inf'), 'params': None}
-
                 # Create models and distribute tasks
                 for t in trans_range:
                     for s in shape_range:
+                        weight = 1.0
                         model = [0] * (
                             len(self.resistance_network.variables) * 5)
                         index_var = self.resistance_network.variables.index(
                             var)
                         model[
                             index_var * 5:index_var * 5 + 5
-                        ] = [1, 1.0 if not fixWeight else 1.0, t, s, 0]
-
+                        ] = [1, weight, t, s, 0]
                         model_index = f"{var};{t};{s}"
                         self.task_queue.put(('evaluate', model_index, model))
 
                 # Collect fitness results and update best parameters
                 for _ in range(len(trans_range) * len(shape_range)):
-                    model_index, fitness, res = self.result_queue.get()
+                    model_index, fitness, _ = self.result_queue.get()
                     var, t, s = model_index.split(';')
-                    t = int(t)
-                    s = int(s)
-                    if fitness < var_best_params['fitness']:
-                        var_best_params = {
-                            'fitness': fitness,
-                            'params': {
-                                'transform': t,
-                                'shape': s
-                            }
-                        }
+                    t, s = int(t), int(s)
+                    results_data.append({
+                        'variable': var,
+                        'fitness': fitness,
+                        'shape': s,
+                        'transform': t
+                    })
 
-                # save best params found
-                best_params[var] = var_best_params['params']
-                print(var_best_params)
-            print(best_params)
+            # choose best parameter values, favouring lowest transformation
+            df = pd.DataFrame(results_data)
+            for var in self.resistance_network.variables:
+                var_df = df[df['variable'] == var]
+                best = var_df.loc[var_df['fitness'] == var_df['fitness'].min()]
+                best = best.sort_values(by=['shape', 'transform']).iloc[0]
+                best_params[var] = {
+                    'transform': best['transform'],
+                    'shape': best['shape']
+                }
+
+            if out:
+                if fitmetric == "aic":
+                    df["fitness"] = -df["fitness"]
+                df.to_csv(
+                    str(out)+".univariateFitness.tsv", index=False, sep="\t")
+
+                # optional plots
+                if plot:
+                    # Define the PDF file path
+                    pdf_path = str(out) + ".univariateFitness.pdf"
+                    with PdfPages(pdf_path) as pdf:
+                        for var in self.resistance_network.variables:
+                            # Filter data for the current variable
+                            var_data = df[df['variable'] == var]
+                            # Create a pivot table for the heatmap
+                            pivot_table = var_data.pivot(
+                                index="shape",
+                                columns="transform",
+                                values="fitness"
+                            )
+
+                            fig, ax = plt.subplots(figsize=(10, 8))
+                            _ = sns.heatmap(
+                                pivot_table, ax=ax, annot=True, fmt=".1f",
+                                cmap='viridis')
+                            plt.title(f'{var}')
+                            plt.xlabel('Transformation')
+                            plt.ylabel('Shape')
+
+                            # Highlight the best parameter combination
+                            best_transform = best_params[var]['transform']
+                            best_shape = best_params[var]['shape']
+                            transform_pos = pivot_table.columns.tolist().index(
+                                best_transform)
+                            shape_pos = pivot_table.index.tolist().index(
+                                best_shape)
+                            rect = patches.Rectangle(
+                                (transform_pos, shape_pos), 1, 1, linewidth=2,
+                                edgecolor='red', facecolor='none')
+                            ax.add_patch(rect)
+
+                            pdf.savefig(fig)
+                            plt.close(fig)
+
+            self.fixed_params = best_params
             return best_params
 
         except Exception as e:
@@ -948,6 +965,7 @@ class ModelRunner:
         finally:
             # Terminate processes
             self.terminate_workers()
+            self.seed = random.randint(1, 10000000)
 
 
 def weight_generator(min_weight):

@@ -1009,37 +1009,27 @@ class ResistanceNetwork:
         """
         d = dat
 
+        if transformation == 0 or shape == 0:
+            return trans.rescaleCols(d, 0, 1)
+
         # Apply transformation based on the specified type
         if transformation == 1:
             d = trans.ricker(dat, shape, 1)
         elif transformation == 2:
-            if self.allShapes:
-                d = trans.revRicker(dat, shape, 1)
-            else:
-                d = trans.ricker(dat, shape, 1)
+            d = trans.revRicker(dat, shape, 1)
         elif transformation == 3:
-            if self.allShapes:
-                d = trans.invRicker(dat, shape, 1)
-            else:
-                d = trans.revInvRicker(dat, shape, 1)
+            d = trans.invRicker(dat, shape, 1)
         elif transformation == 4:
             d = trans.revInvRicker(dat, shape, 1)
         elif transformation == 5:
             d = trans.monomolecular(dat, shape, 1)
         elif transformation == 6:
-            if self.allShapes:
-                d = trans.revMonomolecular(dat, shape, 1)
-            else:
-                d = trans.monomolecular(dat, shape, 1)
+            d = trans.revMonomolecular(dat, shape, 1)
         elif transformation == 7:
-            if self.allShapes:
-                d = trans.invMonomolecular(dat, shape, 1)
-            else:
-                d = trans.revInvMonomolecular(dat, shape, 1)
+            d = trans.invMonomolecular(dat, shape, 1)
         elif transformation == 8:
             d = trans.revInvMonomolecular(dat, shape, 1)
         elif transformation <= 0:
-            # No transformation applied
             pass
         else:
             print("WARNING: Invalid transformation type.")
@@ -1147,9 +1137,7 @@ class ResistanceNetworkWorker(ResistanceNetwork):
         variables (list): List of variables.
         agg_opts (dict): Aggregation options.
         fitmetric (str): Fitness metric.
-        posWeight (bool): Position weight.
         fixWeight (bool): Fixed weight.
-        allShapes (bool): Indicator for all shapes.
         fixShape (bool): Fixed shape.
         min_weight (float): Minimum weight.
         max_shape (float): Maximum shape.
@@ -1163,8 +1151,8 @@ class ResistanceNetworkWorker(ResistanceNetwork):
         gendist (numpy.ndarray): Genetic distance matrix.
     """
     def __init__(self, network, pop_agg, reachid_col, length_col,
-                 variables, agg_opts, fitmetric, posWeight, fixWeight,
-                 allShapes, fixShape, min_weight, max_shape, inc, point_coords,
+                 variables, agg_opts, fitmetric, fixWeight,
+                 fixShape, min_weight, max_shape, inc, point_coords,
                  points_names, points_snapped, points_labels, predictors,
                  edge_order, gendist):
 
@@ -1178,10 +1166,8 @@ class ResistanceNetworkWorker(ResistanceNetwork):
         self.agg_opts = agg_opts
 
         self.fitmetric = fitmetric
-        self.posWeight = posWeight
         self.fixWeight = fixWeight
         self.fixShape = fixShape
-        self.allShapes = allShapes
         self.min_weight = min_weight
         self.max_shape = max_shape
 
