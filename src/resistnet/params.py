@@ -366,9 +366,6 @@ class parseArgs():
             "    -b, --burn: Number of generations for pre-burnin [def.=0]\n"
             "    --max_hof_size: Maximum models retained [default=100]\n\n"
 
-            "natural vs. full RVI\n"
-            "shape pre-optimisation (for use with --fixShape)\n"
-
             "SAMC options:\n"
             "Not currently implemented\n\n"
 

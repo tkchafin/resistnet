@@ -91,12 +91,6 @@ class ModelRunner:
         if self.verbose:
             print("Initializing genetic algorithm parameters...\n")
 
-        # # NOTE: Spoof fixed_params for testing 
-        # fixed_shape = 3
-        # fixed_transform = 5
-        # self.fixed_params = {
-        #     var_name: {"shape": fixed_shape, "transform": fixed_transform}
-        #     for var_name in self.resistance_network.variables}
         self.init_ga_attributes()
 
         # Initialize population
@@ -162,7 +156,7 @@ class ModelRunner:
                popsize=None, maxpopsize=1000, fixWeight=False,
                fixShape=False, min_weight=0.0, max_shape=None,
                max_hof_size=100, tournsize=10, awsum=0.95, only_keep=True,
-               use_full=False,
+               use_full=False, fixed_params=None,
                out=None, plot=True, verbose=True, report_all=False, threads=1):
         """
         Runs the genetic algorithm for optimizing the ResistNet model.
@@ -210,6 +204,14 @@ class ModelRunner:
                                    min_weight, max_shape, max_hof_size,
                                    tournsize, fitmetric, awsum, only_keep,
                                    use_full, verbose, report_all)
+
+            # parse optional input fixed_params
+            if fixed_params:
+                self.parse_fixed_params(fixed_params)
+
+            # write fixed params if provided
+            if out and self.fixed_params:
+                self.write_fixed_params(str(out) + ".fixedParams.tsv")
 
             # Initialize GA components and worker pool
             self.initialize_ga()
@@ -505,6 +507,39 @@ class ModelRunner:
             oname, matrix_avg, edge_avg
         )
 
+    def parse_fixed_params(self, fixed_params):
+        if isinstance(fixed_params, dict):
+            self.fixed_params = fixed_params
+        else:
+            try:
+                df = pd.read_csv(fixed_params, sep='\t')
+                # Check if the DataFrame has a fitness column
+                if 'fitness' in df.columns:
+                    # Select rows with the minimum fitness for each variable
+                    self.fixed_params = df.loc[
+                        df.groupby('variable')['fitness'].idxmin()
+                    ].set_index('variable').to_dict('index')
+                else:
+                    # Assume file contains correct columns
+                    self.fixed_params = df.set_index(
+                        'variable').to_dict('index')
+            except Exception as e:
+                print(f"Failed to read fixed parameters: {e}")
+                raise
+
+    def write_fixed_params(self, out):
+        data = []
+        for var_name, params in self.fixed_params.items():
+            shape = params.get("shape", np.nan)
+            transform = params.get("transform", np.nan)
+            data.append({
+                "variable": var_name,
+                "shape": shape,
+                "transform": transform
+            })
+        df = pd.DataFrame(data)
+        df.to_csv(out, index=False, sep="\t")
+
     @staticmethod
     def update_fails(best, current_best, fails, delta_b, delta_b_perc,
                      minimize=False):
@@ -679,7 +714,7 @@ class ModelRunner:
             worker.join()
 
         if self.verbose:
-            print("\nAll worker processes have been terminated.")
+            print("\nAll worker processes have been terminated\n")
 
     def start_workers(self, threads):
         """

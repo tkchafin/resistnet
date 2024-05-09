@@ -69,7 +69,7 @@ def main():
 
     # Optionally optimise transformations for each parameter
     if params.gridSearch:
-        fixed_params = runner.optimise_univariate(
+        runner.optimise_univariate(
             fitmetric=params.fitmetric,
             threads=params.GA_procs,
             max_shape=params.max_shape,
@@ -77,7 +77,6 @@ def main():
             plot=True,
             verbose=True
         )
-        # write fixed params to file
 
     # Step 3: Run GA optimisation
     runner.run_ga(
@@ -101,6 +100,7 @@ def main():
         awsum=params.awsum,
         only_keep=params.only_keep,
         use_full=params.use_full,
+        fixed_params=params.transFile,
         out=params.out,
         plot=True,
         verbose=True

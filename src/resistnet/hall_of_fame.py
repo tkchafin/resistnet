@@ -312,7 +312,13 @@ class HallOfFame:
         rows = []
         for v in self.variables:
             sum_weights = (sub[v] * sub["akaike_weight"]).sum()
-            rows.append({"variable": v, "RVI": sum_weights})
+            total_weights = sub["akaike_weight"].sum()
+            average_weights = (
+                sum_weights / total_weights
+                if total_weights != 0
+                else np.nan
+            )
+            rows.append({"variable": v, "RVI": average_weights})
 
         # Concatenate all rows into the DataFrame
         self.rvi = pd.concat(
