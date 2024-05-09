@@ -80,7 +80,6 @@ class HallOfFame:
             return
 
         popDF = popDF.sort_values("fitness", ascending=False)
-        #popDF = popDF.drop_duplicates(keep="first", ignore_index=True)
         popDF = self.drop_active_duplicates(popDF, self.variables)
         popDF = popDF.reset_index(drop=True)
         space = self.max_size - self.data.shape[0]

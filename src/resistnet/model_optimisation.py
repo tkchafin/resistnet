@@ -501,7 +501,7 @@ class ModelRunner:
                 oname = f"{out}.Model-Best"
                 self.resistance_network.output_and_plot_model(
                     oname, matrix_r, edge_r
-                ) 
+                )
 
             if self.report_all:
                 oname = f"{out}.Model-{model_num}"
@@ -524,8 +524,10 @@ class ModelRunner:
                     best_params = dict()
                     for var in df["variable"].unique():
                         var_df = df[df['variable'] == var]
-                        best = var_df.loc[var_df['fitness'] == var_df['fitness'].min()]
-                        best = best.sort_values(by=['shape', 'transform']).iloc[0]
+                        best = var_df.loc[
+                            var_df['fitness'] == var_df['fitness'].min()]
+                        best = best.sort_values(
+                            by=['shape', 'transform']).iloc[0]
                         best_params[var] = {
                             'transform': best['transform'],
                             'shape': best['shape']
