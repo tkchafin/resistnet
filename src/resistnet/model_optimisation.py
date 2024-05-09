@@ -590,15 +590,18 @@ class ModelRunner:
         """
 
         # Helper functions to generate attributes
-        def feature_generator(
-                var_name, feature_type, lower, upper, is_int=False):
+        def feature_generator(var_name, feature_type, lower, upper,
+                              is_int=False, custom_range=None):
             if (self.fixed_params and
                 var_name in self.fixed_params and
                     feature_type in self.fixed_params[var_name]):
                 # Return a lambda that always returns the fixed value
                 return lambda: self.fixed_params[var_name][feature_type]
             elif is_int:
-                return lambda: random.randint(lower, upper)
+                if custom_range is not None:
+                    return lambda: random.choice(custom_range)
+                else:
+                    return lambda: random.randint(lower, upper)
             else:
                 return lambda: random.uniform(lower, upper)
 
@@ -616,9 +619,16 @@ class ModelRunner:
                     f"{var_name}_weight", feature_generator(
                         var_name, "weight", 1.0, 1.0))
             else:
-                self.toolbox.register(
-                    f"{var_name}_weight", feature_generator(
-                        var_name, "weight", -1.0, 1.0))
+                if self.min_weight:
+                    # custom weight generator function
+                    self.toolbox.register(
+                        f"{var_name}_weight",
+                        weight_generator(self.min_weight)
+                    )
+                else:
+                    self.toolbox.register(
+                        f"{var_name}_weight", feature_generator(
+                            var_name, "weight", -1.0, 1.0))
 
             if not self.fixAsym:
                 self.toolbox.register(
@@ -630,9 +640,14 @@ class ModelRunner:
                         var_name, "asym", 0, 0, is_int=True))
 
             if not self.fixShape:
+                if not self.allShapes:
+                    transform_range = [0, 1, 4, 5, 8]
+                else:
+                    transform_range = list(range(0, 9))
                 self.toolbox.register(
                     f"{var_name}_transform", feature_generator(
-                        var_name, "transform", 0, 8, is_int=True))
+                        var_name, "transform", 0, 8, is_int=True,
+                        custom_range=transform_range))
                 self.toolbox.register(
                     f"{var_name}_shape", feature_generator(
                         var_name, "shape", 1, self.max_shape, is_int=True))
@@ -829,14 +844,15 @@ class ModelRunner:
 
         return individual,
 
-    def optimise_transformations(self, fitmetric="aic", threads=1, 
+    def optimise_univariate(self, fitmetric="aic", threads=1, 
                                  posWeight=False, fixWeight=False, 
                                  fixShape=False, allShapes=True,
                                  min_weight=0.0, max_shape=None, out=None,
                                  plot=True, verbose=True):
         """
-        Performs a grid search over transformations and shapes for each variable
-        to find the optimal settings, using the given configuration parameters.
+        Performs a grid search over transformations and shapes for each
+        variable to find the optimal settings, using the given configuration
+        parameters.
 
         Args:
             threads (int): Number of parallel processes to use.
@@ -844,49 +860,103 @@ class ModelRunner:
             fixWeight (bool): Constrain parameter weights to 1.0 (unweighted).
             fixShape (bool): Turn off feature transformation.
             allShapes (bool): Allow inverse and reverse transformations.
-            max_shape (int): Maximum shape value to consider in the grid search.
+            max_shape (int): Maximum shape value to consider in the grid search
             verbose (bool): Enable verbose output during the process.
             fitmetric (str): Fitness metric to be used for evaluating models.
 
         Returns:
-            dict: A dictionary containing the best transform and shape parameters for each variable.
+            dict: A dictionary containing the best transform and shape
+                  parameters for each variable.
         """
 
-        # Define the range for transformations and shapes
-        transformation_range = range(0, 9) if not fixShape else range(0, 0)
-        shape_range = range(1, max_shape + 1) if not fixShape else range(1, 1)
+        try:
+            self.fitmetric = fitmetric
+            self.posWeight = posWeight
+            self.fixWeight = fixWeight
+            self.fixShape = fixShape
+            self.allShapes = allShapes
+            self.min_weight = min_weight
+            self.max_shape = max_shape
+            self.verbose = verbose
 
-        # Dictionary to hold the best parameters found
-        best_params = {}
+            if self.verbose:
+                print("Starting univariate optimisation...")
 
-        for var_name in self.resistance_network.variables:
-            best_fitness = float('inf')  # Assuming we are minimizing the fitness
-            best_combination = None
+            # Initialise workers
+            self.start_workers(threads)
 
-            for transform in transformation_range:
-                for shape in shape_range:
-                    # Set the fixed parameters for the current combination
-                    self.fixed_params = {var_name: {"transform": transform, "shape": shape}}
-                    self.init_ga_attributes()  # Initialize GA attributes using the new fixed parameters
-                    self.initialize_ga()  # Reinitialize GA to use these parameters
+            best_params = dict()
 
-                    # Run the genetic algorithm with the current settings
-                    self.run_ga(maxgens=10)  # Assuming a reasonable number of generations for testing
-                    
-                    # Evaluate the result
-                    current_fitness = self.evaluate_current_setting()  # Implement this method to get the fitness
+            # Define the range for transformations and shapes
+            if self.allShapes:
+                trans_range = range(0, 9)
+            else:
+                trans_range = [0, 1, 4, 5, 8]
+            shape_range = range(1, max_shape+1) if max_shape else range(1, 101)
 
-                    # Determine if the current setting is better
-                    if current_fitness < best_fitness:
-                        best_fitness = current_fitness
-                        best_combination = (transform, shape)
+            # Iterate over each variable individually
+            for var in self.resistance_network.variables:
 
-            # Store the best parameters for the variable
-            best_params[var_name] = best_combination
+                if self.verbose:
+                    print("Performing grid search for", var)
 
-        # Optionally set these best parameters as fixed parameters for future use
-        self.fixed_params = {var: {"transform": p[0], "shape": p[1]} for var, p in best_params.items()}
-        if verbose:
-            print(f"Optimal parameters found and set: {self.fixed_params}")
+                if self.fixShape:
+                    best_params[var] = {'shape': 0, 'transform': 0}
+                    continue
 
-        return best_params
+                var_best_params = {'fitness': float('inf'), 'params': None}
+
+                # Create models and distribute tasks
+                for t in trans_range:
+                    for s in shape_range:
+                        model = [0] * (
+                            len(self.resistance_network.variables) * 5)
+                        index_var = self.resistance_network.variables.index(
+                            var)
+                        model[
+                            index_var * 5:index_var * 5 + 5
+                        ] = [1, 1.0 if not fixWeight else 1.0, t, s, 0]
+
+                        model_index = f"{var};{t};{s}"
+                        self.task_queue.put(('evaluate', model_index, model))
+
+                # Collect fitness results and update best parameters
+                for _ in range(len(trans_range) * len(shape_range)):
+                    model_index, fitness, res = self.result_queue.get()
+                    var, t, s = model_index.split(';')
+                    t = int(t)
+                    s = int(s)
+                    if fitness < var_best_params['fitness']:
+                        var_best_params = {
+                            'fitness': fitness,
+                            'params': {
+                                'transform': t,
+                                'shape': s
+                            }
+                        }
+
+                # save best params found
+                best_params[var] = var_best_params['params']
+                print(var_best_params)
+            print(best_params)
+            return best_params
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            traceback.print_exc()
+
+        finally:
+            # Terminate processes
+            self.terminate_workers()
+
+
+def weight_generator(min_weight):
+    # Decide at random whether the weight will be positive or negative
+    def generate():
+        if random.random() < 0.5:
+            # Generate a negative weight
+            return random.uniform(-1.0, -min_weight)
+        else:
+            # Generate a positive weight
+            return random.uniform(min_weight, 1.0)
+    return generate
