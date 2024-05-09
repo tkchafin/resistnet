@@ -497,6 +497,12 @@ class ModelRunner:
             if matrix_r is not None:
                 matrix_avg += matrix_r * weight
 
+            if model_num == 0:
+                oname = f"{out}.Model-Best"
+                self.resistance_network.output_and_plot_model(
+                    oname, matrix_r, edge_r
+                ) 
+
             if self.report_all:
                 oname = f"{out}.Model-{model_num}"
                 self.resistance_network.output_and_plot_model(
