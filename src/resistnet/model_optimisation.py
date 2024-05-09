@@ -515,10 +515,16 @@ class ModelRunner:
                 df = pd.read_csv(fixed_params, sep='\t')
                 # Check if the DataFrame has a fitness column
                 if 'fitness' in df.columns:
-                    # Select rows with the minimum fitness for each variable
-                    self.fixed_params = df.loc[
-                        df.groupby('variable')['fitness'].idxmin()
-                    ].set_index('variable').to_dict('index')
+                    best_params = dict()
+                    for var in df["variable"].unique():
+                        var_df = df[df['variable'] == var]
+                        best = var_df.loc[var_df['fitness'] == var_df['fitness'].min()]
+                        best = best.sort_values(by=['shape', 'transform']).iloc[0]
+                        best_params[var] = {
+                            'transform': best['transform'],
+                            'shape': best['shape']
+                        }
+                        self.fixed_params = best_params
                 else:
                     # Assume file contains correct columns
                     self.fixed_params = df.set_index(
@@ -947,8 +953,6 @@ class ModelRunner:
                 }
 
             if out:
-                if fitmetric == "aic":
-                    df["fitness"] = -df["fitness"]
                 df.to_csv(
                     str(out)+".univariateFitness.tsv", index=False, sep="\t")
 
