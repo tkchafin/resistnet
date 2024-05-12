@@ -24,6 +24,7 @@ def ga_parameters_fixture():
         'awsum': 0.75,
         'only_keep': True,
         'verbose': False,
+        'use_full': False,
         'report_all': False
     }
 
