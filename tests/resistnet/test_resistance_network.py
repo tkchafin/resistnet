@@ -207,9 +207,7 @@ def test_resistance_network_worker_creation(resistance_network_fixture):
         'gendist': resistance_network_fixture._gendist,
         # Use defaults or specific values for the additional attributes
         'fitmetric': 'aic',
-        'posWeight': False,
         'fixWeight': False,
-        'allShapes': False,
         'fixShape': False,
         'min_weight': 0.0,
         'max_shape': 100.0
@@ -227,9 +225,7 @@ def test_resistance_network_worker_creation(resistance_network_fixture):
 
     # Validate unique attributes for ResistanceNetworkWorker
     assert worker.fitmetric == 'aic'
-    assert worker.posWeight is False
     assert worker.fixWeight is False
-    assert worker.allShapes is False
     assert worker.fixShape is False
     assert worker.min_weight == 0.0
     assert worker.max_shape == 100.0

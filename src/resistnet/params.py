@@ -366,9 +366,6 @@ class parseArgs():
             "    -b, --burn: Number of generations for pre-burnin [def.=0]\n"
             "    --max_hof_size: Maximum models retained [default=100]\n\n"
 
-            "SAMC options:\n"
-            "Not currently implemented\n\n"
-
             "Multi-model inference options:\n"
             "    -a, --awsum: Cumulative Akaike weight threshold [def.=0.95]\n"
             "    --use_full: Use full rather than natural model averaging\n"

@@ -14,10 +14,8 @@ def ga_parameters_fixture():
         'indpb': 0.05,
         'popsize': 10,
         'maxpopsize': 10,
-        'posWeight': True,
         'fixWeight': False,
         'fixShape': True,
-        'allShapes': False,
         'min_weight': 0.5,
         'max_shape': 2.0,
         'max_hof_size': 100,
@@ -119,10 +117,8 @@ def test_model_runner_initialization(resistance_network_fixture):
     assert model_runner.indpb is None
     assert model_runner.popsize is None
     assert model_runner.maxpopsize is None
-    assert model_runner.posWeight is None
     assert model_runner.fixWeight is None
     assert model_runner.fixShape is None
-    assert model_runner.allShapes is None
     assert model_runner.min_weight is None
     assert model_runner.max_shape is None
     assert model_runner.max_hof_size is None

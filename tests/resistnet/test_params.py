@@ -30,7 +30,7 @@ def test_display_help_called():
 def test_parse_args_conflicting_weight_options():
     test_args = [
         "script_name", "-o", "my_prefix", "-g", "genmat_file",
-        "--shp", "shapefile.shp", "--posWeight", "--fixWeight",
+        "--shp", "shapefile.shp", "--fixWeight",
         "-v", "example1,example2,example3"]
     sys.argv = test_args
 
@@ -92,9 +92,7 @@ def test_parse_args_defaults():
     assert args.modavg is True
     assert args.report_all is False
     assert args.plot is True
-    assert args.posWeight is False
     assert args.fixWeight is False
-    assert args.allShapes is False
     assert args.fixShape is False
     assert args.max_shape == 100
     assert args.min_weight == 0.0
@@ -106,7 +104,7 @@ def test_parse_args_nondefaults():
         "--shp", "shapefile.shp", "-v", "example1", "-P", "123",
         "-G", "123", "--threads", "4", "-d", "0.001", "-D", "0.01",
         "-F", "42", "-T", "42", "--cxpb", "0.42", "--indpb", "0.42",
-        "--mutpb", "0.42", "--burn", "2", "--posWeight", "--report_all",
+        "--mutpb", "0.42", "--burn", "2", "--report_all",
         "-o", "example", "--awsum", "0.42", "--max_hof_size", "123",
         "--min_weight", "0.042", "--max_shape", "42"
     ]
@@ -133,9 +131,7 @@ def test_parse_args_nondefaults():
     assert args.modavg is True
     assert args.report_all is True
     assert args.plot is True
-    assert args.posWeight is True
     assert args.fixWeight is False
-    assert args.allShapes is False
     assert args.fixShape is False
     assert args.max_shape == 42
     assert args.min_weight == 0.042
