@@ -36,7 +36,8 @@ def main():
     )
 
     # write new output geodatabase
-    network.write_geodataframe(params.out, params.output_driver)
+    if params.shapefile:
+        network.write_geodataframe(params.out, params.output_driver)
 
     # Step 2: Initialise ModelRunner
     runner = ModelRunner(
