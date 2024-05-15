@@ -437,7 +437,7 @@ def read_points_table(pfile):
     """
     # Define the data types for the columns
     dtype_dict = {'sample': str, 'lat': float, 'long': float}
-    
+
     # Read the TSV file, specifying the data types
     points = pd.read_csv(pfile, sep="\t", header=0, dtype=dtype_dict)
 
