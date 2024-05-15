@@ -1271,12 +1271,12 @@ class SimResistanceNetwork(ResistanceNetwork):
         """
         # Read attributes from the graph
         df = utils.nx_to_df(self._K)
-        id_col = "EDGE_ID" if self.minimize else self.reachid_col
-        if not self.minimize:
-            df["EDGE_ID"] = df[id_col]
+        # id_col = "EDGE_ID" if self.minimize else self.reachid_col
+        # if not self.minimize:
+        #     df["EDGE_ID"] = df[id_col]
 
         # Save the order of edges
-        self._edge_order = df.index
+        self._edge_order = list(df[self.reachid_col])
 
         # Rescale variables
         predictors = trans.rescaleCols(df[vars['VAR']], 0, 1)
@@ -1306,11 +1306,11 @@ class SimResistanceNetwork(ResistanceNetwork):
             points (dict): Dictionary of point data with location and sample
                            information.
         """
-        d = {"Sample": [], "Lat": [], "Lon": []}
+        d = {"sample": [], "lat": [], "long": []}
         for p in points:
-            d["Sample"].append(points[p])
-            d["Lat"].append(p[1])
-            d["Lon"].append(p[0])
+            d["sample"].append(points[p])
+            d["lat"].append(p[1])
+            d["long"].append(p[0])
         df = pd.DataFrame(d)
         df.to_csv(
             f"{oname}.coords", header=True, index=False, quoting=None, sep="\t"
