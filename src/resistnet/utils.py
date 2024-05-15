@@ -435,7 +435,11 @@ def read_points_table(pfile):
     Raises:
         ValueError: If any required columns are missing in the file.
     """
-    points = pd.read_csv(pfile, sep="\t", header=0)
+    # Define the data types for the columns
+    dtype_dict = {'sample': str, 'lat': float, 'long': float}
+    
+    # Read the TSV file, specifying the data types
+    points = pd.read_csv(pfile, sep="\t", header=0, dtype=dtype_dict)
 
     required_columns = {'sample', 'lat', 'long'}
     if not required_columns.issubset(points.columns):
