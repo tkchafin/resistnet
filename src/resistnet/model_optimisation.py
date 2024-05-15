@@ -953,7 +953,7 @@ class ModelRunner:
             df = pd.DataFrame(results_data)
             for var in self.resistance_network.variables:
                 var_df = df[df['variable'] == var]
-                best = var_df.loc[var_df['fitness'] == var_df['fitness'].min()]
+                best = var_df.loc[var_df['fitness'] == var_df['fitness'].max()]
                 best = best.sort_values(by=['shape', 'transform']).iloc[0]
                 best_params[var] = {
                     'transform': best['transform'],
