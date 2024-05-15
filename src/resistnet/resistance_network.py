@@ -1349,7 +1349,7 @@ class SimResistanceNetwork(ResistanceNetwork):
             self.format_sampled_points(samples)
 
             # Compute subgraph and annotate edges
-            self._K = self.parse_subgraph_from_points()
+            self._K = self.parse_subgraph_from_points(base)
             self._K = self.annotate_edges()
 
             # Simulate composite resistance
