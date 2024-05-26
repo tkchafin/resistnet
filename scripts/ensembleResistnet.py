@@ -30,6 +30,7 @@ def main():
     elif params.input_list:
         params.paths = params.input_list
 
+    print(params.paths)
     # Step 1: Collect models
     # Read models
     local_rows = 1 if params.only_best else None
@@ -68,18 +69,15 @@ def main():
     # If coordinates not provided, collate those from the runs
     if not params.coords:
         coords = read_and_concat_files(
-            params.paths, ".pointCoords.txt", index_column=index_col
+            params.paths, ".coords", index_column=index_col
         )
         coords.columns = ["sample", "lat", "long"]
         coords = coords.drop_duplicates(subset=["lat", "long"], keep='first')
     else:
         coords = pd.read_csv(params.coords, sep="\t")
         coords.columns = ["sample", "lat", "long"]
-    coords.to_csv(params.out + ".coords",
-                    header=True,
-                    index=False,
-                    quoting=None,
-                    sep="\t")
+    coords.to_csv(params.out + ".coords", header=True, index=False,
+                  quoting=None, sep="\t")
     params.coords = params.out + ".coords"
 
     # Get network
