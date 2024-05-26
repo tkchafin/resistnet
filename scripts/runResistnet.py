@@ -17,7 +17,7 @@ def main():
 
     # Seed random number generator
     if not params.seed:
-        params.seed = datetime.now().timestamp()
+        params.seed = int(datetime.now().timestamp())
     random.seed(params.seed)
 
     # Step 1: Initialise network

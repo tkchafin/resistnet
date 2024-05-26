@@ -758,5 +758,6 @@ class HallOfFame:
 
         # Update the instance attributes with the provided DataFrame
         instance.data = df.copy()
+        instance.data = instance.drop_active_duplicates(instance.data, instance.variables)
 
         return instance

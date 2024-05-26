@@ -72,12 +72,15 @@ def main():
         )
         coords.columns = ["sample", "lat", "long"]
         coords = coords.drop_duplicates(subset=["lat", "long"], keep='first')
-        coords.to_csv(params.out + ".coords",
-                      header=True,
-                      index=False,
-                      quoting=None,
-                      sep="\t")
-        params.coords = params.out + ".coords"
+    else:
+        coords = pd.read_csv(params.coords, sep="\t")
+        coords.columns = ["sample", "lat", "long"]
+    coords.to_csv(params.out + ".coords",
+                    header=True,
+                    index=False,
+                    quoting=None,
+                    sep="\t")
+    params.coords = params.out + ".coords"
 
     # Get network
     network = ResistanceNetwork(
@@ -209,7 +212,7 @@ class ParseArgs:
                  "len_col=", "id_col=", "split_samples", "max_keep=",
                  "awsum=", "list=", "threads=", "edge_agg=", "varFile=",
                  "report_all", "noPlot", "only_best",
-                 "only_keep", "coords=", "seed="]
+                 "only_keep", "coords=", "seed=", "use_full"]
             )
 
         except getopt.GetoptError as err:
@@ -254,6 +257,7 @@ class ParseArgs:
         self.report_all = False
         self.plot = True
         self.coords = None
+        self.use_full = False
 
     def check_mandatory_options(self):
         """ Checks if mandatory options are set """
@@ -290,6 +294,8 @@ class ParseArgs:
                 self.input_list = arg.split(",")
             elif opt in ("out", "o"):
                 self.out = arg
+            elif opt == "use_full":
+                self.use_full = True
             elif opt in ("t", "procs"):
                 self.GA_procs = int(arg)
             elif opt in ("seed"):
