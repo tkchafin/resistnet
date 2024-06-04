@@ -7,7 +7,7 @@ import getopt
 import glob
 import pandas as pd
 from resistnet.resistance_network import ResistanceNetwork
-from resistnet.model_optimisation import ModelRunner
+from resistnet.model_optimisation import ModelRunnerGA
 from resistnet.hall_of_fame import HallOfFame
 
 # Set environment variable
@@ -95,7 +95,7 @@ def main():
     )
 
     # Step 3: Set up ModelRunner
-    runner = ModelRunner(
+    runner = ModelRunnerGA(
         resistance_network=network,
         seed=params.seed,
         verbose=True

@@ -21,10 +21,12 @@ requirements:
   - pip
   - perl
   - pytest
+  - hyperopt
   - numpy
   - pandas>2
   - matplotlib
   - scikit-learn
+  - lightgbm
   - seaborn
   - geopandas
   - sortedcontainers

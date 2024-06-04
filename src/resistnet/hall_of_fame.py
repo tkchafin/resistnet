@@ -44,7 +44,7 @@ class HallOfFame:
         cols = ["fitness"]
         for v in variables:
             cols.extend([
-                str(v), f"{v}_weight", f"{v}_trans", f"{v}_shape", f"{v}_asym"
+                str(v), f"{v}_weight", f"{v}_trans", f"{v}_shape"
             ])
         cols.extend(["loglik", "r2m", "aic", "delta_aic_null"])
         self.data = pd.DataFrame(columns=cols)
@@ -350,7 +350,6 @@ class HallOfFame:
                 "Weight": best_model[f"{var}_weight"],
                 "Shape": best_model[f"{var}_shape"],
                 "Transformation": best_model[f"{var}_trans"],
-                "Asymmetry": best_model[f"{var}_asym"],
             }
             for var in self.variables
         ]
@@ -433,7 +432,7 @@ class HallOfFame:
 
         for v in self.variables:
             mask = ret[v] == 0
-            for attr in ["_weight", "_trans", "_shape", "_asym"]:
+            for attr in ["_weight", "_trans", "_shape"]:
                 ret.loc[mask, f"{v}{attr}"] = np.nan
 
         if ret.iloc[0]["fitness"] == (ret.iloc[0]["aic"] * -1):
@@ -732,7 +731,7 @@ class HallOfFame:
                         the DataFrame.
         """
         # Extract variable names from the DataFrame column names
-        variable_prefixes = ["_weight", "_trans", "_shape", "_asym"]
+        variable_prefixes = ["_weight", "_trans", "_shape"]
         variables = set()
         for col in df.columns:
             for prefix in variable_prefixes:
@@ -760,5 +759,6 @@ class HallOfFame:
         instance.data = df.copy()
         instance.data = instance.drop_active_duplicates(instance.data,
                                                         instance.variables)
+        instance._update_data_frame()
 
         return instance

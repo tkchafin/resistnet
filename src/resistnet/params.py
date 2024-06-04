@@ -1,376 +1,162 @@
-import sys
-import getopt
+import argparse
 
-
-class parseArgs():
-    """
-    A class to parse command-line arguments for ResistNet
-
-    Attributes:
-        Various attributes for command-line options and their default values.
-
-    Methods:
-        display_help(message=None): Prints the help message and exits
-    """
+class parseArgs:
     def __init__(self):
-        # Define options
-        try:
-            options, r = getopt.getopt(
-                sys.argv[1:],
-                'hp:g:s:s:T:P:G:s:m:i:c:t:F:d:D:f:b:C:v:V:Aa:o:Xj:n:O:',
-                ["shp=", "help", "input=", "genmat=", "shapefile=",
-                 "seed=", "procs=", "maxPop=", "maxpop=", "maxgen=", "maxGen=",
-                 "size=", "popsize=", "mutpb=", "indpb=", "cxpb=", "tourn=",
-                 "nfail=", "nFail=", "delt=", "deltP=", "deltp=", "fit=",
-                 "metric=", "fitness=", "burn=", "dist_col=", "vars=",
-                 "pop_agg=", "varfile=", "maxShape=", "awsum=", "report_all",
-                 "noPlot", "out=", "keep_all", "max_hof_size=", "max_shape=",
-                 "posWeight", "fixWeight", "allShapes", "efit_agg=", "coords=",
-                 "length_col=", "reachid_col=", "minimize", "network=",
-                 "fixShape", "max_gens=", "max_gen=", "max_pop=", "varFile=",
-                 "tournsize=", "tournSize=", "tSize=", "threads=",
-                 "minWeight=", "min_weight=", "infer_origin=", "origin=",
-                 "sizes=", "allSymmetric", "gdf_out=", "rtol=", "max_iter=",
-                 "max_fail=", "solver=", "use_full", "avgall", "gridSearch",
-                 "transFile="
-                 ]
-            )
-        except getopt.GetoptError as err:
-            print(err)
-            self.display_help(
-                "\nExiting because getopt returned non-zero exit status."
-            )
-
-        # Default values for params
-        self.dist_col = None
-        self.variables = None
-        self.agg_opts = dict()
-        self.varFile = None
-        self.minimize = False
-        self.seed = None
-        self.popsize = None
-        self.length_col = "LENGTH_KM"
-        self.reachid_col = "HYRIV_ID"
-        self.pop_agg = "ARITH"
-        self.edge_agg = "ARITH"
-        self.efit_agg = "SUM"
-        self.maxpopsize = 1000
-        self.fitmetric = "aic"
-        self.network = None
-        self.predicted = False
-        self.output_driver = "GPKG"
-        self.inmat = None
-        self.shapefile = None
-        self.network = None
-        self.coords = None
-        self.cholmod = False
-        self.GA_procs = 1
-        self.deltaB = None
-        self.deltaB_perc = 0.001
-        self.nfail = 50
-        self.maxGens = 500
-        self.tournsize = 10
-        self.cxpb = 0.5
-        self.mutpb = 0.5
-        self.indpb = 0.5
-        self.burnin = 0
-        self.max_hof_size = 100
-        self.out = "output"
-        self.awsum = 0.95
-        self.modavg = True
-        self.report_all = False
-        self.plot = True
-        self.only_keep = True
-        self.allSymmetric = False
-
-        self.posWeight = True
-        self.fixWeight = False
-        self.allShapes = True
-        self.fixShape = False
-        self.fixAsym = True
-        self.max_shape = 100
-        self.min_weight = 0.0
-
-        # new model averaging options
-        self.use_full = False
-
-        # SAMC options
-        self.infer_origin = "NEXT_DOWN"
-        self.origin = None
-        self.sizefile = None
-        self.max_iter = 1000
-        self.max_fail = 1
-        self.solver = "iterative"
-        self.rtol = 0.00001
-
-        # univariate opt
-        self.gridSearch = False
-        self.transFile = None
-
-        # First pass to see if help menu was called
-        for o, a in options:
-            if o in ("-h", "-help", "--help"):
-                self.display_help("Exiting because help menu was called.")
-
-        # Second pass to set all args.
-        for opt, arg in options:
-            arg = arg.strip()
-            opt = opt.replace("-", "")
-            if opt in ('g', 'genmat'):
-                self.inmat = arg
-            elif opt in ('s', 'shp'):
-                self.shapefile = arg
-            elif opt in ("c", "coords"):
-                self.coords = arg
-            elif opt in ("n", "network"):
-                self.network = arg
-            elif opt == "minimize":
-                self.minimize = True
-            elif opt == 'seed':
-                self.seed = int(arg)
-            elif opt in ("t", "provs", "threads"):
-                self.GA_procs = int(arg)
-            elif opt in ('P', 'maxPop', 'maxpop', "max_pop"):
-                self.maxpopsize = int(arg)
-            elif opt in ("G", "maxGen", "maxgen", "max_gen", "max_gens"):
-                self.maxGens = int(arg)
-            elif opt in ("popsize", "size"):
-                self.popsize = int(arg)
-            elif opt in ("min_weight", "minWeight"):
-                self.min_weight = float(arg)
-            elif opt == "max_hof_size":
-                self.max_hof_size = int(arg)
-            elif opt == "use_full":
-                self.use_full = True
-            elif opt == "pop_agg":
-                self.pop_agg = arg.upper()
-                if self.pop_agg not in [
-                    "HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX",
-                    "MIN", "SUM", "FIRST", "SD", "VAR", "CV"
-                ]:
-                    self.display_help(
-                        "Invalid option " + str(arg).upper() +
-                        " for option <--pop_agg>"
-                    )
-            elif opt == "edge_agg":
-                self.edge_agg = arg.upper()
-                if self.edge_agg not in [
-                    "HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX",
-                    "MIN", "SUM", "FIRST", "SD", "VAR", "CV"
-                ]:
-                    self.display_help(
-                        "Invalid option " + str(arg).upper() +
-                        " for option <--edge_agg>"
-                    )
-            elif opt == "mutpb":
-                self.mutpb = float(arg)
-            elif opt == "indpb":
-                self.indpb = float(arg)
-            elif opt == "cxpb":
-                self.cxpb = float(arg)
-            # elif opt == "rtol":
-            #     self.rtol = float(arg)
-            # elif opt == "max_iter":
-            #     self.max_iter = int(arg)
-            # elif opt == "max_fail":
-            #     self.max_fail = int(arg)
-            # elif opt == "solver":
-            #     if arg.lower() not in ["iterative", "direct"]:
-            #         self.diplay_help("Unrecognized solver <--solver>")
-            #     else:
-            #         self.solver = arg.lower()
-            elif opt in ('T', 'tSize', 'tournSize', "tourn", "tournsize"):
-                self.tournsize = int(arg)
-            elif opt in ('F', 'nfail', 'nFail'):
-                self.nfail = int(arg)
-            elif opt in ('d', 'delt'):
-                self.deltaB = float(arg)
-            elif opt in ('D', 'deltP', 'deltp'):
-                self.deltaB_perc = float(arg)
-            elif opt in ('f', 'fit', 'metric', 'fitness'):
-                if arg.lower() not in ["aic", "r2m", "loglik", "delta"]:
-                    self.diplay_help("Unrecognized fitness metric <-f, --fit>")
-                else:
-                    self.fitmetric = arg.lower()
-            elif opt in ('b', 'burn'):
-                self.burnin = int(arg)
-            elif opt in ("O", "gdf_out"):
-                arg_upper = str(arg).upper()
-                if arg_upper not in ["GPKG", "SHP", "GDB"]:
-                    self.display_help(f"Invalid option {arg_upper} for \
-                                      option <--gdf_out>")
-                self.output_driver = arg_upper
-            elif opt == "dist_col":
-                self.dist_col = arg
-            elif opt == "infer":
-                self.predicted = True
-            elif opt == "reachid_col":
-                self.reachid_col = arg
-            elif opt == "length_col":
-                self.length_col = arg
-            elif opt == "cholmod":
-                self.cholmod = True
-            elif opt in ('v', 'vars'):
-                self.variables = arg.split(",")
-            elif opt in ('V', 'varFile'):
-                self.varFile = arg
-            elif opt in ('A', 'modavg', 'modAvg'):
-                self.modavg = True
-            elif opt in ('a', 'awsum'):
-                self.awsum = float(arg)
-            elif opt in ("max_shape", "maxShape"):
-                self.max_shape = int(arg)
-            elif opt == "report_all":
-                self.report_all = True
-            elif opt in ('X', 'noPlot'):
-                self.plot = False
-            elif opt == "gridSearch":
-                self.gridSearch = True
-            elif opt == "transFile":
-                self.transFile = str(arg)
-            elif opt in ('o', 'out'):
-                self.out = arg
-            elif opt == "avgall":
-                self.only_keep = False
-            elif opt == "efit_agg":
-                self.efit_agg = arg.upper()
-                if self.efit_agg not in [
-                    "HARM", "ADJHARM", "ARITH", "GEOM", "MEDIAN", "MAX", "MIN",
-                    "SUM", "FIRST", "SD", "VAR", "CV"
-                ]:
-                    self.display_help(
-                        "Invalid option " + str(arg).upper() +
-                        " for option <--efit_agg>"
-                    )
-            elif opt == "fixWeight":
-                self.fixWeight = True
-            elif opt == "fixShape":
-                self.fixShape = True
-            elif opt == "infer_origin":
-                self.infer_origin = str(arg)
-            elif opt == "origin":
-                self.origin = int(arg)
-            elif opt == "allSymmetric":
-                self.allSymmetric = True
-            elif opt == "sizes":
-                self.sizefile = str(arg)
-            elif opt in ('h', 'help'):
-                pass
-            else:
-                assert False, f"Unhandled option {opt!r}"
-
-        if self.posWeight and self.fixWeight:
-            self.display_help(
-                "--posWeight and --fixWeight cannot be used together"
-            )
-
-        if self.varFile is not None:
-            if self.variables is not None:
-                print(
-                    "Warning: Variables were specified with both <-v> and "
-                    "<-V>... Over-riding options using file provided "
-                    "with <-V>"
-                )
-            if self.edge_agg is None:
-                self.edge_agg = "ARITH"
-            with open(self.varFile) as fp:
-                for line in fp:
-                    line = line.strip()
-                    stuff = line.split("\t")
-                    if len(stuff) < 2:
-                        self.agg_opts[stuff[0]] = self.edge_agg
-                    else:
-                        self.agg_opts[stuff[0]] = stuff[1]
-            self.variables = list(self.agg_opts.keys())
-        else:
-            if self.variables is None:
-                self.display_help("No variables selected.")
-            else:
-                for v in self.variables:
-                    self.agg_opts[v] = self.edge_agg
-
-        if not self.variables:
-            self.display_help("No variables selected.")
-
-    def display_help(self, message=None):
-        """
-        Displays the help message and exits the program.
-
-        Args:
-            message (str, optional): An additional message to print before the
-                                     help message.
-        """
-        if message is not None:
-            print()
-            print(message)
-        print("\nresistnet.py\n")
-        print("Author: Tyler K Chafin")
-        print("Contact: tyler.chafin@bioss.ac.uk")
-        print("Description: Genetic algorithm to optimise resistance networks")
-        print(
-            "\nInput options:\n"
-            "    -g, --genmat: Genetic distance matrix\n"
-            "    -s, --shp: Path to shapefile, geodatabase, or GPKG file\n"
-            "    -c, --coords: Input tsv containing sample coordinates\n\n"
-
-            "General options:\n"
-            "    --seed: Random number seed (default=taken from clock time)\n"
-            "    --reachid_col: Reach ID [default=\"REACH_ID\"]\n"
-            "    --length_col: Length [default=\"LENGTH_KM\"]\n"
-            "    -t, --procs: Number of parallel processors\n"
-            "    -X, --noPlot: Turn off plotting\n"
-            "    -o, --out: Output file prefix\n"
-            "    -h, --help: Displays help menu\n"
-            "    -O, --gdf_out   : Output driver for annotated geodataframe \
-(options \"SHP\", \"GPKG\", \"GDB\")\n\n"
-
-            "Aggregation options:\n"
-            "    --edge_agg: Method for combining variables across segments\n"
-            "    --pop_agg: Method to combine population genetic distances\n"
-            "      Options: ARITH (-metic mean), MEDIAN, HARM (-monic mean),\n"
-            "      ADJHARM (adjusted HARM, see docs), GEOM (geometric mean),\n"
-            "      MIN, MAX, FIRST, SD (standard deviation), VAR (variance),\n"
-            "      SUM (simple sum), CV (coefficient of variation = SD/MEAN)\n"
-
-            "\nGenetic Algorithm Options:\n"
-            "    -P, --maxPop: Maximum population size [default = 100]\n"
-            "    -G, --maxGen: Maximum number of generations [default = 500]\n"
-            "    -s, --size: Manually set population size to <-p int>,\n"
-            "        NOTE: By default, #params * 15\n"
-            "    -m, --mutpb: Mutation probability per trait [default=0.5]\n"
-            "    --indpb: Mutation probability per individual [default=0.5]\n"
-            "    --cxpb: Cross-over probability [default=0.5]\n"
-            "    -T, --tSize: Tournament size [default=10]\n"
-            "    --minWeight: Sets minimum weight (as absolute value)\n"
-            "    --fixWeight: Constrain parameter weights to 1.0\n"
-            "    --fixShape: Turn off feature transformation\n"
-            "    --maxShape: Maximum shape value [default=100]\n\n"
-
-            "Univariate parameter settings:\n"
-            "    --gridSearch: Run grid-search to find fixed transformations\n"
-            "    --transFile: Read fixed transformations from file\n\n"
-
-            "Model optimization/selection options:\n"
-            "    -v, --vars: Comma-separated list of variables to use\n"
-            "    -V, --varfile: Optional file with variables provided as:\n"
-            "        var1 \\t <Optional aggregator function>\n"
-            "        var2 \\t <Optional aggregator function>\n"
-            "        ...\n"
-            "    -F, --nfail: Number of failed gens to stop optimization\n"
-            "    -d, --delt: Threshold absolute change in fitness [def.=0.0]\n"
-            "    -D, --deltP: Threshold as decimal percentage [def.=0.001]\n"
-            "    -f, --fit: Fitness metric used to evaluate models\n"
-            "        Options: aic (default), loglik (log-likelihood),\n"
-            "        r2m (marginal R^2), delta (Change in AIC vs null model)\n"
-            "        NOTE: Case-insensitive\n"
-            "    -b, --burn: Number of generations for pre-burnin [def.=0]\n"
-            "    --max_hof_size: Maximum models retained [default=100]\n\n"
-
-            "Multi-model inference options:\n"
-            "    -a, --awsum: Cumulative Akaike weight threshold [def.=0.95]\n"
-            "    --use_full: Use full rather than natural model averaging\n"
-            "    --avgall: Include all models in averaging (negates -a)\n"
-            "    --report_all: Plot outputs for all retained models\n\n"
+        parser = argparse.ArgumentParser(
+            description='Genetic algorithm to optimize resistance networks',
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
-        print()
-        sys.exit()
+
+        # Input options
+        parser.add_argument(
+            '-g', '--inmat', type=str,
+            help='Input distance matrix (usually genetic distances)'
+        )
+        parser.add_argument(
+            '-s', '--shapefile', type=str,
+            help='Path to shapefile, geodatabase, or GPKG file'
+        )
+        parser.add_argument(
+            '-c', '--coords', type=str,
+            help='Input tsv containing sample coordinates'
+        )
+        parser.add_argument(
+            '-n', '--network', type=str,
+            help='Pre-formatted pickled network file'
+        )
+
+        # General options
+        parser.add_argument(
+            '--seed', type=int,
+            help='Random number seed'
+        )
+        parser.add_argument(
+            '--reachid_col', type=str, default='HYRIV_ID',
+            help='Reach ID in geodatabase'
+        )
+        parser.add_argument(
+            '--length_col', type=str, default='LENGTH_KM',
+            help='Length attribute in geodatabase'
+        )
+        parser.add_argument(
+            '-t', '--procs', type=int,
+            help='Number of parallel processors'
+        )
+        parser.add_argument(
+            '-o', '--out', type=str, default='output',
+            help='Output file prefix'
+        )
+        parser.add_argument(
+            '-O', '--gdf_out', type=str, choices=['SHP', 'GPKG', 'GDB'],
+            default='GPKG',
+            help='Output driver for annotated geodataframe'
+        )
+
+        # Univariate parameter settings
+        parser.add_argument(
+            '--gridSearch', action='store_true',
+            help='Run grid-search to find fixed transformations'
+        )
+        parser.add_argument(
+            '--transFile', type=str,
+            help='Read fixed transformations from file'
+        )
+
+        # Model optimization/selection options
+        parser.add_argument(
+            '-v', '--vars', type=str,
+            help='Comma-separated list of variables to use'
+        )
+        parser.add_argument(
+            '-V', '--varfile', type=str,
+            help=(
+                'Optional file with variables provided as: '
+                'var \\t <Optional aggregator function>'
+            )
+        )
+        parser.add_argument(
+            '-F', '--nfail', type=int, default=50,
+            help='Number of failed gens to stop optimization'
+        )
+        parser.add_argument(
+            '-i', '--max_iter', type=int, default=500,
+            help='Maximum number of generations'
+        )
+        parser.add_argument(
+            '-r', '--reps', type=int, default=10,
+            help='Number of independent TPE chains'
+        )
+        parser.add_argument(
+            '-P', '--pweight', type=float, default=0.7,
+            help='Prior weight'
+        )
+        parser.add_argument(
+            '-S', '--nstart', type=int, default=20,
+            help='Initial random evaluations'
+        )
+        parser.add_argument(
+            '-C', '--ncand', type=int, default=48,
+            help='EI candidate points'
+        )
+        parser.add_argument(
+            '-G', '--gamma', type=float, default=0.15,
+            help='Exploration factor'
+        )
+        parser.add_argument(
+            '-f', '--fitmetric', type=str, choices=['aic', 'loglik', 'r2m',
+                                                    'delta'],
+            default='loglik',
+            help='Fitness metric used to evaluate models'
+        )
+        parser.add_argument(
+            '--max_hof_size', type=int, default=100,
+            help='Maximum models retained'
+        )
+        parser.add_argument(
+            '--fixWeight', action='store_true',
+            help='Fix the weight parameter during optimization'
+        )
+        parser.add_argument(
+            '--fixShape', action='store_true',
+            help='Fix the shape parameter during optimization'
+        )
+        parser.add_argument(
+            '--max_shape', type=int, default=100,
+            help='Maximum shape parameter'
+        )
+        parser.add_argument(
+            '--min_weight', type=float, default=0.0,
+            help='Minimum weight parameter'
+        )
+
+        # Multi-model inference options
+        parser.add_argument(
+            '-a', '--awsum', type=float, default=1.0,
+            help='Cumulative Akaike weight threshold'
+        )
+        parser.add_argument(
+            '--use_full', action='store_true',
+            help='Use full rather than natural model averaging'
+        )
+        parser.add_argument(
+            '--report_all', action='store_true',
+            help='Plot outputs for all retained models'
+        )
+
+        # Parse arguments and set as attributes
+        args = parser.parse_args()
+        for key, value in vars(args).items():
+            setattr(self, key, value)
+        
+        # Set variables based on vars or varfile
+        if self.vars:
+            self.variables = self.vars.split(',')
+        elif self.varfile:
+            self.variables = []
+            with open(self.varfile, 'r') as file:
+                for line in file:
+                    var = line.strip().split('\t')[0]
+                    self.variables.append(var)
+        else:
+            self.variables = None
+        self.agg_opts = {var: "ARITH" for var in self.variables}

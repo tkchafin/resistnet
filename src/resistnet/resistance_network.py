@@ -76,7 +76,7 @@ class ResistanceNetwork:
         self.shapefile = shapefile
         self.coords = coords
         self.inmat = inmat
-        self.pop_agg = pop_agg
+        self.pop_agg = "ARITH"
         self.reachid_col = reachid_col
         self.length_col = length_col
         self.output_prefix = out
@@ -101,6 +101,8 @@ class ResistanceNetwork:
         self._predictors = None
         self._edge_order = None
         self._gendist = None
+
+        self.num_attributes = 4
 
         # Initialization methods
         self.initialize_network()
@@ -772,11 +774,11 @@ class ResistanceNetwork:
             for p1, p2, edge in self._K.edges(data=True):
                 eid = edge[edge_id]
                 if utils.find_pair(path[1], p1, p2):
-                    inc[index, edge_to_index[eid]] = 1
+                    inc[index, edge_to_index[eid]] = int(1)
                 else:
-                    inc[index, edge_to_index[eid]] = 0
+                    inc[index, edge_to_index[eid]] = int(0)
             index += 1
-
+        inc = np.where(inc > 0, 1, 0)
         self._inc = inc
 
         # Save the incidence matrix to a file if an output path is provided
@@ -1106,17 +1108,17 @@ class ResistanceNetwork:
         multi = None
         first = True
         for i, variable in enumerate(self._predictors.columns):
-            if config[0::5][i] == 1:
+            if config[0::self.num_attributes][i] == 1:
                 var = self.transform(
                     self._predictors[variable],
-                    config[2::5][i],
-                    config[3::5][i]
+                    config[2::self.num_attributes][i],
+                    config[3::self.num_attributes][i]
                 )
                 if first:
-                    multi = var * config[1::5][i]
+                    multi = var * config[1::self.num_attributes][i]
                     first = False
                 else:
-                    multi += var * config[1::5][i]
+                    multi += var * config[1::self.num_attributes][i]
         if not first:
             multi = trans.rescaleCols(multi, 0, 1)
         return multi
@@ -1181,6 +1183,8 @@ class ResistanceNetworkWorker(ResistanceNetwork):
         self._predictors = predictors
         self._edge_order = edge_order
         self._gendist = gendist
+
+        self.num_attributes = 4
 
 
 class SimResistanceNetwork(ResistanceNetwork):
