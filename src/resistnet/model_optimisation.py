@@ -1209,7 +1209,7 @@ class ModelRunnerTPE(ModelRunner):
                 max_shape=None, max_hof_size=None, only_keep=None,
                 use_full=False, verbose=True, report_all=False, nFail=50,
                 awsum=0.95, fixed_params=None, out=None, plot=True, reps=10,
-                n_startup=40, n_candidates=48, gamma=0.15):
+                n_startup=40, n_candidates=48, gamma=0.15, pweight=0.7):
         """
         Runs the TPE optimization for optimizing the ResistNet model.
 
@@ -1277,7 +1277,7 @@ class ModelRunnerTPE(ModelRunner):
                                             domain,
                                             trials,
                                             seed,
-                                            prior_weight=1.0,
+                                            prior_weight=pweight,
                                             n_startup_jobs=n_startup,
                                             n_EI_candidates=n_candidates,
                                             gamma=gamma)

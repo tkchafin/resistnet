@@ -1,3 +1,4 @@
+import sys
 import argparse
 
 
@@ -65,52 +66,52 @@ class parseArgs:
 
         # Model optimization/selection options
         parser.add_argument(
-            '-v', '--vars', type=str,
+            '-v', '--vars', type=str, required=False,
             help='Comma-separated list of variables to use'
         )
         parser.add_argument(
-            '-V', '--varfile', type=str,
+            '-V', '--varfile', type=str, required=False,
             help=(
                 'Optional file with variables provided as: '
                 'var \\t <Optional aggregator function>'
             )
         )
         parser.add_argument(
-            '-F', '--nfail', type=int, default=50,
+            '-F', '--nfail', type=int, default=50, required=False,
             help='Number of failed gens to stop optimization'
         )
         parser.add_argument(
-            '-i', '--max_iter', type=int, default=500,
+            '-i', '--max_iter', type=int, default=500, required=False,
             help='Maximum number of generations'
         )
         parser.add_argument(
-            '-r', '--reps', type=int, default=10,
+            '-r', '--reps', type=int, default=10, required=False,
             help='Number of independent TPE chains'
         )
         parser.add_argument(
-            '-P', '--pweight', type=float, default=0.7,
+            '-P', '--pweight', type=float, default=0.7, required=False,
             help='Prior weight'
         )
         parser.add_argument(
-            '-S', '--nstart', type=int, default=20,
+            '-S', '--nstart', type=int, default=20, required=False,
             help='Initial random evaluations'
         )
         parser.add_argument(
-            '-C', '--ncand', type=int, default=48,
+            '-C', '--ncand', type=int, default=48, required=False,
             help='EI candidate points'
         )
         parser.add_argument(
-            '-G', '--gamma', type=float, default=0.15,
+            '-G', '--gamma', type=float, default=0.15, required=False,
             help='Exploration factor'
         )
         parser.add_argument(
             '-f', '--fitmetric', type=str, choices=['aic', 'loglik', 'r2m',
                                                     'delta'],
-            default='loglik',
+            default='loglik', required=False,
             help='Fitness metric used to evaluate models'
         )
         parser.add_argument(
-            '--max_hof_size', type=int, default=100,
+            '--max_hof_size', type=int, default=100, required=False,
             help='Maximum models retained'
         )
         parser.add_argument(
@@ -122,17 +123,17 @@ class parseArgs:
             help='Fix the shape parameter during optimization'
         )
         parser.add_argument(
-            '--max_shape', type=int, default=100,
+            '--max_shape', type=int, default=100, required=False,
             help='Maximum shape parameter'
         )
         parser.add_argument(
-            '--min_weight', type=float, default=0.0,
+            '--min_weight', type=float, default=0.0, required=False,
             help='Minimum weight parameter'
         )
 
         # Multi-model inference options
         parser.add_argument(
-            '-a', '--awsum', type=float, default=1.0,
+            '-a', '--awsum', type=float, default=1.0, required=False,
             help='Cumulative Akaike weight threshold'
         )
         parser.add_argument(
@@ -159,5 +160,6 @@ class parseArgs:
                     var = line.strip().split('\t')[0]
                     self.variables.append(var)
         else:
-            self.variables = None
+            print("Error: Either --vars or --varfile must be specified.")
+            sys.exit(1)
         self.agg_opts = {var: "ARITH" for var in self.variables}
