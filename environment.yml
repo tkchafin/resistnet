@@ -23,6 +23,7 @@ dependencies:
   - pyogrio
   - deap>=1.4
   - nlopt
+  - hyperopt
   - r-base
   - r-tidyverse
   - rpy2

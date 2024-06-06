@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='resistnet',
-    version='1.2.0',
+    version=__version__,
     # Specify where to find the packages
     package_dir={'': 'src'},
     packages=find_packages(where='src'),
@@ -22,6 +22,7 @@ setup(
         "pyogrio",
         "momepy",
         "geopy",
+        "hyperopt",
         "deap",
         "scipy"
     ],
