@@ -1337,9 +1337,9 @@ class ModelRunnerTPE(ModelRunner):
                     global_fails += 1
 
                 if verbose:
-                    now = iteration+1/max_evals
                     print(
-                        f"Iteration {now}, Current Best: {best_loss}")
+                        f"Iteration {iteration+1}, Current Best: {best_loss}"
+                    )
 
             if verbose:
                 for i, trials in enumerate(trials_list):
