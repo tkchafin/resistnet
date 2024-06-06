@@ -1,5 +1,6 @@
 import argparse
 
+
 class parseArgs:
     def __init__(self):
         parser = argparse.ArgumentParser(
@@ -147,7 +148,7 @@ class parseArgs:
         args = parser.parse_args()
         for key, value in vars(args).items():
             setattr(self, key, value)
-        
+
         # Set variables based on vars or varfile
         if self.vars:
             self.variables = self.vars.split(',')

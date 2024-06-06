@@ -5,7 +5,7 @@ from datetime import datetime
 
 from resistnet.params import parseArgs
 from resistnet.resistance_network import ResistanceNetwork
-from resistnet.model_optimisation import ModelRunnerTPE, ModelRunnerGA
+from resistnet.model_optimisation import ModelRunnerTPE
 
 
 def main():
@@ -85,7 +85,6 @@ def main():
     #     seed=params.seed,
     #     verbose=True
     # )
-
 
     # # Step 3: Run GA optimisation
     # runner.run_ga(

@@ -1,4 +1,3 @@
-import sys
 import traceback
 import random
 import math
@@ -6,7 +5,7 @@ import pandas as pd
 import numpy as np
 from queue import Empty
 from hyperopt import tpe, Trials, hp
-from hyperopt.base import Trials, Domain
+from hyperopt.base import Domain
 from multiprocessing import Process, Queue
 from deap import base, creator, tools
 import matplotlib.pyplot as plt
@@ -19,6 +18,7 @@ from resistnet.resistance_network import ResistanceNetworkWorker
 from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.samc_network import ResistanceNetworkSAMCWorker
 from resistnet.hall_of_fame import HallOfFame
+
 
 class ModelRunner:
     """
@@ -557,6 +557,7 @@ class ModelRunner:
             self.terminate_workers()
             self.seed = random.randint(1, 10000000)
 
+
 class ModelRunnerGA(ModelRunner):
     """
     Class to handle running the genetic algorithm for optimizing a ResistNet
@@ -1062,7 +1063,8 @@ class ModelRunnerTPE(ModelRunner):
 
     Attributes:
         seed (int): Seed for random number generator.
-        resistance_network (ResistanceNetwork): An instance of ResistanceNetwork or subclass.
+        resistance_network (ResistanceNetwork): An instance of
+                                                ResistanceNetwork.
         verbose (bool): Flag to control verbosity of output.
         task_queue (Queue): Queue for tasks.
         result_queue (Queue): Queue for results.
@@ -1073,10 +1075,12 @@ class ModelRunnerTPE(ModelRunner):
 
     def __init__(self, resistance_network, seed=1234, verbose=True):
         """
-        Initializes a ModelRunner with a given resistance network, seed, and verbosity.
+        Initializes a ModelRunner with a given resistance network, seed, and
+        verbosity.
 
         Args:
-            resistance_network (ResistanceNetwork or subclass): The resistance network to optimize.
+            resistance_network (ResistanceNetwork or subclass): The resistance
+                        network to optimize.
             seed (int): Seed for random number generator.
             verbose (bool): Flag to control verbosity of output.
         """
@@ -1093,32 +1097,76 @@ class ModelRunnerTPE(ModelRunner):
         for var_name in self.resistance_network.variables:
             if self.fixed_params and var_name in self.fixed_params:
                 fixed_param = self.fixed_params[var_name]
-                self.space[f"{var_name}_sel"] = hp.choice(f"{var_name}_sel", [fixed_param.get('sel', 1)])
-                self.space[f"{var_name}_weight"] = hp.uniform(f"{var_name}_weight", fixed_param.get('weight', 1.0), fixed_param.get('weight', 1.0))
-                self.space[f"{var_name}_transform"] = hp.choice(f"{var_name}_transform", [fixed_param.get('transform', 0)])
-                self.space[f"{var_name}_shape"] = hp.uniform(f"{var_name}_shape", fixed_param.get('shape', 1.0), fixed_param.get('shape', 1.0))
+                self.space[f"{var_name}_sel"] = hp.choice(
+                    f"{var_name}_sel",
+                    [fixed_param.get('sel', 1)]
+                )
+                self.space[f"{var_name}_weight"] = hp.uniform(
+                    f"{var_name}_weight",
+                    fixed_param.get('weight', 1.0),
+                    fixed_param.get('weight', 1.0)
+                )
+                self.space[f"{var_name}_transform"] = hp.choice(
+                    f"{var_name}_transform",
+                    [fixed_param.get('transform', 0)]
+                )
+                self.space[f"{var_name}_shape"] = hp.uniform(
+                    f"{var_name}_shape",
+                    fixed_param.get('shape', 1.0),
+                    fixed_param.get('shape', 1.0)
+                )
             else:
-                self.space[f"{var_name}_sel"] = hp.choice(f"{var_name}_sel", [0, 1])
+                self.space[f"{var_name}_sel"] = hp.choice(
+                    f"{var_name}_sel",
+                    [0, 1]
+                )
 
                 if self.fixWeight:
-                    self.space[f"{var_name}_weight"] = hp.uniform(f"{var_name}_weight", 1.0, 1.0)
+                    self.space[f"{var_name}_weight"] = hp.uniform(
+                        f"{var_name}_weight",
+                        1.0,
+                        1.0
+                    )
                 elif self.min_weight:
-                    self.space[f"{var_name}_weight"] = hp.uniform(f"{var_name}_weight", self.min_weight, 1.0)
+                    self.space[f"{var_name}_weight"] = hp.uniform(
+                        f"{var_name}_weight",
+                        self.min_weight,
+                        1.0
+                    )
                 else:
-                    self.space[f"{var_name}_weight"] = hp.uniform(f"{var_name}_weight", 0.0, 1.0)
+                    self.space[f"{var_name}_weight"] = hp.uniform(
+                        f"{var_name}_weight",
+                        0.0,
+                        1.0
+                    )
 
                 if not self.fixShape:
-                    self.space[f"{var_name}_transform"] = hp.choice(f"{var_name}_transform", list(range(0, 9)))
-                    self.space[f"{var_name}_shape"] = hp.quniform(f"{var_name}_shape", 1, self.max_shape, 1.0)
+                    self.space[f"{var_name}_transform"] = hp.choice(
+                        f"{var_name}_transform",
+                        list(range(0, 9))
+                    )
+                    self.space[f"{var_name}_shape"] = hp.quniform(
+                        f"{var_name}_shape",
+                        1,
+                        self.max_shape,
+                        1.0
+                    )
                 else:
-                    self.space[f"{var_name}_transform"] = hp.choice(f"{var_name}_transform", [0])
-                    self.space[f"{var_name}_shape"] = hp.choice(f"{var_name}_shape", [0])
+                    self.space[f"{var_name}_transform"] = hp.choice(
+                        f"{var_name}_transform",
+                        [0]
+                    )
+                    self.space[f"{var_name}_shape"] = hp.choice(
+                        f"{var_name}_shape",
+                        [0]
+                    )
 
-    def set_tpe_parameters(self, max_evals=100, num_workers=10, fitmetric="likelihood", 
-                        fixWeight=None, fixShape=None, fixAsym=False, min_weight=None, 
-                        max_shape=None, max_hof_size=None, only_keep=None, use_full=False, 
-                        verbose=True, report_all=False, awsum=0.95, fixed_params=None,
-                        out=None):
+    def set_tpe_parameters(self, max_evals=100, num_workers=10,
+                           fitmetric="likelihood", fixWeight=None,
+                           fixShape=None, fixAsym=False, min_weight=None,
+                           max_shape=None, max_hof_size=None, only_keep=None,
+                           use_full=False, verbose=True, report_all=False,
+                           awsum=0.95, fixed_params=None, out=None):
         """
         Sets the TPE optimization parameters.
 
@@ -1126,7 +1174,7 @@ class ModelRunnerTPE(ModelRunner):
             max_evals (int): Maximum number of evaluations.
             num_workers (int): Number of worker processes.
             fitmetric (str): Fitness metric to be used.
-            fixWeight (bool): Constrain parameter weights to 1.0 (i.e., unweighted).
+            fixWeight (bool): Constrain parameter weights to 1.0
             fixShape (bool): Turn off feature transformation.
             fixAsym (bool): Constrain asymmetry to 0.
             min_weight (float): Minimum allowable weight.
@@ -1135,8 +1183,8 @@ class ModelRunnerTPE(ModelRunner):
             only_keep (bool): Only retain models where column "keep"=True.
             use_full (bool): Flag to use full dataset.
             verbose (bool): Flag to control verbosity of output.
-            report_all (bool): Flag to generate full outputs for all retained models.
-            awsum (float): Cumulative Akaike weight threshold to retain top N models.
+            report_all (bool): Flag to generate full outputs for all models.
+            awsum (float): Cumulative Akaike weight threshold to retain models.
             fixed_params (dict): Fixed parameters to narrow the search space.
         """
         self.max_evals = max_evals
@@ -1156,11 +1204,11 @@ class ModelRunnerTPE(ModelRunner):
         self.fixed_params = fixed_params
         self.out = out
 
-    def run_tpe(self, max_evals=100, threads=4, fitmetric="loglik", 
-                fixWeight=None, fixShape=None, fixAsym=False, min_weight=None, 
-                max_shape=None, max_hof_size=None, only_keep=None, use_full=False, 
-                verbose=True, report_all=False, nFail=50, awsum=0.95,
-                fixed_params=None, out=None, plot=True, reps=10,
+    def run_tpe(self, max_evals=100, threads=4, fitmetric="loglik",
+                fixWeight=None, fixShape=None, fixAsym=False, min_weight=None,
+                max_shape=None, max_hof_size=None, only_keep=None,
+                use_full=False, verbose=True, report_all=False, nFail=50,
+                awsum=0.95, fixed_params=None, out=None, plot=True, reps=10,
                 n_startup=40, n_candidates=48, gamma=0.15):
         """
         Runs the TPE optimization for optimizing the ResistNet model.
@@ -1169,7 +1217,7 @@ class ModelRunnerTPE(ModelRunner):
             max_evals (int): Maximum number of evaluations.
             threads (int): Number of worker processes.
             fitmetric (str): Fitness metric to be used.
-            fixWeight (bool): Constrain parameter weights to 1.0 (i.e., unweighted).
+            fixWeight (bool): Constrain parameter weights to 1.0.
             fixShape (bool): Turn off feature transformation.
             fixAsym (bool): Constrain asymmetry to 0.
             min_weight (float): Minimum allowable weight.
@@ -1178,9 +1226,11 @@ class ModelRunnerTPE(ModelRunner):
             only_keep (bool): Only retain models where column "keep"=True.
             use_full (bool): Flag to use full dataset.
             verbose (bool): Flag to control verbosity of output.
-            report_all (bool): Flag to generate full outputs for all retained models.
+            report_all (bool): Flag to generate full outputs for all retained
+                               models.
             nFail (int): Number of iterations to stop if fail to improve.
-            awsum (float): Cumulative Akaike weight threshold to retain top N models.
+            awsum (float): Cumulative Akaike weight threshold to retain top N
+                           models.
             fixed_params (dict): Fixed parameters to narrow the search space.
         """
         try:
@@ -1211,32 +1261,26 @@ class ModelRunnerTPE(ModelRunner):
             self.start_workers(threads)
 
             best_loss = float('inf')
-            chain_best_losses = [float('inf')] * threads
-            chain_fails = [0] * threads
+            global_fails = 0
 
             for iteration in range(max_evals):
-                # Check if any worker has reached the failure threshold
-                if all(fail >= nFail for fail in chain_fails):
-                    print(f"Stopping early due to {nFail} consecutive failures to improve.")
+                # Check if the global failure threshold has been reached
+                if global_fails >= nFail:
+                    print(f"Stopping due to {nFail} consecutive failures")
                     break
 
                 param_sets = []
                 for trials in trials_list:
                     new_ids = trials.new_trial_ids(1)
                     seed = random.randint(1, 1000000000)
-                    # from hyperopt: 
-                    #_default_prior_weight = 1.0
-                    #_default_n_EI_candidates = 24
-                    #_default_gamma = 0.25
-                    #_default_n_startup_jobs = 20
                     param_set = tpe.suggest(new_ids,
                                             domain,
                                             trials,
                                             seed,
                                             prior_weight=1.0,
-                                            n_startup_jobs=20,
-                                            n_EI_candidates=48,
-                                            gamma=0.5)
+                                            n_startup_jobs=n_startup,
+                                            n_EI_candidates=n_candidates,
+                                            gamma=gamma)
                     param_sets.append(param_set[0])
 
                 inds = {}
@@ -1253,8 +1297,8 @@ class ModelRunnerTPE(ModelRunner):
                     result_id, fitness, res = self.result_queue.get()
                     results.append((result_id, fitness, res))
 
-                # Track if any chain has improved
-                chain_improved = [False] * threads
+                # Track if the global best loss has improved
+                global_improved = False
 
                 # Process results and update Trials objects
                 for result_id, fitness, res in results:
@@ -1282,26 +1326,25 @@ class ModelRunnerTPE(ModelRunner):
                     })
                     trial.refresh()
 
-                    if -fitness < chain_best_losses[result_id]:
-                        chain_best_losses[result_id] = -fitness
-                        chain_improved[result_id] = True
-
                     if -fitness < best_loss:
                         best_loss = -fitness
+                        global_improved = True
 
-                # Update fails count for each chain
-                for i in range(threads):
-                    if chain_improved[i]:
-                        chain_fails[i] = 0
-                    else:
-                        chain_fails[i] += 1
+                # Update fails count
+                if global_improved:
+                    global_fails = 0
+                else:
+                    global_fails += 1
 
                 if verbose:
-                    print(f"Iteration {iteration + 1}/{max_evals}, Current Best Loss: {best_loss}")
+                    now = iteration+1/max_evals
+                    print(
+                        f"Iteration {now}, Current Best: {best_loss}")
 
             if verbose:
                 for i, trials in enumerate(trials_list):
-                    print(f"Worker {i + 1}: Best Loss = {trials.best_trial['result']['loss']}")
+                    i_best = trials.best_trial['result']['loss']
+                    print(f"Worker {i + 1}: Best = {i_best}")
 
             # Process Hall of Fame to select the best model from each replicate
             self.process_hall_of_fame(trials_list)
@@ -1319,7 +1362,8 @@ class ModelRunnerTPE(ModelRunner):
 
     def convert_params_to_individual(self, params):
         """
-        Converts the hyperparameter dictionary to the correct format for evaluation.
+        Converts the hyperparameter dictionary to the correct format for
+        evaluation.
 
         Args:
             params (dict): Hyperparameters for the model.
@@ -1334,12 +1378,16 @@ class ModelRunnerTPE(ModelRunner):
         # extract parameter settings
         model = params["misc"]["vals"]
 
-        for var_index, var_name in enumerate(self.resistance_network.variables):
+        for var_index, var_name in enumerate(
+            self.resistance_network.variables
+        ):
             idx_base = var_index * num_attributes
             individual[idx_base] = int(model[f"{var_name}_sel"][0])
             individual[idx_base + 1] = float(model[f"{var_name}_weight"][0])
             individual[idx_base + 2] = int(model[f"{var_name}_transform"][0])
-            individual[idx_base + 3] = int(round(model[f"{var_name}_shape"][0]))
+            individual[idx_base + 3] = int(
+                round(model[f"{var_name}_shape"][0])
+                )
         return individual
 
     def process_hall_of_fame(self, trials_list):
@@ -1354,23 +1402,23 @@ class ModelRunnerTPE(ModelRunner):
             for i, trials in enumerate(trials_list):
                 if trials.trials:
                     # Extract the best trial
-                    best_trial = min(trials.trials, key=lambda trial: trial['result']['loss'])
+                    best_trial = min(
+                        trials.trials,
+                        key=lambda trial: trial['result']['loss']
+                    )
                     individual = self.convert_params_to_individual(best_trial)
                     fitness = -best_trial['result']['loss']
                     res = best_trial['result'].get('res', [])
                     best_model = [fitness] + individual + res
                     best_models.append(best_model)
-                    if self.verbose:
-                        print(f"Replicate {i + 1}: Best Loss = {fitness}")
-                else:
-                    if self.verbose:
-                        print(f"Replicate {i + 1}: No trials were completed.")
 
             # Define the column names based on the provided example structure
             num_vars = len(self.resistance_network.variables)
             num_attributes = self.num_attributes
             individual_columns = [""] * (num_vars * num_attributes)
-            for var_index, var_name in enumerate(self.resistance_network.variables):
+            for var_index, var_name in enumerate(
+                self.resistance_network.variables
+            ):
                 idx_base = var_index * num_attributes
                 individual_columns[idx_base] = f"{var_name}"
                 individual_columns[idx_base + 1] = f"{var_name}_weight"
@@ -1385,11 +1433,11 @@ class ModelRunnerTPE(ModelRunner):
 
             # Create the Hall of Fame
             self.bests = HallOfFame.from_dataframe(df)
-            print(self.bests)
 
         except Exception as e:
             print(f"An error occurred while processing the Hall of Fame: {e}")
             traceback.print_exc()
+
 
 def weight_generator(min_weight):
     # Decide at random whether the weight will be positive or negative
