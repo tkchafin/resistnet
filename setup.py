@@ -1,4 +1,9 @@
+import os
 from setuptools import setup, find_packages
+
+directory = os.path.abspath(os.path.dirname(__file__))
+with open(os.path.join(directory, 'version.py'), 'r') as f:
+    exec(f.read())
 
 setup(
     name='resistnet',
