@@ -73,6 +73,7 @@ def main():
         out=params.out,
         plot=True,
         verbose=True,
+        pweight=params.pweight,
         reps=params.reps,
         n_startup=params.nstart,
         n_candidates=params.ncand,
