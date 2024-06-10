@@ -21,7 +21,6 @@ setup(
         "pandas",
         "networkx",
         "pytest",
-        "rpy2",
         "seaborn",
         "matplotlib",
         "pyogrio",

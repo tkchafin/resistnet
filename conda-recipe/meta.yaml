@@ -33,7 +33,6 @@ requirements:
   - momepy
   - networkx>3
   - pyogrio
-  - deap>=1.4
   - nlopt
   - mantel
 
