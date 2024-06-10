@@ -1,9 +1,7 @@
 import itertools
 import pandas as pd
 import numpy as np
-
-import resistnet.MLPE as mlpe_rga
-import resistnet.CFPT as cfpt_samc
+import resistnet.MLPE as mlpe
 
 
 def parsePairwise(points, inc_matrix, multi, gendist):
@@ -21,8 +19,10 @@ def parsePairwise(points, inc_matrix, multi, gendist):
                result (res).
     """
     r = effectiveResistanceMatrix(points, inc_matrix, multi)
-    res = mlpe_rga.MLPE_R(gendist, r, scale=True)
-    return r, res
+    # res = mlpe_rga.MLPE_R(gendist, r, scale=True)
+    res2 = mlpe.MLPE(gendist, r, scale=True)
+
+    return r, res2
 
 
 def effectiveResistanceMatrix(points, inc_matrix, edge_resistance):
@@ -62,25 +62,26 @@ def effectiveResistanceMatrix(points, inc_matrix, edge_resistance):
     return r
 
 
-def conditionalFirstPassTime(Q, R, sites_i, gendist,
-                             rtol=0.00001, max_iter=1000, max_fail=1,
-                             solver="iterative"):
+# import resistnet.CFPT as cfpt_samc
+# def conditionalFirstPassTime(Q, R, sites_i, gendist,
+#                              rtol=0.00001, max_iter=1000, max_fail=1,
+#                              solver="iterative"):
 
-    # get cfpt matrix
-    cfpt = cfpt_samc.CFPT(Q, R, sites_i, rtol, max_iter, max_fail, solver)
+#     # get cfpt matrix
+#     cfpt = cfpt_samc.CFPT(Q, R, sites_i, rtol, max_iter, max_fail, solver)
 
-    # fit MLPE
-    if cfpt is not None:
-        cfpt_a = np.array(cfpt)
-        if np.all(cfpt_a == cfpt_a[0]) or np.all(np.isnan(cfpt_a)):
-            return None, float('-inf')
-        try:
-            res = mlpe_rga.MLPE_R(gendist, cfpt_a, scale=True)
-            return cfpt, res
-        except Exception as e:
-            # NOTE: This is often caused by most of the CFPT values
-            # being 0
-            print("Unexpected error fitting MLPE:", e)
-            return None, float('-inf')
-    else:
-        return None, float('-inf')
+#     # fit MLPE
+#     if cfpt is not None:
+#         cfpt_a = np.array(cfpt)
+#         if np.all(cfpt_a == cfpt_a[0]) or np.all(np.isnan(cfpt_a)):
+#             return None, float('-inf')
+#         try:
+#             res = mlpe.MLPE(gendist, cfpt_a, scale=True)
+#             return cfpt, res
+#         except Exception as e:
+#             # NOTE: This is often caused by most of the CFPT values
+#             # being 0
+#             print("Unexpected error fitting MLPE:", e)
+#             return None, float('-inf')
+#     else:
+#         return None, float('-inf')

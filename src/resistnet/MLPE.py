@@ -1,23 +1,60 @@
 import numpy as np
 import pandas as pd
-import rpy2.robjects as ro
+import statsmodels.api as sm
+from scipy.optimize import minimize
+
 import resistnet.utils as utils
-from rpy2.robjects import pandas2ri
-from rpy2.robjects.conversion import localconverter
 
 
-def MLPE_R(X, Y, scale=True):
-    """
-    Perform Mixed Linear Model Pedigree Estimate (MLPE) using R libraries.
+# NOTE: This uses a fixed form now but will expand later
+# form is not really used and is a placeholder
+class CorMLPE:
+    def __init__(self, form, data, rho=0.1):
+        self.form = form
+        self.data = data
+        self.rho = rho
 
-    Args:
-        X: The first matrix for MLPE analysis.
-        Y: The second matrix for MLPE analysis.
-        scale (bool): If True, scales the Y matrix.
+    def fit(self):
+        x = self.data['x']
+        y = self.data['y']
+        ZZ = self._compute_ZZ()
 
-    Returns:
-        The result of the MLPE analysis.
-    """
+        def objective(rho):
+            corr = self._compute_corr(ZZ, rho)
+            ols_model = sm.GLS(y, sm.add_constant(x), sigma=corr)
+            result = ols_model.fit()
+            return -result.llf
+
+        bounds = [(0.0001, 0.4999)]
+        result = minimize(objective, self.rho, bounds=bounds,
+                          method='L-BFGS-B')
+        self.rho = result.x[0]
+        return self.rho
+
+    def _compute_ZZ(self):
+        pops = self.data['pop1'].nunique()
+        id = self.data[['pop1', 'pop2']]
+        zz = np.zeros((pops, id.shape[0]))
+        for i in range(pops):
+            for j in range(id.shape[0]):
+                if i + 1 in list(id.iloc[j]):
+                    zz[i, j] = 1
+        return zz
+
+    def _compute_corr(self, ZZ, rho):
+        Z_scaled = ZZ * rho
+        corr = Z_scaled.T @ Z_scaled
+        np.fill_diagonal(corr, 1)
+        return corr
+
+
+def optimize_rho(data):
+    cor_mlpe = CorMLPE(form='~pop1 + pop2', data=data)
+    rho = cor_mlpe.fit()
+    return rho, cor_mlpe
+
+
+def MLPE(Y, X, scale=True):
     x = utils.get_lower_tri(X)
     y = utils.get_lower_tri(Y)
 
@@ -25,136 +62,69 @@ def MLPE_R(X, Y, scale=True):
     npop = X.shape[0]
     ID = utils.to_from_(npop)
 
-    # Make ZZ matrix
-    ZZ = pd.DataFrame(ZZ_mat_(npop, ID))
-
-    # Center and scale y
+    # Center and scale x
     if scale:
-        y = (y - np.mean(y)) / np.std(y)
+        x = (x - np.mean(x)) / np.std(x)
 
-    # Add x and y to data
-    ID["x"] = x
-    ID["y"] = y
+    data = pd.DataFrame(
+        {'x': x, 'y': y, 'pop1': ID['pop1'], 'pop2': ID['pop2']}
+    )
 
-    stuff = """
-    library(Matrix)
-    library(lme4)
-    library(MuMIn)
-    MLPE <- function(ID, ZZ, REML=FALSE) {
-        ZZ <- Matrix(data.matrix(ZZ), sparse=TRUE)
-        mod_list <- list('full'=lme4:::lFormula(y ~ x + (1 | pop1),
-        data = ID, REML = FALSE),
-                         "null"=lme4:::lFormula(y ~ 1 + (1 | pop1),
-                         data = ID, REML = FALSE))
-        MODs <- lapply(mod_list, function(x) {
-            x$reTrms$Zt <- ZZ
-            dfun <- do.call(lme4:::mkLmerDevfun, x)
-            opt <- lme4:::optimizeLmer(dfun)
-            MOD <- (lme4:::mkMerMod(environment(dfun),
-            opt, x$reTrms, fr = x$fr))
-        })
-        full <- summary(MODs$full)
-        null <- summary(MODs$null)
-        loglik <- c(full$logLik[[1]])
-        null_loglik <- c(null$logLik[[1]])
-        r2 <- c(MuMIn:::r.squaredGLMM(MODs$full)[[1]])
-        aic <- c(full$AICtab[[1]])
-        null_aic <- c(null$AICtab[[1]])
-        deltaAIC <- c(null$AICtab[[1]] - full$AICtab[[1]])
-        df <- data.frame(loglik, r2, -1*aic, deltaAIC,
-        null_loglik, -1*null_aic)
-        colnames(df) <- c("loglik", "r2m", "aic",
-        "delta_aic_null", "loglik_null", "aic_null")
-        return(df)
-    }
-    """
+    # Optimize rho and get the correlation structure
+    rho, cor_mlpe = optimize_rho(data)
 
-    r = ro.r
-    r['options'](warn=-1)
-    r(stuff)
-    mlpe = ro.globalenv['MLPE']
-    with localconverter(ro.default_converter + pandas2ri.converter):
-        mlpe_res = mlpe(ID, ZZ)
+    # Compute the correlation matrix
+    ZZ = cor_mlpe._compute_ZZ()
+    corr = cor_mlpe._compute_corr(ZZ, rho)
 
-    return mlpe_res
+    # Fit the GLS model with the optimized correlation structure
+    gls_model = sm.GLS(y, sm.add_constant(x), sigma=corr)
+    result = gls_model.fit()
 
+    # Fit the null model (intercept-only)
+    null_model = sm.GLS(y, np.ones_like(y), sigma=corr)
+    null_result = null_model.fit()
 
-def ZZ_mat_(pops, id):
-    """
-    Create a matrix for ZZ calculations.
+    # Calculate marginal R-squared
+    var_fixed = np.var(result.fittedvalues)
+    var_residual = result.mse_resid
+    marginal_r2 = var_fixed / (var_fixed + var_residual)
 
-    Args:
-        pops: The number of populations.
-        id: The ID dataframe.
+    # Extract the desired statistics
+    loglik = result.llf
+    r2m = marginal_r2
+    aic = result.aic
+    loglik_null = null_result.llf
+    aic_null = null_result.aic
+    delta_aic_null = aic_null - aic
 
-    Returns:
-        The calculated ZZ matrix.
-    """
-    zz = np.zeros((pops, id.shape[0]))
-    for i in range(pops):
-        for j in range(id.shape[0]):
-            # If ID row j contains pop i+1, set zz[j, i] to 1
-            if i + 1 in list(id.iloc[j]):
-                zz[i, j] = 1
-    return zz
+    return pd.DataFrame({
+        "loglik": [loglik],
+        "r2m": [r2m],
+        "aic": [-aic],
+        "delta_aic_null": [delta_aic_null],
+        "loglik_null": [loglik_null],
+        "aic_null": [-aic_null]
+    })
 
-# def testSM():
-# 	x = np.array([2.6407333, 0.6583007, 1.9629121, 0.8529997, 2.2592001,
-# 2.9629032, 2.0796441, 2.4179196, 0.2154603, 2.5016938])
-# 	y = np.array([3.6407333, 1.6583007, 1.5629121, 0.4529997,
-# 2.0592001, 2.0629032, 2.9796441, 3.1179196, 1.2154603, 1.5016938])
-
-# 	#make ID table
-# 	ID = to_from_(5) #nrow(matrix)
-# 	print(ID)
-
-# 	#make ZZ matrix
-# 	ZZ = ZZ_mat_(5, ID)
-# 	print(ZZ)
-
-# 	#center and scale x and y
-# 	x = (x-np.mean(x))/np.std(x)
-# 	y = (y-np.mean(y))/np.std(y)
-
-# 	#add x and y to data
-# 	ID["x"] = x
-# 	ID["y"] = y
-# 	print(ID)
-
-# 	#get matrix describing random effects structure
-# 	vcs = getVCM(ID)
-
-# 	#fit mixed model
-# 	#equivalent to lme4 y ~ x + (1|pop1)
-# 	#how do incorporate the 'ZZ' part??
-# 	model = smf.mixedlm("y ~ x", data=ID, groups="pop1")
-# 	#model = mlm.MixedLM(endog=ID["y"].to_numpy(), exog=ID["x"].to_numpy(),
-# groups=ID["pop1"].to_numpy(), exog_re=ZZ)
-# 	#model = mlm.MixedLM(endog=ID["y"].to_numpy(), exog=ID["x"].to_numpy(),
-# groups=ID["pop1"].to_numpy(), exog_vc=vcs)
-# 	model_fit = model.fit()
-# 	print(model)
-# 	print(model_fit)
-# 	print(model_fit.summary())
-
-# def getVCM(df):
-# 	def f(x):
-# 		n = x.shape[0]
-# 		g2 = x["pop2"]
-# 		u = g2.unique()
-# 		u.sort()
-# 		uv = {v: k for k, v in enumerate(u)}
-# 		mat = np.zeros((n, len(u)))
-# 		for i in range(n):
-# 		    mat[i, uv[g2[i]]] = 1
-# 	    colnames = ["%d" % z for z in u]
-# 		print(mat)
-# 		return(mat, colnames)
-# 	vcm = df.groupby("pop1").apply(f).to_list()
-# 	print(vcm)
-# 	mats = [x[0] for x in vcm]
-# 	print(mats)
-# 	colnames = [x[1] for x in vcm]
-# 	names = ["pop2"]
-# 	vcs = VCSpec(names, [colnames], [mats])
-# 	return(vcs)
+#     # Create the 'groups' column for the pairwise comparisons
+#     ID['group'] = ID.apply(lambda row: f"{row['pop1']}", axis=1)
+    
+#     # Convert to DataFrame
+#     data = pd.DataFrame({'x': x, 'y': y, 'group': ID['group']})
+    
+#     # # Fit mixed-effects model using Maximum Likelihood
+#     # model = sm.MixedLM.from_formula("y ~ x", data, groups=data["group"],
+#                exog_re=ZZ)
+#     # result = model.fit(reml=False)
+    
+#     # # Fit the null model (intercept-only) using Maximum Likelihood
+#     # null_model = sm.MixedLM.from_formula("y ~ 1", data,
+#                       groups=data["group"], exog_re=ZZ)
+#     # null_result = null_model.fit(reml=False)
+    
+#     # # Calculate marginal R-squared
+#     # var_fixed = np.var(result.fittedvalues)
+#     # var_random = result.cov_re.iloc[0, 0]
+#     # var_residual = result.scale
+#     # marginal_r2 = var_fixed / (var_fixed + var_random + var_residual)

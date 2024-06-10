@@ -49,7 +49,7 @@ class parseArgs:
             help='Output file prefix'
         )
         parser.add_argument(
-            '-O', '--gdf_out', type=str, choices=['SHP', 'GPKG', 'GDB'],
+            '-O', '--output_driver', type=str, choices=['SHP', 'GPKG', 'GDB'],
             default='GPKG',
             help='Output driver for annotated geodataframe'
         )

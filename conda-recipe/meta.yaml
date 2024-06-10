@@ -35,12 +35,6 @@ requirements:
   - pyogrio
   - deap>=1.4
   - nlopt
-  - r-base
-  - r-tidyverse
-  - rpy2
-  - r-lme4
-  - r-matrix >=1.6.2
-  - r-mumin
   - mantel
 
 build:
