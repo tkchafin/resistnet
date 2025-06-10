@@ -40,8 +40,10 @@ jobs:
         id: build_conda
         shell: bash -l {0}
         run: |
-          conda build conda-recipe --output-folder ./build -c ecoevoinfo -c conda-forge -c bioconda
-          output_file=$(find ./build -name "*.tar.bz2" | head -n 1)
+          echo "Resolving output path..."
+          output_file=$(conda build conda-recipe --output -c ecoevoinfo -c conda-forge -c bioconda)
+          echo "Output path: $output_file"
+          conda build conda-recipe -c ecoevoinfo -c conda-forge -c bioconda
           echo "output_file=$output_file" >> $GITHUB_OUTPUT
 
       - name: Upload Conda Package
