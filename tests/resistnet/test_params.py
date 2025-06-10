@@ -6,7 +6,7 @@ from resistnet.params import parseArgs
 
 def test_parseArgs_with_args():
     testargs = ["prog", "--seed", "42", "--inmat", "matrix.txt", "--shapefile", "file.shp", "--coords", "coords.tsv",
-                "--network", "network.pkl", "--procs", "4", "--out", "results", "--gdf_out", "SHP",
+                "--network", "network.pkl", "--procs", "4", "--out", "results",
                 "--gridSearch", "--transFile", "trans.txt", "--vars", "var1,var2", "--varfile", "vars.txt",
                 "--nfail", "60", "--max_iter", "600", "--reps", "20", "--pweight", "0.8", "--nstart", "30",
                 "--ncand", "50", "--gamma", "0.2", "--fitmetric", "r2m", "--max_hof_size", "150",
@@ -21,7 +21,6 @@ def test_parseArgs_with_args():
         assert args.network == "network.pkl"
         assert args.procs == 4
         assert args.out == "results"
-        assert args.gdf_out == "SHP"
         assert args.gridSearch
         assert args.transFile == "trans.txt"
         assert args.vars == "var1,var2"
