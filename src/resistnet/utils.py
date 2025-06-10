@@ -7,6 +7,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 from sortedcontainers import SortedDict
+import warnings
 
 
 def graph_to_dag(K, origin):
@@ -346,7 +347,13 @@ def read_pickle_network(pik):
     """
     try:
         with open(pik, 'rb') as f:
-            _G = nx.Graph(pickle.load(f)).to_undirected()
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r"Unpickling a shapely <2\.0 geometry object.*",
+                    category=UserWarning
+                )
+                _G = nx.Graph(pickle.load(f)).to_undirected()
         return _G
     except FileNotFoundError:
         raise FileNotFoundError(f"Pickle file {pik} not found.")

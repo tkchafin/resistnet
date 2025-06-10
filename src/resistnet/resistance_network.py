@@ -4,6 +4,7 @@ from functools import partial
 import pickle
 import traceback
 import itertools
+import random
 import pandas as pd
 import geopandas as gpd
 import pyogrio
@@ -1196,10 +1197,10 @@ class SimResistanceNetwork(ResistanceNetwork):
         network (NetworkX graph): The network graph.
         reachid_col (str): Column name for reach ID.
         length_col (str): Column name for length.
-        verbose (bool, optional): Flag to enable verbose output. Defaults to
-                                  False.
+        verbose (bool, optional): Flag to enable verbose output. Defaults to False.
+        seed (int, optional): Random seed for reproducibility.
     """
-    def __init__(self, network, reachid_col, length_col, verbose=False):
+    def __init__(self, network, reachid_col, length_col, verbose=False, seed=None):
         self.network = network
         self.reachid_col = reachid_col
         self.length_col = length_col
@@ -1215,6 +1216,13 @@ class SimResistanceNetwork(ResistanceNetwork):
         self._predictors = None
         self._edge_order = None
         self._gendist = None
+
+        if seed is not None:
+            if self.verbose:
+                print(f"[SimResistanceNetwork] Initializing RNG with seed {seed}")
+            random.seed(seed)
+            np.random.seed(seed)
+
         self.read_network()
 
     def format_sampled_points(self, samples):

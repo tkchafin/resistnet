@@ -12,7 +12,8 @@ def main():
         network=params.network,
         reachid_col=params.id_col,
         length_col=params.length_col,
-        verbose=True
+        verbose=True,
+        seed=params.seed
     )
 
     # Step 2: Write simulated outputs
@@ -29,9 +30,9 @@ class ParseArgs:
         # Define options
         try:
             options, _ = getopt.getopt(
-                sys.argv[1:], 'ho:i:n:s:r:l:c:',
+                sys.argv[1:], 'ho:i:n:s:r:l:c:z:',
                 ["help", "out=", "in=", "network=", "reps=", "samples=",
-                 "len_col=", "id_col="]
+                 "len_col=", "id_col=", "seed="]
             )
         except getopt.GetoptError as err:
             print(err)
@@ -47,6 +48,7 @@ class ParseArgs:
         self.samples = 50
         self.length_col = "LENGTH_KM"
         self.id_col = "EDGE_ID"
+        self.seed = None
 
         # First pass to see if help menu was called
         for o, _ in options:
@@ -73,6 +75,8 @@ class ParseArgs:
                 self.id_col = arg
             elif opt in ("len_col", "l"):
                 self.length_col = arg
+            elif opt in ("seed", "z"):
+                self.seed = int(arg)
             else:
                 assert False, f"Unhandled option {opt!r}"
 
@@ -98,6 +102,7 @@ Arguments:
     -l, --len_col: Edge length attribute (def=LENGTH_KM)
     -c, --id_col: Reach ID attribute (def=EDGE_ID)
     -o, --out: Output file name (default=sim)
+    -z, --seed: Random seed (optional)
 """)
         sys.exit()
 
