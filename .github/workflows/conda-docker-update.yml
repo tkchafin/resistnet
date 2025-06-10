@@ -5,14 +5,11 @@ on:
     types: [published]
 
 jobs:
-  build-conda:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, macos-14]
-    runs-on: ${{ matrix.os }}
-    name: Build Conda (${{ matrix.os }})
+  build-and-upload-conda:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - name: Check Out Code
+        uses: actions/checkout@v2
 
       - name: Set Package Version
         shell: bash
@@ -22,7 +19,10 @@ jobs:
       - name: Update Version in Conda Recipe
         shell: bash
         run: |
-          sed -i.bak "s/\$VERSION/${{ github.event.release.tag_name }}/g" conda-recipe/meta.yaml
+          sed -i "s/\$VERSION/${{ github.event.release.tag_name }}/g" conda-recipe/meta.yaml
+
+      - name: Validate versions
+        run: cat conda-recipe/meta.yaml; cat version.py
 
       - name: Set up Conda
         uses: conda-incubator/setup-miniconda@v2
@@ -30,6 +30,7 @@ jobs:
           auto-update-conda: true
           activate-environment: build-env
           python-version: "3.10"
+          miniconda-version: "latest"
 
       - name: Install Dependencies
         shell: bash -l {0}
@@ -45,9 +46,33 @@ jobs:
           conda build conda-recipe --output-folder ./build -c ecoevoinfo -c conda-forge -c bioconda
           echo "output_file=$output_file" >> $GITHUB_OUTPUT
 
-      - name: Upload Conda Package to Anaconda
+      - name: Upload Conda Package to Anaconda Cloud
         shell: bash -l {0}
         env:
           ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
         run: |
+          echo "Uploading ${{ steps.build_conda.outputs.output_file }}"
           anaconda upload --user ecoevoinfo --label main "${{ steps.build_conda.outputs.output_file }}"
+
+  build-and-push-docker:
+    needs: build-and-upload-conda
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Out Repo
+        uses: actions/checkout@v2
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: |
+            tkchafin/resistnet:latest
+            tkchafin/resistnet:${{ github.event.release.tag_name }}
