@@ -92,4 +92,3 @@
 #             if i + 1 in list(id.iloc[j]):
 #                 zz[i, j] = 1
 #     return zz
-

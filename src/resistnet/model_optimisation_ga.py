@@ -133,7 +133,7 @@
 #                fixShape=False, min_weight=0.0, max_shape=None,
 #                max_hof_size=100, tournsize=10, awsum=0.95, only_keep=True,
 #                use_full=False, fixed_params=None,
-#                out=None, plot=True, verbose=True, report_all=False, 
+#                out=None, plot=True, verbose=True, report_all=False,
 # threads=1):
 #         """
 #         Runs the genetic algorithm for optimizing the ResistNet model.
