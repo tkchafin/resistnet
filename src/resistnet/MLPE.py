@@ -27,7 +27,7 @@ class CorMLPE:
 
         bounds = [(0.0001, 0.4999)]
         result = minimize(objective, self.rho, bounds=bounds,
-                          method='L-BFGS-B')
+                        method='L-BFGS-B')
         self.rho = result.x[0]
         return self.rho
 
@@ -109,20 +109,20 @@ def MLPE(Y, X, scale=True):
 
 #     # Create the 'groups' column for the pairwise comparisons
 #     ID['group'] = ID.apply(lambda row: f"{row['pop1']}", axis=1)
-    
+
 #     # Convert to DataFrame
 #     data = pd.DataFrame({'x': x, 'y': y, 'group': ID['group']})
-    
+
 #     # # Fit mixed-effects model using Maximum Likelihood
 #     # model = sm.MixedLM.from_formula("y ~ x", data, groups=data["group"],
 #                exog_re=ZZ)
 #     # result = model.fit(reml=False)
-    
+
 #     # # Fit the null model (intercept-only) using Maximum Likelihood
 #     # null_model = sm.MixedLM.from_formula("y ~ 1", data,
 #                       groups=data["group"], exog_re=ZZ)
 #     # null_result = null_model.fit(reml=False)
-    
+
 #     # # Calculate marginal R-squared
 #     # var_fixed = np.var(result.fittedvalues)
 #     # var_random = result.cov_re.iloc[0, 0]

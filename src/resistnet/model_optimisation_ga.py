@@ -21,7 +21,7 @@
 #     Attributes:
 #         seed (int): Seed for random number generator.
 #         resistance_network (ResistanceNetwork): An instance of
-#                                                 ResistanceNetwork or subclass.
+#                                                 ResistanceNetwork or subclass
 #         verbose (bool): Flag to control verbosity of output.
 #         task_queue (Queue): Queue for tasks.
 #         result_queue (Queue): Queue for results.
@@ -38,8 +38,8 @@
 #         verbosity.
 
 #         Args:
-#             resistance_network (ResistanceNetwork or subclass): The resistance
-#                                                           network to optimize.
+#             resistance_network (ResistanceNetwork or subclass): The resistanc
+#                                                           network to optimize
 #             seed (int): Seed for random number generator.
 #             verbose (bool): Flag to control verbosity of output.
 #         """
@@ -133,7 +133,8 @@
 #                fixShape=False, min_weight=0.0, max_shape=None,
 #                max_hof_size=100, tournsize=10, awsum=0.95, only_keep=True,
 #                use_full=False, fixed_params=None,
-#                out=None, plot=True, verbose=True, report_all=False, threads=1):
+#                out=None, plot=True, verbose=True, report_all=False, 
+# threads=1):
 #         """
 #         Runs the genetic algorithm for optimizing the ResistNet model.
 
@@ -259,7 +260,8 @@
 #                             current_best = best
 #                         else:
 #                             current_best, fails = self.update_fails(
-#                                 best, current_best, fails, deltaB, deltaB_perc,
+#                                 best, current_best, fails, deltaB,
+# deltaB_perc,
 #                                 minimize=True)
 #                     else:
 #                         worst = min(fits)
@@ -339,7 +341,7 @@
 #             minimize (bool): Flag indicating minimization or maximization.
 
 #         Returns:
-#             Tuple containing updated current best fitness score and fail count.
+#             Tuple containing updated current best fitness score and failcount
 #         """
 #         cur = current_best
 #         f = fails
@@ -398,7 +400,7 @@
 
 #     def init_ga_attributes(self):
 #         """
-#         Initializes the genetic algorithm's attributes and registers necessary
+#         Initializes the genetic algorithm's attributes and registers necessar
 #         functions with the toolbox, allowing dynamic specification of fixed
 #         parameters per variable and attribute.
 #         """
@@ -419,7 +421,7 @@
 #             else:
 #                 return lambda: random.uniform(lower, upper)
 
-#         # Registering attribute generators for each variable and each attribute
+#         # Registering attribute generators for each variable and each attribu
 #         for var_name in self.resistance_network.variables:
 #             self.toolbox.register(
 #                 f"{var_name}_sel", feature_generator(
@@ -477,7 +479,7 @@
 #         self.toolbox.register(
 #             "population", tools.initRepeat, list, self.toolbox.individual)
 
-#         # Evaluation, mating, mutation, and selection methods remain unchanged
+#         # Evaluation, mating, mutation, and selection methods remain unchange
 #         self.toolbox.register("evaluate", lambda ind: ind)  # spoof
 #         self.toolbox.register("mate", tools.cxTwoPoint)
 #         self.toolbox.register("mutate", self.mutate)
@@ -486,7 +488,8 @@
 
 #     def mutate(self, individual):
 #         """
-#         Custom mutation function for an individual that aligns with the dynamic
+#         Custom mutation function for an individual that aligns with the
+# dynamic
 #         toolbox registration.
 #         """
 #         num_attributes = self.num_attributes
