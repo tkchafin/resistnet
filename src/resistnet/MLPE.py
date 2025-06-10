@@ -27,7 +27,7 @@ class CorMLPE:
 
         bounds = [(0.0001, 0.4999)]
         result = minimize(objective, self.rho, bounds=bounds,
-                            method='L-BFGS-B')
+                          method='L-BFGS-B')
         self.rho = result.x[0]
         return self.rho
 
