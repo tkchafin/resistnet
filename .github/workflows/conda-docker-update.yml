@@ -5,11 +5,14 @@ on:
     types: [published]
 
 jobs:
-  build-and-upload-conda:
-    runs-on: ubuntu-latest
+  build-conda:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    name: Build Conda (${{ matrix.os }})
     steps:
-      - name: Check Out Code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
       - name: Set Package Version
         shell: bash
@@ -19,10 +22,7 @@ jobs:
       - name: Update Version in Conda Recipe
         shell: bash
         run: |
-          sed -i "s/\$VERSION/${{ github.event.release.tag_name }}/g" conda-recipe/meta.yaml
-
-      - name: Validate versions
-        run: cat conda-recipe/meta.yaml; cat version.py
+          sed -i.bak "s/\$VERSION/${{ github.event.release.tag_name }}/g" conda-recipe/meta.yaml
 
       - name: Set up Conda
         uses: conda-incubator/setup-miniconda@v2
@@ -30,45 +30,24 @@ jobs:
           auto-update-conda: true
           activate-environment: build-env
           python-version: "3.10"
-          miniconda-version: latest
 
       - name: Install Dependencies
-        shell: bash -l {0} 
+        shell: bash -l {0}
         run: |
-          conda update -n base -c defaults conda
-          conda install -y anaconda::conda-build>=24.3.0 anaconda-client conda-verify
-          conda update --all
+          conda config --add channels defaults
+          conda install -y conda-build conda-verify anaconda-client
 
       - name: Build Conda Package
-        shell: bash -l {0} 
+        id: build_conda
+        shell: bash -l {0}
         run: |
-          conda build conda-recipe --output-folder ./build -c ecoevoinfo -c conda-forge -c bioconda || true 
+          output_file=$(conda build conda-recipe --output -c ecoevoinfo -c conda-forge -c bioconda)
+          conda build conda-recipe --output-folder ./build -c ecoevoinfo -c conda-forge -c bioconda
+          echo "output_file=$output_file" >> $GITHUB_OUTPUT
 
-      - name: Upload Conda Package to Anaconda Cloud
+      - name: Upload Conda Package to Anaconda
         shell: bash -l {0}
         env:
           ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
         run: |
-          anaconda upload --user ecoevoinfo --label main ./build/noarch/*.tar.bz2
-
-  build-and-push-docker:
-    needs: build-and-upload-conda
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check Out Repo
-      uses: actions/checkout@v2
-
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v1
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-    - name: Build and Push Docker Image
-      uses: docker/build-push-action@v2
-      with:
-        context: .
-        file: ./docker/Dockerfile
-        push: true
-        tags: tkchafin/resistnet:latest,tkchafin/resistnet:${{ github.event.release.tag_name }}
-
+          anaconda upload --user ecoevoinfo --label main "${{ steps.build_conda.outputs.output_file }}"
