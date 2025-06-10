@@ -16,13 +16,11 @@ jobs:
 
       - name: Set Package Version
         shell: bash
-        run: |
-          echo "__version__ = '${{ github.event.release.tag_name }}'" > version.py
+        run: echo "__version__ = '${{ github.event.release.tag_name }}'" > version.py
 
       - name: Update Version in Conda Recipe
         shell: bash
-        run: |
-          sed -i.bak "s/\$VERSION/${{ github.event.release.tag_name }}/g" conda-recipe/meta.yaml
+        run: sed -i.bak "s/\$VERSION/${{ github.event.release.tag_name }}/g" conda-recipe/meta.yaml
 
       - name: Set up Conda
         uses: conda-incubator/setup-miniconda@v2
@@ -42,8 +40,8 @@ jobs:
         id: build_conda
         shell: bash -l {0}
         run: |
-          output_file=$(conda build conda-recipe --output -c ecoevoinfo -c conda-forge -c bioconda)
           conda build conda-recipe --output-folder ./build -c ecoevoinfo -c conda-forge -c bioconda
+          output_file=$(find ./build -name "*.tar.bz2" | head -n 1)
           echo "output_file=$output_file" >> $GITHUB_OUTPUT
 
       - name: Upload Conda Package
