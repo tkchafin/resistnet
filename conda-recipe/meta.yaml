@@ -36,8 +36,8 @@ requirements:
   - nlopt
   - mantel
 
-build:
-  noarch: python
+#build:
+#  noarch: python
 
 about:
   home: "https://github.com/tkchafin/resistnet"
