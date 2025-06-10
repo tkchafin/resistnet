@@ -52,7 +52,7 @@ jobs:
           ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
         run: |
           echo "Uploading ${{ steps.build_conda.outputs.output_file }}"
-          anaconda upload --user ecoevoinfo --label main "${{ steps.build_conda.outputs.output_file }}"
+          anaconda upload --force --user ecoevoinfo --label main "${{ steps.build_conda.outputs.output_file }}"
 
   build-and-push-docker:
     name: Build and Push Docker Image
