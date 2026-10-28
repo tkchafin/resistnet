@@ -1414,6 +1414,18 @@ class SimResistanceNetwork(ResistanceNetwork):
                     replicates and {num_samples} samples each."
             )
 
+        # Samples must be connected by the network: if it has unconnected
+        # parts (e.g. other basins in the reach layer), sample from the
+        # largest
+        G = self._G
+        parts = list(nx.connected_components(G))
+        if len(parts) > 1:
+            G = self._G.subgraph(max(parts, key=len))
+            if verbose:
+                print(f"The network has {len(parts)} unconnected parts; "
+                      f"sampling from the largest ({G.number_of_edges()} of "
+                      f"{self._G.number_of_edges()} reaches)")
+
         for r in range(1, num_reps + 1):
             if verbose:
                 print(f"Simulating replicate {r}/{num_reps}")
@@ -1421,7 +1433,7 @@ class SimResistanceNetwork(ResistanceNetwork):
             base = f"{out}_{r}"
 
             # Sample random points and format them
-            samples = utils.sample_nodes(self._G, num_samples)
+            samples = utils.sample_nodes(G, num_samples)
             self.format_sampled_points(samples)
 
             # Compute subgraph and annotate edges
