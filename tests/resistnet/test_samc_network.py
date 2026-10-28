@@ -201,3 +201,15 @@ def test_uniform_ne(tmp_path):
     R = net._R.ravel()
     np.testing.assert_allclose(R[net._edge_site_indices], 1 / (2 * 50))
     assert np.count_nonzero(R) == len(net._edge_site_indices)
+
+
+def test_null_models(samc_net):
+    table = samc_net.evaluate_null_model()
+    assert list(table.index) == ["distance_only", "samc_uniform", "null"]
+    # Equal movement weights = any model with a maximum resistance of 1
+    ind = model({"run_mm_cyr": (1.0, 4, 20, 1)}) + [1.0]
+    _, res = samc_net.evaluate(ind)
+    assert table.loc["samc_uniform", "loglik"] == pytest.approx(res[0])
+    # Only the MLPE parameters (intercept, slope, 2 variances) are counted
+    assert table.loc["samc_uniform", "aic"] == pytest.approx(
+        2 * 4 - 2 * res[0])

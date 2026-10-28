@@ -621,6 +621,42 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             return float(self.fix_resist)
         return min(100.0, float(self.max_resist))
 
+    def evaluate_null_model(self, oname=None):
+        """
+        Evaluates the null models: distance-only and population effects only
+        (see ResistanceNetwork.evaluate_null_model), and the SAMC model with
+        equal movement weights between all adjacent reaches (no landscape
+        effect; only the MLPE parameters are counted in AIC).
+
+        Args:
+            oname (str, optional): The output name for saving the results.
+
+        Returns:
+            DataFrame: Log likelihood, AIC, marginal R-squared, and delta AIC
+                       relative to the population-effects-only model.
+        """
+        table = super().evaluate_null_model()
+        if table is None:
+            return None
+
+        W = abs(self._adj).astype(float)
+        Q = cfpt_samc.transition_matrix(W, self._R)
+        _, res = rd.conditionalFirstPassTime(
+            Q, self._edge_site_indices, self._gendist)
+        r = res.iloc[0]
+        uniform = pd.DataFrame({
+            "loglik": [r["loglik"]],
+            "aic": [-r["aic"]],
+            "r2m": [r["r2m"]],
+            "delta_aic_null": [r["delta_aic_null"]]
+        }, index=["samc_uniform"])
+        table = pd.concat([table.loc[["distance_only"]], uniform,
+                           table.loc[["null"]]])
+
+        if oname:
+            table.to_csv(f"{oname}.Null-Model.tsv", sep="\t")
+        return table
+
     def model_output(self, model):
         """
         Generates the model output for a given model.
