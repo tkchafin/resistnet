@@ -89,9 +89,16 @@ class HallOfFame:
 
         if space > 0:
             select_size = min(space, popDF.shape[0])
-            self.data = pd.concat(
-                [self.data, popDF[:select_size]], ignore_index=True
-            )
+            if self.data.empty:
+                # NOTE: concatenating to the empty (object dtype) frame gives
+                # object columns with pandas >= 3
+                self.data = popDF[:select_size].reindex(
+                    columns=self.data.columns
+                )
+            else:
+                self.data = pd.concat(
+                    [self.data, popDF[:select_size]], ignore_index=True
+                )
             self._update_data_frame()
         else:
             if popDF["fitness"].max() > self.min_fitness:
@@ -301,9 +308,6 @@ class HallOfFame:
                                           calculation regardless of their
                                           'keep' status. Defaults to False.
         """
-        # Clear previous calculations
-        self.rvi = pd.DataFrame(columns=["variable", "RVI"])
-
         # Selecting the subset of data based on 'keep' column
         sub = self.data if ignore_keep else self.data[self.data.keep == "True"]
 
@@ -319,10 +323,7 @@ class HallOfFame:
             )
             rows.append({"variable": v, "RVI": average_weights})
 
-        # Concatenate all rows into the DataFrame
-        self.rvi = pd.concat(
-            [self.rvi, pd.DataFrame(rows)], ignore_index=True
-        )
+        self.rvi = pd.DataFrame(rows, columns=["variable", "RVI"])
 
         # Sorting and resetting index
         self.rvi = self.rvi.sort_values(
@@ -368,9 +369,6 @@ class HallOfFame:
                                         calculation regardless of their 'keep'
                                         status. Defaults to False.
         """
-        # Clear previous calculations
-        self.maw = pd.DataFrame(columns=["variable", "MAW"])
-
         # Selecting the subset of data based on 'keep' column or ignoring it
         sub = self.data if ignore_keep else self.data[self.data.keep == "True"]
 
@@ -411,8 +409,8 @@ class HallOfFame:
 
             rows.append({"variable": v, "MAW": average_weight})
 
-        # Concatenate all rows into the DataFrame and sort by MAW
-        self.maw = pd.concat([self.maw, pd.DataFrame(rows)], ignore_index=True)
+        # Sort by MAW
+        self.maw = pd.DataFrame(rows, columns=["variable", "MAW"])
         self.maw.sort_values("MAW", ascending=False, inplace=True)
         self.maw.reset_index(drop=True, inplace=True)
 
