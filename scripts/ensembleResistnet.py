@@ -36,7 +36,8 @@ def main():
     # Read models
     local_rows = 1 if params.only_best else None
     hofs = read_and_concat_files(
-        params.paths, ".HallOfFame.tsv", local_rows=local_rows
+        params.paths, ".HallOfFame.tsv", local_rows=local_rows,
+        model=params.model
     )
 
     # SAMC runs have a direction setting for each variable, and a maximum
@@ -46,7 +47,8 @@ def main():
     samc = bool(samc_cols)
     if samc and hofs[samc_cols].isna().any().any():
         sys.exit("The inputs mix standard and SAMC (--samc) runs, which "
-                 "can't be averaged together; ensemble them separately")
+                 "can't be averaged together; ensemble them separately "
+                 "(e.g. with --model resistance or --model samc)")
     if samc:
         print("SAMC runs: building a SAMC ensemble")
 
@@ -142,17 +144,22 @@ def main():
 
 
 def read_and_concat_files(
-        paths, extension, index_column=None, local_rows=None):
+        paths, extension, index_column=None, local_rows=None, model=None):
     """
     Reads and concatenates files from given paths with a specific extension.
 
     Args:
-        paths (str or list): A string or a list of paths to search for files.
+        paths (str or list): A string or a list of paths to search for files
+                             (directories are searched with their
+                             subdirectories, e.g. runResistnet.py's
+                             {out}/{model}/).
         extension (str): The file extension to search for.
         index_column (str, optional): Column name to append file index to.
                                       Defaults to None.
         local_rows (int, optional): Number of rows to read from each file.
                                     Defaults to None.
+        model (str, optional): Only read files in directories named after
+                               this model ("resistance" or "samc").
 
     Returns:
         pandas.DataFrame: A DataFrame concatenated from all read files.
@@ -167,10 +174,13 @@ def read_and_concat_files(
     for path in paths:
         # Use glob to find files with specified extension
         if os.path.isdir(path):
-            pattern = os.path.join(path, f"*{extension}")
+            pattern = os.path.join(path, "**", f"*{extension}")
         else:
             pattern = f"{path}*{extension}"
-        for file_path in glob.glob(pattern):
+        for file_path in sorted(glob.glob(pattern, recursive=True)):
+            if model and os.path.basename(
+                    os.path.dirname(os.path.abspath(file_path))) != model:
+                continue
             df = pd.read_csv(file_path, sep="\t", header=0)
 
             # Append file index to specified column if provided
@@ -239,7 +249,7 @@ class ParseArgs:
                  "awsum=", "list=", "threads=", "edge_agg=", "varFile=",
                  "report_all", "noPlot", "only_best",
                  "only_keep", "coords=", "seed=", "use_full", "sizes=",
-                 "ne="]
+                 "ne=", "model="]
             )
 
         except getopt.GetoptError as err:
@@ -287,6 +297,7 @@ class ParseArgs:
         self.use_full = False
         self.sizes = None
         self.ne = 100
+        self.model = None
 
     def check_mandatory_options(self):
         """ Checks if mandatory options are set """
@@ -351,6 +362,10 @@ class ParseArgs:
                 self.sizes = arg
             elif opt == "ne":
                 self.ne = float(arg)
+            elif opt == "model":
+                if arg not in ("resistance", "samc"):
+                    self.display_help("--model must be resistance or samc")
+                self.model = arg
             elif opt in ("id_col", "c"):
                 self.reachid_col = arg
             elif opt in ("l", "len_col"):
@@ -389,9 +404,12 @@ class ParseArgs:
             "\nArguments:\n"
             "-s, --shp: Path to shapefile\n"
             "-n, --network: Input network\n"
-            "-i, --in: Directory containing resistnet outputs\n"
+            "-i, --in: Directory containing resistnet outputs (searched\n"
+            "          with its subdirectories)\n"
             "-L, --list: Optional comma-separated prefixes (no spaces)\n"
-            "-C, --coords: Optional static coordinates file\n\n"
+            "-C, --coords: Optional static coordinates file\n"
+            "--model: Only use runs of this model (resistance or samc),\n"
+            "         i.e. outputs in {out}/{model}/ directories\n\n"
 
             "Optional Arguments:\n"
             "-t, --procs: Number of parallel processors\n"

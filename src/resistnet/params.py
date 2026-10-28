@@ -49,7 +49,11 @@ class parseArgs:
         )
         parser.add_argument(
             '-o', '--out', type=str, default='output',
-            help='Output file prefix'
+            help=(
+                'Output directory and prefix: -o DIR/NAME writes each '
+                "model's outputs to DIR/NAME/{model}/NAME.* (and, with "
+                '--model both, the comparison to DIR/NAME/NAME.*)'
+            )
         )
         parser.add_argument(
             '-O', '--output_driver', type=str, choices=['SHP', 'GPKG', 'GDB'],
@@ -136,14 +140,21 @@ class parseArgs:
             help='Minimum weight parameter'
         )
 
-        # SAMC model options
+        # Model and SAMC model options
+        parser.add_argument(
+            '--model', type=str, choices=['resistance', 'samc', 'both'],
+            default=None,
+            help=(
+                'Model to fit: resistance (sums of reach resistances along '
+                'the paths between sites; default), samc (spatial absorbing '
+                'Markov chain: conditional first passage times among sites, '
+                'allowing directional effects), or both (fitted separately, '
+                'then ranked together)'
+            )
+        )
         parser.add_argument(
             '--samc', action='store_true',
-            help=(
-                'Use the spatial absorbing Markov chain (SAMC) model: '
-                'conditional first passage times among sites, allowing '
-                'directional effects'
-            )
+            help='Same as --model samc'
         )
         parser.add_argument(
             '--sizes', type=str,
@@ -207,6 +218,12 @@ class parseArgs:
         for key, value in vars(args).items():
             setattr(self, key, value)
 
+        if self.model is None:
+            self.model = "samc" if self.samc else "resistance"
+        elif self.samc and self.model != "samc":
+            parser.error(f"--samc conflicts with --model {self.model}")
+        self.models = (["resistance", "samc"] if self.model == "both"
+                       else [self.model])
         if self.max_resist <= 1:
             parser.error("--max_resist must be greater than 1")
         if self.fix_resist is not None and self.fix_resist < 1:

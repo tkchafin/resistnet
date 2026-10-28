@@ -119,3 +119,25 @@ def test_no_vars_or_varfile():
 
 if __name__ == "__main__":
     pytest.main()
+
+
+@pytest.mark.parametrize("opts,model,models", [
+    ([], "resistance", ["resistance"]),
+    (["--samc"], "samc", ["samc"]),
+    (["--model", "samc"], "samc", ["samc"]),
+    (["--model", "both"], "both", ["resistance", "samc"]),
+    (["--model", "samc", "--samc"], "samc", ["samc"]),
+])
+def test_model_option(opts, model, models):
+    testargs = ["prog", "--vars", "var1"] + opts
+    with patch.object(sys, 'argv', testargs):
+        args = parseArgs()
+        assert args.model == model
+        assert args.models == models
+
+
+def test_model_conflicts_with_samc():
+    testargs = ["prog", "--vars", "var1", "--samc", "--model", "both"]
+    with patch.object(sys, 'argv', testargs):
+        with pytest.raises(SystemExit):
+            parseArgs()

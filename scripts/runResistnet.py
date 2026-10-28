@@ -7,6 +7,7 @@ from resistnet.params import parseArgs
 from resistnet.resistance_network import ResistanceNetwork
 from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.model_optimisation import ModelRunnerTPE
+from resistnet.compare import write_comparison
 
 
 def main():
@@ -21,87 +22,71 @@ def main():
         params.seed = int(datetime.now().timestamp())
     random.seed(params.seed)
 
-    # Step 1: Initialise network
-    if params.samc:
-        network = ResistanceNetworkSAMC(
-            network=params.network,
-            shapefile=params.shapefile,
-            sizes=params.sizes,
-            coords=params.coords,
-            variables=params.variables,
-            agg_opts=params.agg_opts,
-            inmat=params.inmat,
-            reachid_col=params.reachid_col,
-            length_col=params.length_col,
-            infer_origin=params.infer_origin,
-            ne=params.ne,
-            max_resist=params.max_resist,
-            fix_resist=params.fix_resist,
-            max_flow=params.max_flow,
-            out=params.out,
-            verbose=True
-        )
-    else:
-        network = ResistanceNetwork(
-            network=params.network,
-            shapefile=params.shapefile,
-            coords=params.coords,
-            variables=params.variables,
-            agg_opts=params.agg_opts,
-            inmat=params.inmat,
-            reachid_col=params.reachid_col,
-            length_col=params.length_col,
-            out=params.out,
+    # Each model's outputs go to {out}/{model}/{name}.*, where name is the
+    # last part of --out
+    name = os.path.basename(os.path.normpath(params.out))
+    runs = {}
+    for model in params.models:
+        prefix = os.path.join(params.out, model, name)
+        os.makedirs(os.path.dirname(prefix), exist_ok=True)
+        if len(params.models) > 1:
+            print(f"\n=== Fitting the {model} model ===\n")
+
+        # Step 1: Initialise network
+        network = build_network(params, model, prefix)
+
+        # write new output geodatabase
+        if params.shapefile:
+            network.write_geodataframe(prefix, params.output_driver)
+
+        runner = ModelRunnerTPE(
+            resistance_network=network,
+            seed=params.seed,
             verbose=True
         )
 
-    # write new output geodatabase
-    if params.shapefile:
-        network.write_geodataframe(params.out, params.output_driver)
+        # Optionally optimise transformations for each parameter
+        if params.gridSearch:
+            runner.optimise_univariate(
+                fitmetric=params.fitmetric,
+                threads=params.procs,
+                max_shape=params.max_shape,
+                out=prefix,
+                plot=True,
+                verbose=True
+            )
 
-    runner = ModelRunnerTPE(
-        resistance_network=network,
-        seed=params.seed,
-        verbose=True
-    )
-
-    # Optionally optimise transformations for each parameter
-    if params.gridSearch:
-        runner.optimise_univariate(
+        # Step 2: Run optimisation
+        runner.run_tpe(
+            max_evals=params.max_iter,
             fitmetric=params.fitmetric,
             threads=params.procs,
+            nFail=params.nfail,
+            fixWeight=params.fixWeight,
+            fixShape=params.fixShape,
+            fixAsym=params.fixAsym,
+            fixFlow=params.fixFlow,
+            min_weight=params.min_weight,
             max_shape=params.max_shape,
-            out=params.out,
+            awsum=params.awsum,
+            only_keep=True,
+            use_full=params.use_full,
+            report_all=params.report_all,
+            fixed_params=params.transFile,
+            out=prefix,
             plot=True,
-            verbose=True
+            verbose=True,
+            pweight=params.pweight,
+            reps=params.reps,
+            n_startup=params.nstart,
+            n_candidates=params.ncand,
+            gamma=params.gamma
         )
+        runs[model] = (network, runner, prefix)
 
-    # Step 3: Run optimisation
-    runner.run_tpe(
-        max_evals=params.max_iter,
-        fitmetric=params.fitmetric,
-        threads=params.procs,
-        nFail=params.nfail,
-        fixWeight=params.fixWeight,
-        fixShape=params.fixShape,
-        fixAsym=params.fixAsym,
-        fixFlow=params.fixFlow,
-        min_weight=params.min_weight,
-        max_shape=params.max_shape,
-        awsum=params.awsum,
-        only_keep=True,
-        use_full=params.use_full,
-        report_all=params.report_all,
-        fixed_params=params.transFile,
-        out=params.out,
-        plot=True,
-        verbose=True,
-        pweight=params.pweight,
-        reps=params.reps,
-        n_startup=params.nstart,
-        n_candidates=params.ncand,
-        gamma=params.gamma
-    )
+    # Step 3: With both models, rank their models together
+    if len(runs) > 1 and params.inmat:
+        write_comparison(runs, os.path.join(params.out, name))
 
     # # Step 2: Initialise ModelRunner
     # runner = ModelRunnerGA(
@@ -137,6 +122,43 @@ def main():
     #     plot=True,
     #     verbose=True
     # )
+
+
+def build_network(params, model, prefix):
+    """
+    Builds the network for a model ("resistance" or "samc").
+    """
+    if model == "samc":
+        return ResistanceNetworkSAMC(
+            network=params.network,
+            shapefile=params.shapefile,
+            sizes=params.sizes,
+            coords=params.coords,
+            variables=params.variables,
+            agg_opts=params.agg_opts,
+            inmat=params.inmat,
+            reachid_col=params.reachid_col,
+            length_col=params.length_col,
+            infer_origin=params.infer_origin,
+            ne=params.ne,
+            max_resist=params.max_resist,
+            fix_resist=params.fix_resist,
+            max_flow=params.max_flow,
+            out=prefix,
+            verbose=True
+        )
+    return ResistanceNetwork(
+        network=params.network,
+        shapefile=params.shapefile,
+        coords=params.coords,
+        variables=params.variables,
+        agg_opts=params.agg_opts,
+        inmat=params.inmat,
+        reachid_col=params.reachid_col,
+        length_col=params.length_col,
+        out=prefix,
+        verbose=True
+    )
 
 
 # Call main function

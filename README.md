@@ -80,11 +80,11 @@ usage: runResistnet.py [-h] [-g INMAT] [-s SHAPEFILE] [-c COORDS] [-n NETWORK]
                        [-S NSTART] [-C NCAND] [-G GAMMA]
                        [-f {aic,loglik,r2m,delta}] [--fixWeight] [--fixShape]
                        [--max_shape MAX_SHAPE] [--min_weight MIN_WEIGHT]
-                       [--samc] [--sizes SIZES] [--ne NE]
-                       [--infer_origin INFER_ORIGIN] [--max_resist MAX_RESIST]
-                       [--fix_resist FIX_RESIST] [--fixAsym]
-                       [--max_flow MAX_FLOW] [--fixFlow] [-a AWSUM]
-                       [--use_full] [--report_all]
+                       [--model {resistance,samc,both}] [--samc]
+                       [--sizes SIZES] [--ne NE] [--infer_origin INFER_ORIGIN]
+                       [--max_resist MAX_RESIST] [--fix_resist FIX_RESIST]
+                       [--fixAsym] [--max_flow MAX_FLOW] [--fixFlow]
+                       [-a AWSUM] [--use_full] [--report_all]
 
 Optimise resistance networks using Tree-structured Parzen Estimators (TPE)
 
@@ -105,7 +105,10 @@ options:
   --length_col LENGTH_COL
                         Length attribute in geodatabase (default: LENGTH_KM)
   -t, --procs PROCS     Number of parallel processors (default: 1)
-  -o, --out OUT         Output file prefix (default: output)
+  -o, --out OUT         Output directory and prefix: -o DIR/NAME writes each
+                        model's outputs to DIR/NAME/{model}/NAME.* (and, with
+                        --model both, the comparison to DIR/NAME/NAME.*)
+                        (default: output)
   -O, --output_driver {SHP,GPKG,GDB}
                         Output driver for annotated geodataframe (default:
                         GPKG)
@@ -141,9 +144,14 @@ options:
                         Maximum shape parameter (default: 100)
   --min_weight MIN_WEIGHT
                         Minimum weight parameter (default: 0.0)
-  --samc                Use the spatial absorbing Markov chain (SAMC) model:
-                        conditional first passage times among sites, allowing
-                        directional effects (default: False)
+  --model {resistance,samc,both}
+                        Model to fit: resistance (sums of reach resistances
+                        along the paths between sites; default), samc (spatial
+                        absorbing Markov chain: conditional first passage
+                        times among sites, allowing directional effects), or
+                        both (fitted separately, then ranked together)
+                        (default: None)
+  --samc                Same as --model samc (default: False)
   --sizes SIZES         SAMC: tsv with columns sample, size (effective
                         population sizes; absorption at each site is 1/(2 *
                         size)) (default: None)
@@ -255,7 +263,7 @@ Chain 4: Best = -430.4249254464558
 ...
 ```
 
-The best model from each chain is retained in the Hall of Fame, which is used for multi-model inference (Akaike weights, relative variable importance, and model-averaged weights and resistances). A series of plots and tables will then be produced using the output path/ prefix defined with `-o,--out`:
+The best model from each chain is retained in the Hall of Fame, which is used for multi-model inference (Akaike weights, relative variable importance, and model-averaged weights and resistances). A series of plots and tables will then be produced in a directory for the model: with `-o DIR/NAME`, in `DIR/NAME/{model}/`, named `NAME.*`, where `{model}` is `resistance` or `samc` (see `--model`). For example, `-o results/nmt` writes `results/nmt/resistance/nmt.HallOfFame.tsv` and so on (below, `output.*`):
 
 | File Name                                    | Description                                                                                                                     |
 |----------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
@@ -389,7 +397,7 @@ Note that the "right" parameters will vary by context, and you should not necess
 
 ### Directional models (SAMC) <a name="samc"></a>
 
-Effective resistance (circuit theory) is symmetric: moving from A to B costs the same as moving from B to A. With `--samc`, `ResistNet` instead models movement among the reaches of the network as a spatial absorbing Markov chain (SAMC; [Fletcher et al. 2019](https://doi.org/10.1111/ele.13333), [Marx et al. 2020](https://doi.org/10.1111/ecog.04891)), in which moving between two reaches can be easier in one direction than the other, e.g. upstream versus downstream.
+Effective resistance (circuit theory) is symmetric: moving from A to B costs the same as moving from B to A. With `--model samc` (or `--samc`), `ResistNet` instead models movement among the reaches of the network as a spatial absorbing Markov chain (SAMC; [Fletcher et al. 2019](https://doi.org/10.1111/ele.13333), [Marx et al. 2020](https://doi.org/10.1111/ecog.04891)), in which moving between two reaches can be easier in one direction than the other, e.g. upstream versus downstream.
 
 The model is built as follows:
 
@@ -422,11 +430,32 @@ runResistnet.py \
     -c ./src/resistnet/data/nmt.pointCoords.txt \
     -g ./src/resistnet/data/nmt.popGenDistMat.txt \
     -V ./src/resistnet/data/selected_vars.txt \
-    --samc --sizes ./src/resistnet/data/nmt.popSizes.txt \
+    --model samc --sizes ./src/resistnet/data/nmt.popSizes.txt \
     -i 50 -r 4 -t 4 --seed 1234 -o nmt_samc
 ```
 
-In this short run, the best SAMC model is stream gradient (`sgr_dk_rav`, symmetric) with a flow term of -0.22 per km (moving upstream easier; AIC -474.6), which fits better than SAMC distance alone (-416.1) and flow alone (-437.8), but less well than the standard model with degree of regulation (-502.0 with a longer run). The two models fit the same genetic distances with the same MLPE, so their AICs can be compared directly.
+In this short run, the best SAMC model is stream gradient (`sgr_dk_rav`, symmetric) with a flow term of -0.22 per km (moving upstream easier; AIC -474.6), which fits better than SAMC distance alone (-416.1) and flow alone (-437.8), but less well than the standard model with degree of regulation (-502.0 with a longer run). The two models fit the same genetic distances with the same MLPE, so their AICs can be compared directly (see below).
+
+### Comparing the two models <a name="compare"></a>
+
+With `--model both`, `ResistNet` fits the standard model and then the SAMC model, each with its own search, Hall of Fame, model averaging and outputs (in `DIR/NAME/resistance/` and `DIR/NAME/samc/`), and then ranks the models of both, with the reference models, by AIC. Both are fitted with the same MLPE to the same genetic distances, so their AICs are comparable; this is checked (the null and distance-only models of both must be identical). Three tables are written to `DIR/NAME/`:
+
+| File Name                    | Description                                                                                                                                                                                              |
+|------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| NAME.modelComparison.tsv     | Every Hall of Fame model of both (each once) and the reference models, ranked by AIC: family, model, number of parameters (k), log-likelihood, AIC, difference from the best, and Akaike weight over all of them |
+| NAME.familySummary.tsv       | For each family (resistance, samc, reference): its best model, that model's AIC and difference from the best, and the family's summed Akaike weight                                                     |
+| NAME.jointImportance.tsv     | Relative importance of each variable over both families (the summed Akaike weight of the models that include it)                                                                                       |
+
+For example, adding `--model both` to the command in the [Example Dataset](#example) section gives `nmt/resistance/`, `nmt/samc/` and:
+
+```
+family      best_model                                                                                  best_aic   delta_aic  akaike_weight
+resistance  dor_pc_pva (inverse Ricker, shape 13)                                                       -442.85    31.77      1.8e-07
+samc        sgr_dk_rav (inverse monomolecular, shape 72, symmetric) + flow -0.222/km (upstream easier)  -474.62    0.00       1.00
+reference   SAMC flow alone (-0.151/km)                                                                 -437.77    36.85      1.0e-08
+```
+
+This short run ranks SAMC first, but only because 50 iterations were not enough for the standard model's search: with 600 iterations x 8 chains, the standard model with degree of regulation (inverse monomolecular, shape 1; AIC -502.0) fits better than the best SAMC model (-477.6). Compare the two models only after runs long enough for both searches to settle. AIC ranks fits, not mechanisms (path resistance vs a walker's passage time), and near-ties of a few AIC units should not be over-read, since the parameter counts for the maximum resistance, direction settings and flow are conventions.
 
 
 ## Tutorials <a name="tutorials"></a>
@@ -452,7 +481,7 @@ runResistnet.py \
     -i 50 -r 4 -t 4 --seed 1234 -o nmt
 ```
 
-The outputs of this command (and of the SAMC example in [Directional models](#samc)) are in `src/resistnet/data/example_output`. Note that this example is not necessarily exhaustive (real runs will likely need many more iterations and chains), so you can try playing around with the running parameters, as well as the covariates included (specified in the `selected_vars.txt` file; the network contains all of the HydroATLAS covariates).
+To fit the SAMC model as well and compare the two, add `--model both` (see [Comparing the two models](#compare)). The outputs of the command with `--model both` are in `src/resistnet/data/example_output` (`resistance/`, `samc/`, and the comparison tables). Note that this example is not necessarily exhaustive (real runs will likely need many more iterations and chains), so you can try playing around with the running parameters, as well as the covariates included (specified in the `selected_vars.txt` file; the network contains all of the HydroATLAS covariates).
 
 > Zbinden, Z. D., Chafin, T. K., Tiemann, J. S., Edds, D. R., Martin, B. T., Hofmeier, J., Douglas, M. E., & Douglas, M. R. (2025). Historic and contemporary selection define conservation units for a short-range endemic within an anthropogenically-altered riverscape. *Global Ecology and Conservation*, 62, e03783. https://doi.org/10.1016/j.gecco.2025.e03783
 
@@ -531,9 +560,12 @@ Utility for model-averaging across ResistNet outputs
 Arguments:
 -s, --shp: Path to shapefile
 -n, --network: Input network
--i, --in: Directory containing resistnet outputs
+-i, --in: Directory containing resistnet outputs (searched with its
+          subdirectories)
 -L, --list: Optional comma-separated prefixes (no spaces)
 -C, --coords: Optional static coordinates file
+--model: Only use runs of this model (resistance or samc), i.e. outputs
+         in {out}/{model}/ directories
 
 Optional Arguments:
 -t, --procs: Number of parallel processors
@@ -559,7 +591,7 @@ SAMC runs (detected from their Hall of Fame columns):
       --sizes [default=100]
 ```
 
-Most arguments are used in the same way as their equivalents in `runResistnet.py`, but one difference is in how a group of replicate run outputs are passed. Runs of the SAMC model (`--samc`) are recognised from their Hall of Fame columns and averaged as a SAMC model (with `--sizes` or `--ne` as for `runResistnet.py`), giving model-averaged passage times and transition probabilities; standard and SAMC runs can't be mixed in one ensemble. The simplest way is to provide the path to an output directory, where outputs are named like `{prefix}_{rep}.*`. Only the `$prefix.HallOfFame.tsv` files are read. Example outputs, from 10 short runs of the example dataset with different seeds, can be found in `src/resistnet/data/nmt_ensemble/replicates`:
+Most arguments are used in the same way as their equivalents in `runResistnet.py`, but one difference is in how a group of replicate run outputs are passed. Runs are found in the directory given and its subdirectories (e.g. the `DIR/NAME/{model}/` directories of `runResistnet.py`), and `--model resistance` or `--model samc` uses only the runs of that model. Runs of the SAMC model are recognised from their Hall of Fame columns and averaged as a SAMC model (with `--sizes` or `--ne` as for `runResistnet.py`), giving model-averaged passage times and transition probabilities; standard and SAMC runs can't be mixed in one ensemble. The simplest way is to provide the path to an output directory, where outputs are named like `{prefix}_{rep}.*`. Only the `$prefix.HallOfFame.tsv` files are read. Example outputs, from 10 short runs of the example dataset with different seeds, can be found in `src/resistnet/data/nmt_ensemble/replicates`:
 ```
 nmt_1.HallOfFame.tsv
 nmt_10.HallOfFame.tsv
@@ -593,7 +625,7 @@ ensembleResistnet.py \
 Each run writes `$out.modelSpec.json`, giving every Hall of Fame model (best first) together with the constants needed to compute it again: for each variable, its range in the network the model was fitted to (used for the 0-10 rescaling), its transformation and shape, its range after transformation, and its weight; and the range of the composite surface (plus, for SAMC models, the ranges of the link values, the maximum resistance and the flow rate). `predictResistnet.py` applies one of these models to the reaches of another network, e.g. another watershed:
 
 ```
-predictResistnet.py -s other_watershed.shp -m out.modelSpec.json -o other
+predictResistnet.py -s other_watershed.shp -m out/resistance/out.modelSpec.json -o other
 ```
 
 Because every rescaling uses the fitted network's ranges, a reach with the same values as a reach of the fitted network gets the same result. Values outside those ranges are clamped to them (with a warning giving the share of reaches affected for each variable), so predictions far outside the fitted network's conditions are flat rather than extrapolated. The same applies to the variables' combined value: even when each variable is within its range, a combination the fitted network didn't have can fall outside the combined range, and is clamped to it (with a warning giving the share of reaches, or of moves for SAMC). If most reaches are affected, the predicted values barely differ from each other. Variables whose ranges are tied to position in the watershed (e.g. `DIST_DN_KM`, the distance to the sea) rarely overlap between watersheds, so models using them transfer poorly; the SAMC flow rate is per km and transfers as it is. Models are applied reach by reach: if the fitted network merged reaches into longer segments (e.g. the `EDGE_ID` segments of `autoStreamTree` outputs), their values were aggregated over those segments.
