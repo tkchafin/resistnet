@@ -88,3 +88,38 @@ def test_spec_file_and_reach_prediction(net, tmp_path):
                                    table["resistance"])
         assert far_clamped[v] > 0
     json.dumps(spec)
+
+
+def test_composite_clamped_and_reported():
+    # Each variable is within its training range, but their combination
+    # can still fall outside the training composite range (the variables'
+    # minima didn't occur together): it is clamped, and reported
+    var = {"min": 0.0, "max": 10.0, "transform": 0, "shape": 0.0,
+           "tmin": 0.0, "tmax": 10.0, "weight": 1.0}
+    model = {"type": "standard", "variables": {"a": dict(var),
+                                               "b": dict(var)},
+             "composite_min": 0.5, "composite_max": 1.5}
+    spec = {"reachid_col": "HYRIV_ID", "models": [model]}
+    reaches = pd.DataFrame({"HYRIV_ID": [1, 2, 3, 4],
+                            "a": [0.0, 1.0, 10.0, 5.0],
+                            "b": [0.0, 1.0, 5.0, 5.0]})
+    table, moves, clamped = pr.predict_reaches(reaches, spec)
+    assert moves is None
+    assert clamped["a"] == 0 and clamped["b"] == 0
+    # Combined values 0, 0.2, 1.5, 1.0 -> (x - 0.5) / 1, clamped to 0-1
+    np.testing.assert_allclose(table["resistance"], [0, 0, 1, 0.5])
+    assert clamped["composite"] == 0.5
+
+    # SAMC: the same for each move (here two reaches, one link each way)
+    samc = dict(model, type="samc", max_resistance=10.0, flow=0.0)
+    for v in samc["variables"].values():
+        v.update(asym=0, link_min=0.0, link_max=1.0)
+    reaches = pd.DataFrame({"HYRIV_ID": [1, 2], "NEXT_DOWN": [2, 0],
+                            "LENGTH_KM": [1.0, 1.0],
+                            "a": [0.0, 1.0], "b": [0.0, 1.0]})
+    spec = {"reachid_col": "HYRIV_ID", "length_col": "LENGTH_KM",
+            "models": [samc]}
+    table, moves, clamped = pr.predict_reaches(reaches, spec)
+    # Links (mean of 0 and 0.1 on the 0-1 scale) sum to 0.1 < 0.5: clamped
+    assert clamped["composite"] == 1.0
+    np.testing.assert_allclose(moves["weight"], 1.0)

@@ -3,7 +3,9 @@ Applies a fitted model to the reaches of another network (e.g. another
 watershed), using the constants saved with the model ({out}.modelSpec.json;
 see ResistanceNetwork.model_spec()). Every rescaling uses the training
 network's ranges, so a reach with the same values as a training reach gets
-the same result; values outside the training range are clamped to it.
+the same result; values outside the training range are clamped to it. The
+variables' combined value is clamped to its training range as well, so
+reaches beyond it all get the same value.
 """
 import json
 
@@ -41,6 +43,14 @@ def out_of_range(raw, var):
     return float(np.mean((raw < var["min"]) | (raw > var["max"])))
 
 
+def _outside(x):
+    """Share of rescaled values outside 0-1 (beyond rounding)."""
+    x = np.asarray(x, dtype=float)
+    if not x.size:
+        return 0.0
+    return float(np.mean((x < -1e-9) | (x > 1.0 + 1e-9)))
+
+
 def variable_values(raw, var):
     """
     A variable's values on the training network's 0-1 scale: rescaled to
@@ -64,6 +74,28 @@ def variable_values(raw, var):
     return np.clip(_rescale(y, var["tmin"], var["tmax"]), 0.0, 1.0)
 
 
+def standard_composite(raw, model):
+    """
+    Combined value of each reach under a standard (path-sum) model, on the
+    training network's 0-1 scale before clamping.
+
+    Args:
+        raw (DataFrame): Raw values of the model's variables, one row per
+                         reach.
+        model (dict): A model from a specification (type "standard").
+
+    Returns:
+        numpy.ndarray: Combined values (None if the model has no variables).
+    """
+    multi = None
+    for v, var in model["variables"].items():
+        x = variable_values(raw[v], var) * var["weight"]
+        multi = x if multi is None else multi + x
+    if multi is None:
+        return None
+    return _rescale(multi, model["composite_min"], model["composite_max"])
+
+
 def standard_resistance(raw, model):
     """
     Resistance (0-1) of each reach under a standard (path-sum) model.
@@ -76,14 +108,58 @@ def standard_resistance(raw, model):
     Returns:
         numpy.ndarray: Resistance of each reach.
     """
-    multi = None
-    for v, var in model["variables"].items():
-        x = variable_values(raw[v], var) * var["weight"]
-        multi = x if multi is None else multi + x
-    if multi is None:
+    x = standard_composite(raw, model)
+    if x is None:
         return np.zeros(len(raw))
-    return np.clip(_rescale(multi, model["composite_min"],
-                            model["composite_max"]), 0.0, 1.0)
+    return np.clip(x, 0.0, 1.0)
+
+
+def samc_composite(raw, rows, cols, model):
+    """
+    Combined value of each move between adjacent reaches under a SAMC
+    model, on the training network's 0-1 scale before clamping.
+
+    Args:
+        raw (DataFrame): Raw values of the model's variables, one row per
+                         reach.
+        rows, cols (array-like): Indices of the reaches moved from and to.
+        model (dict): A model from a specification (type "samc").
+
+    Returns:
+        tuple: Combined values (None if the model has no variables), and
+               whether any variable's link value was outside its training
+               range (and clamped to it), for each move.
+    """
+    rows, cols = np.asarray(rows), np.asarray(cols)
+    multi = None
+    link_out = np.zeros(len(rows), dtype=bool)
+    for v, var in model["variables"].items():
+        x = variable_values(raw[v], var)
+        if var["asym"]:
+            link = x[cols] - x[rows]
+        else:
+            link = (x[rows] + x[cols]) / 2.0
+        link = _rescale(link, var["link_min"], var["link_max"])
+        link_out |= (link < -1e-9) | (link > 1.0 + 1e-9)
+        link = np.clip(link, 0.0, 1.0) * var["weight"]
+        multi = link if multi is None else multi + link
+    if multi is None:
+        return None, link_out
+    return (_rescale(multi, model["composite_min"], model["composite_max"]),
+            link_out)
+
+
+def _move_weights(composite, upstream_km, model, n):
+    """Movement weights from combined values (see samc_weights())."""
+    if composite is None:
+        weights = np.ones(n)
+    else:
+        x = np.clip(composite, 0.0, 1.0)
+        weights = 1.0 / (1.0 + (model["max_resistance"] - 1.0) * x)
+    if model.get("flow", 0.0):
+        weights = weights * np.exp(-model["flow"]
+                                   * np.asarray(upstream_km, dtype=float))
+    return weights
 
 
 def samc_weights(raw, rows, cols, upstream_km, model):
@@ -103,27 +179,8 @@ def samc_weights(raw, rows, cols, upstream_km, model):
     Returns:
         numpy.ndarray: Weight of each move.
     """
-    rows, cols = np.asarray(rows), np.asarray(cols)
-    multi = None
-    for v, var in model["variables"].items():
-        x = variable_values(raw[v], var)
-        if var["asym"]:
-            link = x[cols] - x[rows]
-        else:
-            link = (x[rows] + x[cols]) / 2.0
-        link = np.clip(_rescale(link, var["link_min"], var["link_max"]),
-                       0.0, 1.0) * var["weight"]
-        multi = link if multi is None else multi + link
-    if multi is None:
-        weights = np.ones(len(rows))
-    else:
-        x = np.clip(_rescale(multi, model["composite_min"],
-                             model["composite_max"]), 0.0, 1.0)
-        weights = 1.0 / (1.0 + (model["max_resistance"] - 1.0) * x)
-    if model.get("flow", 0.0):
-        weights = weights * np.exp(-model["flow"]
-                                   * np.asarray(upstream_km, dtype=float))
-    return weights
+    composite, _ = samc_composite(raw, rows, cols, model)
+    return _move_weights(composite, upstream_km, model, len(np.asarray(rows)))
 
 
 def reach_links(reaches, reachid_col, next_down_col, length_col):
@@ -174,7 +231,10 @@ def predict_reaches(reaches, spec, model=0, reachid_col=None,
 
     Returns:
         tuple: Per-reach DataFrame, moves DataFrame (SAMC; else None), and
-               the share of out-of-range values for each variable.
+               the share of out-of-range values for each variable; under
+               "composite", the share of reaches (standard) or moves (SAMC)
+               whose combined value was outside the training range, and was
+               clamped to it.
     """
     m = spec["models"][model]
     reachid_col = reachid_col or spec.get("reachid_col", "HYRIV_ID")
@@ -187,12 +247,22 @@ def predict_reaches(reaches, spec, model=0, reachid_col=None,
                for v, var in m["variables"].items()}
     out = pd.DataFrame({reachid_col: reaches[reachid_col].to_numpy()})
     if m["type"] == "standard":
-        out["resistance"] = standard_resistance(raw, m)
+        x = standard_composite(raw, m)
+        clamped["composite"] = 0.0 if x is None else _outside(x)
+        out["resistance"] = (np.zeros(len(raw)) if x is None
+                             else np.clip(x, 0.0, 1.0))
         return out, None, clamped
 
     rows, cols, upstream = reach_links(reaches, reachid_col, next_down_col,
                                        length_col)
-    w = samc_weights(raw, rows, cols, upstream, m)
+    composite, link_out = samc_composite(raw, rows, cols, m)
+    if composite is not None:
+        out_any = (link_out | (composite < -1e-9)
+                   | (composite > 1.0 + 1e-9))
+        clamped["composite"] = float(np.mean(out_any)) if len(rows) else 0.0
+    else:
+        clamped["composite"] = 0.0
+    w = _move_weights(composite, upstream, m, len(rows))
     n = len(reaches)
     is_down = upstream < 0
     w_down = np.bincount(rows[is_down], weights=w[is_down], minlength=n)
