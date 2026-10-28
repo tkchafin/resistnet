@@ -1,5 +1,6 @@
 import numpy as np
 import resistnet.MLPE as mlpe
+import resistnet.CFPT as cfpt_samc
 
 
 def parsePairwise(points, inc_matrix, multi, gendist):
@@ -52,26 +53,23 @@ def effectiveResistanceMatrix(points, inc_matrix, edge_resistance):
     return r
 
 
-# import resistnet.CFPT as cfpt_samc
-# def conditionalFirstPassTime(Q, R, sites_i, gendist,
-#                              rtol=0.00001, max_iter=1000, max_fail=1,
-#                              solver="iterative"):
+def conditionalFirstPassTime(Q, sites_i, gendist):
+    """
+    Conditional first passage times (CFPT) among sites, fitted to genetic
+    distances with MLPE.
 
-#     # get cfpt matrix
-#     cfpt = cfpt_samc.CFPT(Q, R, sites_i, rtol, max_iter, max_fail, solver)
+    Genetic distances are symmetric, so the model uses the mean of the two
+    directions between each pair of sites.
 
-#     # fit MLPE
-#     if cfpt is not None:
-#         cfpt_a = np.array(cfpt)
-#         if np.all(cfpt_a == cfpt_a[0]) or np.all(np.isnan(cfpt_a)):
-#             return None, float('-inf')
-#         try:
-#             res = mlpe.MLPE(gendist, cfpt_a, scale=True)
-#             return cfpt, res
-#         except Exception as e:
-#             # NOTE: This is often caused by most of the CFPT values
-#             # being 0
-#             print("Unexpected error fitting MLPE:", e)
-#             return None, float('-inf')
-#     else:
-#         return None, float('-inf')
+    Args:
+        Q (scipy.sparse matrix): Transient transition matrix.
+        sites_i (list): State index of each site.
+        gendist (numpy.ndarray): Genetic distance matrix.
+
+    Returns:
+        tuple: The CFPT matrix (row = origin, column = destination), and the
+               MLPE results.
+    """
+    cfpt = cfpt_samc.CFPT(Q, sites_i)
+    res = mlpe.MLPE(gendist, (cfpt + cfpt.T) / 2.0, scale=True)
+    return cfpt, res

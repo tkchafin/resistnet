@@ -354,6 +354,10 @@ class HallOfFame:
             }
             for var in self.variables
         ]
+        # Directional effects (SAMC models only)
+        for d in best_model_variables:
+            if f"{d['Variable']}_asym" in best_model.index:
+                d["Directional"] = best_model[f"{d['Variable']}_asym"]
 
         self.best = pd.DataFrame(best_model_variables)
         return self.best
@@ -430,8 +434,9 @@ class HallOfFame:
 
         for v in self.variables:
             mask = ret[v] == 0
-            for attr in ["_weight", "_trans", "_shape"]:
-                ret.loc[mask, f"{v}{attr}"] = np.nan
+            for attr in ["_weight", "_trans", "_shape", "_asym"]:
+                if f"{v}{attr}" in ret.columns:
+                    ret.loc[mask, f"{v}{attr}"] = np.nan
 
         if ret.iloc[0]["fitness"] == (ret.iloc[0]["aic"] * -1):
             ret["fitness"] = ret["fitness"] * -1

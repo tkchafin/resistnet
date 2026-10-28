@@ -5,6 +5,7 @@ from datetime import datetime
 
 from resistnet.params import parseArgs
 from resistnet.resistance_network import ResistanceNetwork
+from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.model_optimisation import ModelRunnerTPE
 
 
@@ -21,18 +22,34 @@ def main():
     random.seed(params.seed)
 
     # Step 1: Initialise network
-    network = ResistanceNetwork(
-        network=params.network,
-        shapefile=params.shapefile,
-        coords=params.coords,
-        variables=params.variables,
-        agg_opts=params.agg_opts,
-        inmat=params.inmat,
-        reachid_col=params.reachid_col,
-        length_col=params.length_col,
-        out=params.out,
-        verbose=True
-    )
+    if params.samc:
+        network = ResistanceNetworkSAMC(
+            network=params.network,
+            shapefile=params.shapefile,
+            sizes=params.sizes,
+            coords=params.coords,
+            variables=params.variables,
+            agg_opts=params.agg_opts,
+            inmat=params.inmat,
+            reachid_col=params.reachid_col,
+            length_col=params.length_col,
+            infer_origin=params.infer_origin,
+            out=params.out,
+            verbose=True
+        )
+    else:
+        network = ResistanceNetwork(
+            network=params.network,
+            shapefile=params.shapefile,
+            coords=params.coords,
+            variables=params.variables,
+            agg_opts=params.agg_opts,
+            inmat=params.inmat,
+            reachid_col=params.reachid_col,
+            length_col=params.length_col,
+            out=params.out,
+            verbose=True
+        )
 
     # write new output geodatabase
     if params.shapefile:
@@ -63,6 +80,7 @@ def main():
         nFail=params.nfail,
         fixWeight=params.fixWeight,
         fixShape=params.fixShape,
+        fixAsym=params.fixAsym,
         min_weight=params.min_weight,
         max_shape=params.max_shape,
         awsum=params.awsum,

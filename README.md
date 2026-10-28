@@ -79,7 +79,8 @@ usage: runResistnet.py [-h] [-g INMAT] [-s SHAPEFILE] [-c COORDS] [-n NETWORK]
                        [-S NSTART] [-C NCAND] [-G GAMMA]
                        [-f {aic,loglik,r2m,delta}] [--fixWeight] [--fixShape]
                        [--max_shape MAX_SHAPE] [--min_weight MIN_WEIGHT]
-                       [-a AWSUM] [--use_full] [--report_all]
+                       [--samc] [--sizes SIZES] [--infer_origin INFER_ORIGIN]
+                       [--fixAsym] [-a AWSUM] [--use_full] [--report_all]
 
 Optimise resistance networks using Tree-structured Parzen Estimators (TPE)
 
@@ -135,6 +136,18 @@ options:
                         Maximum shape parameter (default: 100)
   --min_weight MIN_WEIGHT
                         Minimum weight parameter (default: 0.0)
+  --samc                Use the spatial absorbing Markov chain (SAMC) model:
+                        conditional first passage times among sites, allowing
+                        directional effects (requires --sizes) (default:
+                        False)
+  --sizes SIZES         SAMC: tsv with columns sample, size (population sizes;
+                        absorption at each site is 1/(2 * size)) (default:
+                        None)
+  --infer_origin INFER_ORIGIN
+                        SAMC: attribute giving the next downstream reach ID
+                        (default: NEXT_DOWN)
+  --fixAsym             SAMC: do not consider directional effects of variables
+                        (default: False)
   -a, --awsum AWSUM     Cumulative Akaike weight threshold (default: 1.0)
   --use_full            Use full rather than natural model averaging (default:
                         False)

@@ -1,135 +1,127 @@
-import warnings
+"""
+Conditional first passage times for spatial absorbing Markov chains (SAMC).
+
+Follows the samc R package (Marx et al. 2020; Fletcher et al. 2019): the
+transient part Q of the transition matrix P = [[Q, R], [0, I]] is built from
+movement weights and absorption, and conditional first passage times are
+computed as in ``samc::cond_passage``.
+"""
 import numpy as np
-from scipy.sparse import diags, SparseEfficiencyWarning
-from scipy.sparse.linalg import spsolve, lgmres
-
-warnings.simplefilter('ignore', SparseEfficiencyWarning)
+import scipy.sparse as sp
+from scipy.sparse.linalg import splu
 
 
-def CFPT(Q, R, edge_site_indices, rtol=1e-5, max_iter=1000,
-         max_fail=1, solver="iterative", ):
-    N = len(edge_site_indices)
+def transition_matrix(W, absorption, fidelity=None):
+    """
+    Builds the transient transition matrix Q of an absorbing Markov chain.
+
+    As in samc, movement probabilities are the row-normalised movement
+    weights, scaled by the probability of neither being absorbed nor staying
+    put: Q = diag(1 - absorption - fidelity) D^-1 W + diag(fidelity), where D
+    holds the row sums of W. Each row of Q then sums to 1 - absorption.
+
+    Args:
+        W (scipy.sparse matrix): Non-negative movement weights (e.g.
+            conductances); W[i, j] > 0 if a move from state i to j is
+            possible. The diagonal is ignored.
+        absorption (array-like): Total absorption probability of each state.
+        fidelity (array-like, optional): Probability of staying in each
+            state for a time step. Defaults to 0.
+
+    Returns:
+        scipy.sparse.csr_matrix: The matrix Q.
+    """
+    W = sp.csr_matrix(W, dtype=float)
+    W.setdiag(0)
+    W.eliminate_zeros()
+    n = W.shape[0]
+    absorption = np.asarray(absorption, dtype=float).ravel()
+    if fidelity is None:
+        fidelity = np.zeros(n)
+    fidelity = np.asarray(fidelity, dtype=float).ravel()
+
+    if W.data.size and W.data.min() < 0:
+        raise ValueError("Movement weights must be non-negative")
+    move = 1.0 - absorption - fidelity
+    if np.any(absorption < 0) or np.any(fidelity < 0) or np.any(move < 0):
+        raise ValueError("Absorption and fidelity must be in [0, 1] and sum "
+                         "to at most 1")
+    row_sums = np.asarray(W.sum(axis=1)).ravel()
+    if np.any((row_sums == 0) & (move > 0)):
+        raise ValueError("Some states have no possible moves")
+
+    scale = np.divide(move, row_sums, out=np.zeros(n), where=row_sums > 0)
+    Q = sp.diags(scale) @ W + sp.diags(fidelity)
+    return Q.tocsr()
+
+
+def cond_passage(Q, dest):
+    """
+    Mean first passage time to a destination state, conditional on reaching
+    it (equivalent to ``samc::cond_passage(samc, dest = dest)``).
+
+    With dest removed from Q, b = (I - Q)^-1 q is the probability of reaching
+    dest from each state (q being the one-step probabilities of moving into
+    dest), and the conditional passage times are t = (I - Q)^-1 b / b.
+
+    States that are very unlikely to reach dest have tiny b, where the LU
+    solves lose relative accuracy; both solves are therefore iteratively
+    refined, which restores full precision since I - Q is an M-matrix.
+
+    Args:
+        Q (scipy.sparse matrix): Transient transition matrix.
+        dest (int): Index of the destination state.
+
+    Returns:
+        numpy.ndarray: Conditional passage time from every state to dest
+        (0 for dest itself).
+    """
+    Q = sp.csr_matrix(Q)
+    n = Q.shape[0]
+    keep = np.arange(n) != dest
+    Qj = Q[keep][:, keep]
+    qj = Q[keep][:, [dest]].toarray().ravel()
+
+    A = sp.csc_matrix(sp.identity(n - 1) - Qj)
+    lu = splu(A)
+    b = _refine(lu, A, qj, lu.solve(qj))
+    t = _refine(lu, A, b, lu.solve(b)) / b
+
+    out = np.zeros(n)
+    out[keep] = t
+    return out
+
+
+def _refine(lu, A, rhs, x, max_steps=10):
+    """
+    Iterative refinement of a solution x of A x = rhs, reusing the LU
+    factorisation, until the correction is negligible relative to each
+    element of x.
+    """
+    for _ in range(max_steps):
+        dx = lu.solve(rhs - A @ x)
+        x = x + dx
+        if np.all(np.abs(dx) <= 1e-15 * np.abs(x)):
+            break
+    return x
+
+
+def CFPT(Q, edge_site_indices):
+    """
+    Pairwise conditional first passage times among a set of states.
+
+    Args:
+        Q (scipy.sparse matrix): Transient transition matrix.
+        edge_site_indices (list): State index of each site.
+
+    Returns:
+        numpy.ndarray: Matrix T where T[i, j] is the conditional passage
+        time from site i to site j (0 on the diagonal).
+    """
+    sites = np.asarray(edge_site_indices)
+    N = len(sites)
     cfpt_matrix = np.zeros((N, N))
-    failure_count = 0
-
-    for i, dest in enumerate(edge_site_indices):
-        Q_temp = Q.copy().tolil()
-        absorption_factor = R[dest]
-
-        # old method that could potentially lead to negative values
-        # for j in range(Q.shape[1]):
-        #     if j != dest:  # Avoid altering the diagonal element
-        #         Q_temp[dest, j] *= (1 - absorption_factor)
-
-        # Proportionally reduce non-destination transitions to adjust for abs
-        non_dest_transitions = [j for j in range(Q.shape[1]) if j != dest]
-        total_non_dest_transition = sum(
-            Q_temp[dest, j] for j in non_dest_transitions)
-        if total_non_dest_transition > 0:  # Avoid division by zero
-            scale_factor = (
-                1 - absorption_factor * Q_temp[dest, dest]
-            ) / total_non_dest_transition
-            for j in non_dest_transitions:
-                Q_temp[dest, j] *= scale_factor
-
-        Q_temp = Q_temp.tocsr()
-
-        # Ensure diagonals make row sums to 1
-        Q_temp = _set_diags(Q_temp)
-
-        for j, orig in enumerate(edge_site_indices):
-            if orig != dest:
-                mask = np.ones(Q.shape[0], dtype=bool)
-                mask[dest] = False
-                Qj = Q_temp[mask, :][:, mask]
-                qj = Q_temp[mask, dest]
-                Qj.data *= -1
-                Qj.setdiag(Qj.diagonal() + 1)
-
-                # lgmres for iterative and sparselu/sparseqr if direct
-                try:
-                    if solver == "iterative":
-                        # trying with pre-conditioning to see if this improves
-                        # the non-convergence issue when Q is asymmetric
-                        # ilu = spilu(Qj.tocsc())
-                        # M_x = LinearOperator(
-                        # Qj.shape, lambda x: ilu.solve(x))
-                        solution, info = lgmres(Qj,
-                                                qj.toarray().flatten(),
-                                                maxiter=max_iter,
-                                                rtol=rtol,
-                                                )  # M=M_x)
-                        if info == 0:
-                            adjusted_index = np.where(mask)[0].tolist().index(
-                                orig)
-                            cfpt_matrix[j, i] = solution[adjusted_index]
-                        else:
-                            raise ValueError(
-                                f"Convergence failed {dest}-{orig}: {info}"
-                            )
-                    elif solver == "direct":
-                        solution = spsolve(Qj, qj.toarray().flatten())
-                        adjusted_index = np.where(mask)[0].tolist().index(orig)
-                        cfpt_matrix[j, i] = solution[adjusted_index]
-                except Exception:
-                    cfpt_matrix[j, i] = np.nan
-                    failure_count += 1
-                    if failure_count >= max_fail:
-                        return None
+    for j, dest in enumerate(sites):
+        cfpt_matrix[:, j] = cond_passage(Q, dest)[sites]
+    np.fill_diagonal(cfpt_matrix, 0.0)
     return cfpt_matrix
-
-
-def _set_diags(sm, offset=None):
-    """
-    Adjusts the diagonal elements of a sparse matrix to ensure that each
-    row sums to 1, optionally incorporating an offset subtraction from each
-    diagonal element.
-
-    This function modifies the input sparse matrix in-place.
-
-    Parameters:
-    - sm (csr_matrix): The sparse matrix whose diagonals are to be adjusted.
-    - offset (numpy.ndarray, optional): An array of values to subtract from
-    each diagonal. If `None`, no offset is subtracted.
-
-    Returns:
-    - None: The matrix `sm` is modified in-place.
-    """
-    row_sums = sm.sum(axis=1).A1
-    d = 1 - row_sums
-    if offset is not None:
-        d -= offset
-    dm = diags(d, 0, shape=sm.shape, format='csr')
-    sm += dm
-    _validate_row_sums(sm)
-    return sm
-
-
-def _validate_row_sums(sm):
-    """
-    Validates that each row of a sparse matrix sums to 1.
-
-    Parameters:
-    - sm (csr_matrix): The sparse matrix to validate.
-
-    Raises:
-    - ValueError: If any row sum does not equal 1.
-    """
-    row_sums_after = sm.sum(axis=1).A1
-    if not np.allclose(row_sums_after, 1):
-        raise ValueError("Row sums do not sum to 1.")
-
-
-def _opt_prep(sm):
-    """
-    Prepares a scipy.sparse matrix for optimization by negating non-zero
-    elements and incrementing diagonal elements by 1, in-place.
-
-    Parameters:
-    - sm (scipy.sparse matrix): The sparse matrix to be modified in-place.
-
-    Returns:
-    - None
-    """
-    sm.data = -sm.data
-    sm.setdiag(sm.diagonal() + 1)

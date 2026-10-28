@@ -70,7 +70,9 @@ class ModelRunner:
         self.min_weight = None
         self.max_shape = None
 
-        self.num_attributes = 4
+        self.num_attributes = getattr(
+            resistance_network, "num_attributes", 4
+        )
 
         random.seed(self.seed)
         np.random.seed(self.seed)
@@ -189,6 +191,8 @@ class ModelRunner:
                     row[var], row[f"{var}_weight"], row[f"{var}_trans"],
                     row[f"{var}_shape"]
                 ])
+                if self.num_attributes == 5:
+                    model_string.append(row[f"{var}_asym"])
             models.append([mod_num, model_string])
             weights[mod_num] = row["akaike_weight"]
             mod_num += 1
@@ -350,7 +354,6 @@ class ModelRunner:
                 'gendist': self.resistance_network._gendist,
                 "fitmetric": self.fitmetric,
                 "fixWeight": self.fixWeight,
-                # "fixAsym": self.fixAsym,
                 "fixShape": self.fixShape,
                 "min_weight": self.min_weight,
                 "max_shape": self.max_shape
@@ -359,10 +362,7 @@ class ModelRunner:
                 worker_args['adj'] = self.resistance_network._adj
                 worker_args['origin'] = self.resistance_network._origin
                 worker_args['R'] = self.resistance_network._R
-                worker_args['rtol'] = self.resistance_network.rtol
-                worker_args['solver'] = self.resistance_network.solver
-                worker_args['max_iter'] = self.resistance_network.max_iter
-                worker_args['max_fail'] = self.resistance_network.max_fail
+                worker_args['fixAsym'] = self.fixAsym
                 worker_args[
                     'allSymmetric'
                     ] = self.resistance_network.allSymmetric
@@ -498,7 +498,8 @@ class ModelRunner:
                         model[
                             index_var * self.num_attributes:index_var *
                             self.num_attributes + self.num_attributes
-                        ] = [1, weight, t, s]
+                        ] = [1, weight, t, s] + [0] * (
+                            self.num_attributes - 4)
                         model_index = f"{var};{t};{s}"
                         self.task_queue.put(('evaluate', model_index, model))
 
@@ -691,6 +692,13 @@ class ModelRunnerTPE(ModelRunner):
                 self.space[f"{var_name}_shape"] = hp.choice(
                     f"{var_name}_shape",
                     [0]
+                )
+
+            # Directional effect (SAMC only)
+            if self.num_attributes == 5:
+                self.space[f"{var_name}_asym"] = hp.choice(
+                    f"{var_name}_asym",
+                    [0] if self.fixAsym else [0, 1]
                 )
 
     def set_tpe_parameters(self, max_evals=100, num_workers=10,
@@ -921,6 +929,8 @@ class ModelRunnerTPE(ModelRunner):
             individual[idx_base + 3] = int(
                 round(model[f"{var_name}_shape"])
                 )
+            if num_attributes == 5:
+                individual[idx_base + 4] = int(model[f"{var_name}_asym"])
         return individual
 
     def process_hall_of_fame(self, trials_list):
@@ -967,6 +977,8 @@ class ModelRunnerTPE(ModelRunner):
                 individual_columns[idx_base + 1] = f"{var_name}_weight"
                 individual_columns[idx_base + 2] = f"{var_name}_trans"
                 individual_columns[idx_base + 3] = f"{var_name}_shape"
+                if num_attributes == 5:
+                    individual_columns[idx_base + 4] = f"{var_name}_asym"
 
             res_columns = ['loglik', 'r2m', 'aic', 'delta_aic_null']
             columns = ['fitness'] + individual_columns + res_columns
