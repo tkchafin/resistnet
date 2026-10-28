@@ -1,5 +1,6 @@
 import itertools
 import os
+import pickle
 import pytest
 import tempfile
 import resistnet
@@ -31,28 +32,28 @@ def fake_spec_file():
 @pytest.fixture
 def network_graph_path():
     base_path = os.path.dirname(resistnet.__file__)
-    file_path = os.path.join(base_path, 'data', 'test.network')
+    file_path = os.path.join(base_path, 'data', 'nmt.network')
     return file_path
 
 
 @pytest.fixture
 def shapefile_path():
     base_path = os.path.dirname(resistnet.__file__)
-    file_path = os.path.join(base_path, 'data', 'test.shp')
+    file_path = os.path.join(base_path, 'data', 'nmt.gpkg')
     return file_path
 
 
 @pytest.fixture
 def coords_path():
     base_path = os.path.dirname(resistnet.__file__)
-    file_path = os.path.join(base_path, 'data', 'test.pointCoords.txt')
+    file_path = os.path.join(base_path, 'data', 'nmt.pointCoords.txt')
     return file_path
 
 
 @pytest.fixture
 def inmat_path():
     base_path = os.path.dirname(resistnet.__file__)
-    file_path = os.path.join(base_path, 'data', 'test.popGenDistMat.txt')
+    file_path = os.path.join(base_path, 'data', 'nmt.popGenDistMat.txt')
     return file_path
 
 
@@ -60,7 +61,7 @@ def inmat_path():
 def sim_resistance_network_params(network_graph_path):
     return {
         "network": network_graph_path,
-        "reachid_col": "EDGE_ID",
+        "reachid_col": "HYRIV_ID",
         "length_col": "LENGTH_KM",
         "verbose": True
     }
@@ -81,7 +82,7 @@ def resistance_network_fixture(
             inmat=inmat_path,
             agg_opts={"run_mm_cyr": "ARITH"},
             pop_agg="ARITH",
-            reachid_col="EDGE_ID",
+            reachid_col="HYRIV_ID",
             length_col="LENGTH_KM",
             out=output_prefix,
             verbose=False
@@ -117,7 +118,7 @@ def test_read_network_with_existing_file(
 
 def test_evaluate_null_model(resistance_network_fixture):
     mock_df = pd.DataFrame({
-        'EDGE_ID': [1, 2, 3],
+        resistance_network_fixture.reachid_col: [1, 2, 3],
         resistance_network_fixture.length_col: [10, 20, 30]
     })
 
@@ -263,10 +264,11 @@ def test_evaluate_penalises_aic(resistance_network_fixture):
 
 
 def _random_coords(network_path, n, seed, path):
-    # Write random network nodes as a coordinates file
+    # Write random network nodes (of its largest connected part) as a
+    # coordinates file
     G = utils.read_pickle_network(network_path)
     rng = np.random.default_rng(seed)
-    nodes = list(G.nodes())
+    nodes = sorted(max(nx.connected_components(G), key=len))
     pick = rng.choice(len(nodes), size=n, replace=False)
     pd.DataFrame({
         "sample": [f"s{i}" for i in range(n)],
@@ -276,22 +278,38 @@ def _random_coords(network_path, n, seed, path):
 
 
 def test_incidence_matches_paths(network_graph_path, tmp_path):
-    # Random sites split the (multi-reach) EDGE_ID segments, so an ID can
-    # be partly on a path; it must be counted if any of its reaches are
+    # Several reaches can share an ID (e.g. the EDGE_ID segments of
+    # autoStreamTree outputs), so an ID can be partly on a path; it must be
+    # counted if any of its reaches are. Here pairs of reaches share an ID.
+    G = utils.read_pickle_network(network_graph_path)
+    reaches = sorted({d["HYRIV_ID"] for _, _, d in G.edges(data=True)})
+    seg = {r: i // 2 for i, r in enumerate(reaches)}
+    nx.set_edge_attributes(G, {(a, b): seg[d["HYRIV_ID"]]
+                               for a, b, d in G.edges(data=True)}, "SEG_ID")
+    network = tmp_path / "shared.network"
+    with open(network, "wb") as fh:
+        pickle.dump(G, fh)
     coords = tmp_path / "coords.txt"
     _random_coords(network_graph_path, 12, 1, coords)
     net = ResistanceNetwork(
-        network=network_graph_path, shapefile=None, coords=str(coords),
+        network=str(network), shapefile=None, coords=str(coords),
         variables=["LENGTH_KM"], inmat=None,
-        agg_opts={"LENGTH_KM": "ARITH"}, reachid_col="EDGE_ID",
+        agg_opts={"LENGTH_KM": "ARITH"}, reachid_col="SEG_ID",
         length_col="LENGTH_KM", out=str(tmp_path / "out"), verbose=False)
     edge_to_index = {e: i for i, e in enumerate(net._edge_order)}
     nodes = list(net._points_snapped.keys())
     expected = np.zeros_like(net._inc)
+    partly = 0
     for row, (i, j) in enumerate(itertools.combinations(range(len(nodes)), 2)):
         path = nx.shortest_path(net._K, nodes[i], nodes[j])
-        for a, b in zip(path, path[1:]):
-            expected[row, edge_to_index[net._K[a][b]["EDGE_ID"]]] = 1
+        on = {net._K[a][b]["SEG_ID"] for a, b in zip(path, path[1:])}
+        for s in on:
+            expected[row, edge_to_index[s]] = 1
+        # IDs with a reach on the path and another one off it
+        partly += sum(
+            1 for a, b, d in net._K.edges(data=True)
+            if d["SEG_ID"] in on and not utils.find_pair(path, a, b))
+    assert partly > 0
     assert np.array_equal(net._inc, expected)
 
 
@@ -307,7 +325,7 @@ def test_snap_points_merges_samples(
     net = ResistanceNetwork(
         network=network_graph_path, shapefile=None, coords=str(coords),
         variables=["LENGTH_KM"], inmat=None,
-        agg_opts={"LENGTH_KM": "ARITH"}, reachid_col="EDGE_ID",
+        agg_opts={"LENGTH_KM": "ARITH"}, reachid_col="HYRIV_ID",
         length_col="LENGTH_KM", out=str(tmp_path / "out"), verbose=False)
     names = [n for v in net._points_names.values() for n in v]
     assert sorted(names) == sorted(list(pts["sample"]) + ["extra"])
@@ -338,7 +356,7 @@ def test_simulate_matches_fitted_model(
         network=network_graph_path, shapefile=None,
         coords=f"{out}_1.coords", variables=list(spec["VAR"]), inmat=None,
         agg_opts=dict(zip(spec["VAR"], spec["AGG"])),
-        reachid_col="EDGE_ID", length_col="LENGTH_KM",
+        reachid_col="HYRIV_ID", length_col="LENGTH_KM",
         out=str(tmp_path / "fit"), verbose=False)
     model = []
     for _, s in spec.set_index("VAR").loc[net._predictors.columns].iterrows():
@@ -408,3 +426,28 @@ def test_simulate_with_different_parameters(
             expected_shape = (num_samples, num_samples)
             assert df.shape == expected_shape, \
                 f"{resistance_matrix_file} should have shape {expected_shape}"
+
+
+def test_simulate_samples_connected_part(
+        sim_resistance_network_params, network_graph_path, tmp_path):
+    # nmt.network has several unconnected parts (other reaches in the
+    # layer): samples come from the largest, so every pair has a path
+    G = utils.read_pickle_network(network_graph_path)
+    parts = list(nx.connected_components(G))
+    assert len(parts) > 1
+    largest = max(parts, key=len)
+    spec = tmp_path / "spec.tsv"
+    pd.DataFrame({"VAR": ["LENGTH_KM"], "WEIGHT": [1.0], "TRANSFORM": [0],
+                  "SHAPE": [0]}).to_csv(spec, sep="\t", index=False)
+    sim = SimResistanceNetwork(**sim_resistance_network_params, seed=3)
+    sim.simulate(str(spec), 3, 10, str(tmp_path / "sim"))
+    nodes = np.array(list(G.nodes()))
+    in_largest = np.array([tuple(n) in largest for n in map(tuple, nodes)])
+    for r in range(1, 4):
+        pts = pd.read_csv(tmp_path / f"sim_{r}.coords", sep="\t")
+        assert len(pts) == 10
+        # Each written point is a network node (to the precision written)
+        for lat, lon in zip(pts["lat"], pts["long"]):
+            d = np.hypot(nodes[:, 0] - lon, nodes[:, 1] - lat)
+            assert d.min() < 1e-9
+            assert in_largest[np.argmin(d)]

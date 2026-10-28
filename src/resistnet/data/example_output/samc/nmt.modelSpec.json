@@ -1,0 +1,106 @@
+{
+ "format": "resistnet model specification",
+ "version": 1,
+ "reachid_col": "HYRIV_ID",
+ "length_col": "LENGTH_KM",
+ "models": [
+  {
+   "type": "samc",
+   "variables": {
+    "sgr_dk_rav": {
+     "min": 0.0,
+     "max": 67.0,
+     "transform": 7,
+     "shape": 72.0,
+     "tmin": 1.0,
+     "tmax": 1.1296752741666096,
+     "weight": 0.6362158555335562,
+     "asym": 0,
+     "link_min": 0.37421084803295757,
+     "link_max": 1.0
+    }
+   },
+   "composite_min": 0.0,
+   "composite_max": 0.6362158555335562,
+   "max_resistance": 435.38190010495936,
+   "flow": -0.22154645990513835,
+   "rank": 1,
+   "aic": -474.6171612781038,
+   "akaike_weight": 0.9999999997238938
+  },
+  {
+   "type": "samc",
+   "variables": {
+    "sgr_dk_rav": {
+     "min": 0.0,
+     "max": 67.0,
+     "transform": 0,
+     "shape": 0.0,
+     "tmin": 0.0,
+     "tmax": 10.0,
+     "weight": 0.7031907430878854,
+     "asym": 1,
+     "link_min": -0.8656716417910448,
+     "link_max": 0.8656716417910448,
+     "higher_harder": 1.0
+    }
+   },
+   "composite_min": 0.0,
+   "composite_max": 0.7031907430878854,
+   "max_resistance": 1.179583527217526,
+   "flow": -0.17834835442065616,
+   "rank": 2,
+   "aic": -429.20998352649303,
+   "akaike_weight": 1.380246427471719e-10
+  },
+  {
+   "type": "samc",
+   "variables": {
+    "dor_pc_pva": {
+     "min": 0.0,
+     "max": 600.0,
+     "transform": 8,
+     "shape": 85.0,
+     "tmin": 1.0,
+     "tmax": 1.1109902345972245,
+     "weight": 0.9933477933946226,
+     "asym": 1,
+     "link_min": -0.7657697918346608,
+     "link_max": 0.7657697918346608,
+     "higher_harder": 1.0
+    }
+   },
+   "composite_min": 0.0,
+   "composite_max": 0.9933477933946226,
+   "max_resistance": 10.693864210020479,
+   "flow": -0.15607483564001928,
+   "rank": 3,
+   "aic": -429.16135721038864,
+   "akaike_weight": 1.3470929440223427e-10
+  },
+  {
+   "type": "samc",
+   "variables": {
+    "dor_pc_pva": {
+     "min": 0.0,
+     "max": 600.0,
+     "transform": 4,
+     "shape": 77.0,
+     "tmin": -9.782094766936227,
+     "tmax": -1.0,
+     "weight": 0.24545587887834536,
+     "asym": 0,
+     "link_min": 0.0,
+     "link_max": 0.9933677535981635
+    }
+   },
+   "composite_min": 0.0,
+   "composite_max": 0.24545587887834536,
+   "max_resistance": 493.4098869167727,
+   "flow": 0.0,
+   "rank": 4,
+   "aic": -421.78622015675717,
+   "akaike_weight": 3.372150107379791e-12
+  }
+ ]
+}

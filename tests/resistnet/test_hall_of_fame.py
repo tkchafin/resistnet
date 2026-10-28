@@ -31,8 +31,8 @@ def create_fake_population(num_models, num_variables):
 def hall_of_fame_df_fixture():
     base_path = os.path.dirname(resistnet.__file__)
     file_path = os.path.join(
-        base_path, 'data', 'test_ensemble', 'replicates',
-        'test_18.out.HallOfFame.tsv'
+        base_path, 'data', 'nmt_ensemble', 'replicates',
+        'nmt_1.HallOfFame.tsv'
     )
 
     # Read the TSV file into a DataFrame

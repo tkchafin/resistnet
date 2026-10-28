@@ -12,22 +12,25 @@ from resistnet.model_optimisation import ModelRunnerTPE
 
 VARIABLES = ["run_mm_cyr", "tmp_dc_cyr", "dor_pc_pva", "sgr_dk_rav"]
 
-# 50-digit reference (sparse Gaussian elimination in decimal arithmetic) for
-# the conditional passage times from each site to site 8, with movement
-# weights from directional run_mm_cyr under the original (unbounded)
-# resistance-to-conductance mapping; without iterative refinement, the LU
-# solves were off by up to 0.5%
-REF_RUN_DIR_TO_SITE8 = [
-    4534.0497886998983, 4569.7948874062749, 4326.7003348945245,
-    4118.7409360978836, 223.04489990490589, 180.64915345825153,
-    117.7144752311454, 116.7144752311454, 0, 5350.7190134376415,
-    6623.433419843991, 8000.5798515747247, 8224.3039948091573,
-    8225.3039948091573, 9841.268509534475, 9498.6176551993849,
-    9326.1171236755144, 8978.5337755095006, 8622.6503261687012,
-    9264.5376148914402, 9259.6817896965149, 9230.3474544090604,
-    9812.5401301094553, 8954.6404006587454, 8802.7583717583202,
-    10007.857571594417, 9110.3217981500547, 8670.5813075881852,
-    8377.8908993257264, 8340.6091647085377
+# 60-digit references (dense Gaussian elimination in decimal arithmetic; see
+# test_CFPT._decimal_cond_passage) for the conditional passage times from
+# each site to one site, with movement weights from a directional variable
+# under the original (unbounded) resistance-to-conductance mapping. Plain
+# sparse LU solves were off by up to 230% (runoff, to site 9) and by a
+# factor of 1e31 (temperature, to site 5)
+REF_RUN_DIR_TO_SITE9 = [
+    588.3286525909401, 561.3091226587889, 574.4379504133846,
+    421.97731350087105, 147.18458100692195, 145.93435543276166,
+    141.13975585634714, 106.32495420995706, 71.70723308275628, 0.0,
+    24.697134857097442, 25343.82141073529, 25787.654863361222,
+    25826.699635403125
+]
+REF_TMP_DIR_TO_SITE5 = [
+    4.323455642275723e+16, 4.323455642275683e+16, 665.7155102214871,
+    63.71551022151208, 53.75531121651189, 0.0, 64.48942420989053,
+    4.323455642275689e+16, 4.3234556422756904e+16, 1.6225927682921414e+31,
+    1.6225927682921414e+31, 1.6225927682921414e+31, 1.6225927682921432e+31,
+    1.6225927682921468e+31
 ]
 
 
@@ -44,28 +47,53 @@ def samc_net(tmp_path_factory):
     out = tmp_path_factory.mktemp("samc")
     data = os.path.join(os.path.dirname(resistnet.__file__), "data")
     return ResistanceNetworkSAMC(
-        network=None, shapefile=os.path.join(data, "test.shp"),
-        sizes=os.path.join(data, "test.popSizes.txt"),
-        coords=os.path.join(data, "test.pointCoords.txt"),
+        network=None, shapefile=os.path.join(data, "nmt.gpkg"),
+        sizes=os.path.join(data, "nmt.popSizes.txt"),
+        coords=os.path.join(data, "nmt.pointCoords.txt"),
         variables=VARIABLES,
-        inmat=os.path.join(data, "test.popGenDistMat.txt"),
+        inmat=os.path.join(data, "nmt.popGenDistMat.txt"),
         agg_opts={v: "ARITH" for v in VARIABLES},
         out=str(out / "samc"), verbose=False
     )
 
 
-def test_outlet_reaches_linked(samc_net):
-    # test.shp is clipped at the outlet, so the reaches meeting there are
-    # linked directly; otherwise the network splits in two
+def test_outlet_reaches_linked(samc_net, tmp_path):
+    # In nmt.gpkg, the network's lowest reach drains into a reach of the
+    # layer, which becomes the single root reach
     n_comp, _ = sp.csgraph.connected_components(samc_net._adj,
                                                 directed=False)
     assert n_comp == 1
-    idx = {e: i for i, e in enumerate(samc_net._edge_order)}
-    root = [idx[d[samc_net.reachid_col]] for _, _, d in
+    root = [d[samc_net.reachid_col] for _, _, d in
             samc_net._K.in_edges(samc_net._origin, data=True)]
-    assert len(root) == 2
-    assert samc_net._adj[root[0], root[1]] == -1
-    assert samc_net._adj[root[1], root[0]] == -1
+    assert root == [70648532]
+
+    # Clipped at that reach, two reaches meet at the outlet: they are linked
+    # directly, otherwise the network splits in two
+    import geopandas as gpd
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    reaches = gpd.read_file(os.path.join(data, "nmt.gpkg"))
+    below = dict(zip(reaches["HYRIV_ID"], reaches["NEXT_DOWN"]))
+    drop = [70648532]
+    while below[drop[-1]] in below:
+        drop.append(below[drop[-1]])
+    clipped = str(tmp_path / "clipped.gpkg")
+    reaches[~reaches["HYRIV_ID"].isin(drop)].to_file(clipped, driver="GPKG")
+    net = ResistanceNetworkSAMC(
+        network=None, shapefile=clipped, sizes=None,
+        coords=os.path.join(data, "nmt.pointCoords.txt"),
+        variables=VARIABLES[:1],
+        inmat=os.path.join(data, "nmt.popGenDistMat.txt"),
+        agg_opts={VARIABLES[0]: "ARITH"}, out=str(tmp_path / "clipped"),
+        verbose=False)
+    n_comp, _ = sp.csgraph.connected_components(net._adj, directed=False)
+    assert n_comp == 1
+    assert len(net._edge_site_indices) == 14
+    idx = {e: i for i, e in enumerate(net._edge_order)}
+    root = sorted(idx[d[net.reachid_col]] for _, _, d in
+                  net._K.in_edges(net._origin, data=True))
+    assert sorted(net._edge_order[i] for i in root) == [70648307, 70648308]
+    assert net._adj[root[0], root[1]] == -1
+    assert net._adj[root[1], root[0]] == -1
 
 
 def test_composite_surface_order_independent(samc_net):
@@ -98,16 +126,19 @@ def test_directional_orientation(samc_net):
     assert np.mean(w_ij[up] < w_ji[up]) > 0.9
 
 
-def test_cfpt_precision(samc_net):
+@pytest.mark.parametrize("var,site,ref", [
+    ("run_mm_cyr", 9, REF_RUN_DIR_TO_SITE9),
+    ("tmp_dc_cyr", 5, REF_TMP_DIR_TO_SITE5)])
+def test_cfpt_precision(samc_net, var, site, ref):
     from resistnet.CFPT import CFPT, transition_matrix
     from resistnet.utils import minmax, minmax_nonzero
-    v = samc_net._predictors["run_mm_cyr"].to_numpy(dtype=float)
+    v = samc_net._predictors[var].to_numpy(dtype=float)
     v = (v - v.min()) / (v.max() - v.min())
     rows, cols = samc_net._adj.nonzero()
     w = minmax_nonzero(1 / minmax_nonzero(minmax(v[cols] - v[rows])))
     W = sp.csr_matrix((w, (rows, cols)), shape=samc_net._adj.shape)
     T = CFPT(transition_matrix(W, samc_net._R), samc_net._edge_site_indices)
-    np.testing.assert_allclose(T[:, 8], REF_RUN_DIR_TO_SITE8, rtol=1e-10)
+    np.testing.assert_allclose(T[:, site], ref, rtol=1e-10)
 
 
 def test_resistance_mapping(samc_net):
@@ -119,7 +150,11 @@ def test_resistance_mapping(samc_net):
                 model({var: (1.0, 0, 1, 0)}) + [k])
             assert W.data.max() == pytest.approx(1.0)
             assert W.data.max() / W.data.min() == pytest.approx(k)
-    W = samc_net._build_composite_surface(
+    two = copy.copy(samc_net)
+    two._predictors = samc_net._predictors.copy()
+    dor = two._predictors["dor_pc_pva"]
+    two._predictors["dor_pc_pva"] = np.where(dor > dor.median(), 10.0, 0.0)
+    W = two._build_composite_surface(
         model({"dor_pc_pva": (1.0, 0, 1, 0)}) + [100.0])
     assert len(np.unique(W.data)) == 3   # mean of two levels: 0, 0.5, 1
     # Without a maximum resistance in the model, the default is used
@@ -230,8 +265,8 @@ def test_extend_confluence_orientation(stored):
 def test_uniform_ne(tmp_path):
     data = os.path.join(os.path.dirname(resistnet.__file__), "data")
     net = ResistanceNetworkSAMC(
-        network=None, shapefile=os.path.join(data, "test.shp"), sizes=None,
-        coords=os.path.join(data, "test.pointCoords.txt"),
+        network=None, shapefile=os.path.join(data, "nmt.gpkg"), sizes=None,
+        coords=os.path.join(data, "nmt.pointCoords.txt"),
         variables=VARIABLES[:1], inmat=None,
         agg_opts={VARIABLES[0]: "ARITH"}, out=str(tmp_path / "ne"),
         verbose=False, ne=50
@@ -270,10 +305,23 @@ def test_upstream_changes(samc_net):
     assert list(table.index) == VARIABLES
     shares = table[["rises", "no_change", "falls"]].astype(float)
     np.testing.assert_allclose(shares.sum(axis=1), 1)
-    # 629 upstream moves (the link between the outlet reaches is neither)
-    assert (table["steps"] == 629).all()
-    # dor_pc_pva (degree of regulation) is the same on almost every step
-    assert shares.loc["dor_pc_pva", "no_change"] > 0.95
+    # Each upstream step goes from a reach's downstream reach to the reach
+    # (NEXT_DOWN in the reach layer); the root reach has no downstream
+    # reach in the network
+    import geopandas as gpd
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    reaches = gpd.read_file(os.path.join(data, "nmt.gpkg")).set_index(
+        "HYRIV_ID").loc[list(samc_net._edge_order)]
+    linked = reaches["NEXT_DOWN"].isin(reaches.index)
+    assert (table["steps"] == linked.sum()).all()
+    assert linked.sum() == len(samc_net._edge_order) - 1
+    for v in VARIABLES:
+        change = (reaches.loc[linked, v].to_numpy()
+                  - reaches.loc[reaches.loc[linked, "NEXT_DOWN"], v]
+                  .to_numpy())
+        np.testing.assert_allclose(
+            shares.loc[v], [np.mean(change > 0), np.mean(change == 0),
+                            np.mean(change < 0)])
     prefix = samc_net.output_prefix
     assert os.path.exists(f"{prefix}.upstreamChanges.pdf")
     written = pd.read_csv(f"{prefix}.upstreamChanges.tsv", sep="\t",
@@ -329,10 +377,9 @@ def test_model_spec_reproduces_weights(samc_net, t, s):
 
 
 def test_predict_reach_layer(samc_net, tmp_path):
-    # From the HydroRIVERS layer itself (each state is one reach), the
-    # predicted weights are those of the fitted model, for every move
-    # except between the two reaches at the clipped outlet (not linked in
-    # the layer)
+    # From the HydroRIVERS layer itself (each state is one reach), for the
+    # reaches of the fitted network, the predicted weights are those of the
+    # fitted model for every move
     import geopandas as gpd
     import json
     import subprocess
@@ -343,14 +390,17 @@ def test_predict_reach_layer(samc_net, tmp_path):
     spec = {"reachid_col": "HYRIV_ID", "length_col": "LENGTH_KM",
             "models": [samc_net.model_spec(ind)]}
     data = os.path.join(os.path.dirname(resistnet.__file__), "data")
-    reaches = gpd.read_file(os.path.join(data, "test.shp"))
+    reaches = gpd.read_file(os.path.join(data, "nmt.gpkg"))
+    reaches = reaches[reaches["HYRIV_ID"].isin(samc_net._edge_order)]
+    layer = str(tmp_path / "reaches.gpkg")
+    reaches.to_file(layer, driver="GPKG")
     table, moves, clamped = pr.predict_reaches(reaches, spec)
     assert all(v == 0 for v in clamped.values())
     W = samc_net._build_composite_surface(ind).tocsr()
     idx = {e: i for i, e in enumerate(samc_net._edge_order)}
     a = np.array([idx[e] for e in moves["from"]])
     b = np.array([idx[e] for e in moves["to"]])
-    assert len(moves) == 2 * 629
+    assert len(moves) == 2 * (len(samc_net._edge_order) - 1)
     np.testing.assert_allclose(moves["weight"], np.asarray(W[a, b]).ravel(),
                                rtol=1e-12)
     # The command-line script writes the same values
@@ -359,9 +409,8 @@ def test_predict_reach_layer(samc_net, tmp_path):
     script = os.path.join(os.path.dirname(__file__), "..", "..", "scripts",
                           "predictResistnet.py")
     out = str(tmp_path / "pred")
-    p = subprocess.run([sys.executable, script, "-s",
-                        os.path.join(data, "test.shp"), "-m", str(path),
-                        "-o", out], capture_output=True, text=True)
+    p = subprocess.run([sys.executable, script, "-s", layer, "-m",
+                        str(path), "-o", out], capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
     written = pd.read_csv(f"{out}.predicted.tsv", sep="\t")
     np.testing.assert_allclose(written["p_downstream"],
@@ -384,23 +433,30 @@ def test_predict_clamps_to_training_range(samc_net):
 
 def test_flow_positions(samc_net):
     # Differences between adjacent reaches are the distance moved upstream
-    # between midpoints: the change in DIST_DN_KM + LENGTH_KM / 2 (which
-    # HydroRIVERS stores to 0.1 km)
+    # between midpoints: half of each reach's length (LENGTH_KM)
     eid = samc_net.reachid_col
-    att = {d[eid]: (d["DIST_DN_KM"], d["LENGTH_KM"])
+    att = {d[eid]: (d["DIST_DN_KM"], d["LENGTH_KM"], d["NEXT_DOWN"])
            for _, _, d in samc_net._K.edges(data=True)}
-    dd, L = np.array([att[e] for e in samc_net._edge_order]).T
-    mid = dd + L / 2
+    dd, L, nd = np.array([att[e] for e in samc_net._edge_order]).T
     rows, cols = samc_net._adj.nonzero()
     pos = samc_net._flow_pos
+    order = list(samc_net._edge_order)
+    down = np.array([order[c] == nd[r] for r, c in zip(rows, cols)])
+    up = np.array([order[r] == nd[c] for r, c in zip(rows, cols)])
+    assert np.all(down | up)
+    step = (L[rows] + L[cols]) / 2
+    np.testing.assert_allclose(pos[cols] - pos[rows],
+                               np.where(up, step, -step), atol=1e-9)
+    # That is the change in DIST_DN_KM + LENGTH_KM / 2, up to HydroRIVERS'
+    # own rounding: DIST_DN_KM differs from the next reach's DIST_DN_KM +
+    # LENGTH_KM by up to 0.32 km in nmt.gpkg
+    below = {e: i for i, e in enumerate(order)}
+    gap = max(abs(dd[i] - dd[below[nd[i]]] - L[below[nd[i]]])
+              for i in range(len(order)) if nd[i] in below)
+    assert gap < 0.5
+    mid = dd + L / 2
     np.testing.assert_allclose(pos[cols] - pos[rows], mid[cols] - mid[rows],
-                               atol=0.3)
-    # Upstream moves (adjacency -1, except between the outlet reaches) are
-    # positive
-    sign = np.asarray(samc_net._adj[rows, cols]).ravel()
-    root = (sign == -1) & (np.asarray(samc_net._adj[cols, rows]).ravel() == -1)
-    assert np.all(pos[cols][(sign == -1) & ~root]
-                  > pos[rows][(sign == -1) & ~root])
+                               atol=gap + 1e-9)
 
 
 def test_flow_term(samc_net):

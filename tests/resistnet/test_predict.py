@@ -18,11 +18,11 @@ VARIABLES = ["run_mm_cyr", "tmp_dc_cyr", "sgr_dk_rav"]
 def net(tmp_path_factory):
     out = tmp_path_factory.mktemp("predict")
     return ResistanceNetwork(
-        network=os.path.join(DATA, "test.network"), shapefile=None,
-        coords=os.path.join(DATA, "test.pointCoords.txt"),
+        network=os.path.join(DATA, "nmt.network"), shapefile=None,
+        coords=os.path.join(DATA, "nmt.pointCoords.txt"),
         variables=VARIABLES,
-        inmat=os.path.join(DATA, "test.popGenDistMat.txt"),
-        agg_opts={v: "ARITH" for v in VARIABLES}, reachid_col="EDGE_ID",
+        inmat=os.path.join(DATA, "nmt.popGenDistMat.txt"),
+        agg_opts={v: "ARITH" for v in VARIABLES}, reachid_col="HYRIV_ID",
         out=str(out / "net"), verbose=False)
 
 
@@ -64,11 +64,12 @@ def test_spec_file_and_reach_prediction(net, tmp_path):
     runner.run_tpe(max_evals=3, threads=1, reps=2, max_shape=10,
                    n_startup=2, out=out, verbose=False, plot=False)
     spec = pr.load_spec(f"{out}.modelSpec.json")
-    assert spec["reachid_col"] == "EDGE_ID"
+    assert spec["reachid_col"] == "HYRIV_ID"
     best = spec["models"][0]
     assert best["rank"] == 1
     raw = raw_values(net)
-    reaches = raw.reset_index().rename(columns={"index": "EDGE_ID"})
+    reaches = raw.copy()
+    reaches.insert(0, "HYRIV_ID", raw.index.to_numpy())
     table, moves, clamped = pr.predict_reaches(reaches, spec)
     assert moves is None
     assert all(v == 0 for v in clamped.values())

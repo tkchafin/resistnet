@@ -177,14 +177,14 @@ The use of these options are described below.
 
 #### Coordinates 
 
-Coordinates for your populations or individuals should be provided as a tab-delimited table, using the `-c/ --coords` argument. An example can be found in `src/resistnet/data/test.pointCoords.txt`:
+Coordinates for your populations or individuals should be provided as a tab-delimited table, using the `-c/ --coords` argument. An example can be found in `src/resistnet/data/nmt.pointCoords.txt`:
 ```
 sample  lat     long
-burk    26.927083333332924      90.39374999999947
-cdikc   27.264583333332887      90.03958333333279
-dakp    27.14791666666624       90.68958333333276
-digl    26.893749999999564      91.75208333333276
-dikc    26.881249999999547      90.26874999999947
+CCFE    38.37291666666618       -96.49375000000065
+CCOT    38.38541666666615       -96.54791666666732
+CESG    38.38124999999949       -96.164583333334
+NAME    38.51041666666617       -96.30625000000067
+NDUN    38.54374999999947       -96.34375000000068
 ...
 ...
 ```
@@ -195,17 +195,17 @@ The columns required are "sample", "lat", and "long", any other present columns 
 
 The input genetic distance matrix, supplied via the `-g/ --inmat` argument, should be a tab-delimited file with both column and row names, matching the samples provided in the coordinates file. 
 
-The example dataset comes with an input genetic distance matrix for reference, at `src/resistnet/data/test.popGenDistMat.txt`:
+The example dataset comes with an input genetic distance matrix (pairwise F<sub>ST</sub>) for reference, at `src/resistnet/data/nmt.popGenDistMat.txt`:
 
 ```
-        burk    cdikc   dakp    digl    ...
-burk    0.0     0.6913154781112187      0.6943568032698719      0.6975921469002094      ... 
-cdikc   0.6913154781112187      0.0     0.6004024031774708      0.6024853508009713      ... 
-... 
+        CCFE    CCOT    CESG    NAME    ...
+CCFE    0.0     0.0014810310908608246   0.003732503096185423    0.08594431960837771     ...
+CCOT    0.0014810310908608246   0.0     0.01246638067858499     0.07910155319806403     ...
+...
 ...
 ```
 
-There are a number of packages available to generate this pairwise distance matrix. For convenience, all files necessary to analyse the example dataset in [`autoStreamTree`](https://github.com/tkchafin/autostreamtree) are also included in the `data/` directory. 
+There are a number of packages available to generate this pairwise distance matrix; the example's was produced with [`autoStreamTree`](https://github.com/tkchafin/autostreamtree). 
 
 #### Geodatabase
 
@@ -220,9 +220,9 @@ Note that a valid path is required between all sites. Thus, if you are analyzing
 
 After parsing all of the inputs, `ResistNet` runs `-r,--reps` independent TPE chains. In each iteration, every chain proposes one model parameterization (which variables are included, and their weights, transformations, and shapes), and these are evaluated in parallel by `-t,--procs` worker processes. Each model is fitted to the genetic distances with a maximum-likelihood population effects (MLPE) mixed model (Clarke et al. 2002, as implemented in [ResistanceGA](https://github.com/wpeterman/ResistanceGA)), and scored using the fitness metric chosen with `-f,--fitmetric` (by default AIC). The first `-S,--nstart` models in each chain are random; after that, TPE uses the previous evaluations to propose new models. After each iteration, the best result so far across all chains is printed to the terminal (stdout), as a loss to be minimised (for the default `-f aic` this is the AIC itself; for the other metrics it is their negative):
 ```
-Building network from shapefile: /Users/tyler/projects/resistnet/src/resistnet/data/test.shp
+Building network from shapefile: ./src/resistnet/data/nmt.gpkg
 WARNING: This can take a while with very large files!
-Read 37 points.
+Read 14 points.
 
 
 Extracting full subgraph...
@@ -235,8 +235,10 @@ Starting worker 1 with seed 1235
 Starting worker 2 with seed 1236
 Starting worker 3 with seed 1237
 
-Iteration 1, Current Best: -195.72118872719113
-Iteration 2, Current Best: -200.6166879746323
+Iteration 1, Current Best: -413.5600103444041
+Iteration 2, Current Best: -413.5600103444041
+Iteration 3, Current Best: -417.71404073252813
+Iteration 4, Current Best: -428.87072255720176
 ...
 ...
 ```
@@ -244,11 +246,11 @@ The optimisation stops after `-i,--max_iter` iterations, or earlier if the best 
 ```
 ...
 ...
-Iteration 50, Current Best: -204.03180307252435
-Chain 1: Best = -204.03180307252435
-Chain 2: Best = -203.60641580663247
-Chain 3: Best = -200.6447098270069
-Chain 4: Best = -203.4931430990202
+Iteration 50, Current Best: -442.84732501065855
+Chain 1: Best = -424.91719019642926
+Chain 2: Best = -442.84732501065855
+Chain 3: Best = -441.05844821446124
+Chain 4: Best = -430.4249254464558
 ...
 ...
 ```
@@ -281,7 +283,7 @@ The best model from each chain is retained in the Hall of Fame, which is used fo
 | output.univariateFitness.tsv/.pdf            | Fitness of each transformation and shape for each variable (only with `--gridSearch`)                                           |
 | output.fixedParams.tsv                       | Fixed transformations and shapes used during optimisation (only with `--gridSearch` or `--transFile`)                           |
 
-A full set of example outputs can be seen in `src/resistnet/data/example_output`. If using the `--report_all` option, these plots will also be produced for every one of the "kept" models from the Hall of Fame, with naming as `$out.Model-#.PairwiseRegplot.pdf` (etc), where "#" is the row number from the `HallofFame.tsv` table (with 0-based indexing; i.e. 0="best" model; 1=second-best, and so on).
+A full set of example outputs, from the commands in the [Example Dataset](#example) section, can be seen in `src/resistnet/data/example_output` (`resistance/` for the standard model, `samc/` for the SAMC model). If using the `--report_all` option, these plots will also be produced for every one of the "kept" models from the Hall of Fame, with naming as `$out.Model-#.PairwiseRegplot.pdf` (etc), where "#" is the row number from the `HallofFame.tsv` table (with 0-based indexing; i.e. 0="best" model; 1=second-best, and so on).
 
 
 #### $out.HallOfFame.tsv 
@@ -289,8 +291,8 @@ A full set of example outputs can be seen in `src/resistnet/data/example_output`
 The output table `$out.HallOfFame.tsv` contains textual representations of the retained models for a run, with a format like:
 
 ```
-fitness run_mm_cyr      run_mm_cyr_weight       run_mm_cyr_trans        run_mm_cyr_shape ... akaike_weight   acc_akaike_weight       keep
--204.03180307252435     1       0.5723350842617511      7.0     5.0     ... 0.36282348471442094     0.36282348471442094     True
+fitness run_mm_cyr      run_mm_cyr_weight       ... dor_pc_pva      dor_pc_pva_weight       dor_pc_pva_trans        dor_pc_pva_shape ... akaike_weight   acc_akaike_weight       keep
+-442.84732501065855     0       -       ... 1       0.7491172265576264      3.0     13.0    ... 0.7087314049115988      0.7087314049115988      True
 ```
 
 The table contains the best model from each of the `-r,--reps` TPE chains. Some of these columns are self-explanatory (i.e., "fitness" is the model fitness, which with the default `-f aic` is the AIC). Other summary metrics included are the Akaike weights, change in AIC relative to the null and "best" models, as well as the other fitness metrics (marginal R^2, log-likelihoods). As in ResistanceGA, the AIC counts both the parameters of the MLPE model (intercept, slope, and two variance components) and the resistance surface parameters: a transformation and shape for each included variable, and their weights. Because the composite resistance surface is rescaled, only relative weights matter, so a model with m included variables has m - 1 weight parameters. Parameters fixed with `--fixWeight` or `--fixShape` are not counted. The marginal R^2 is computed as in `MuMIn::r.squaredGLMM` (as used by ResistanceGA). Other values in the table include whether or not a variable is included in a model ($var, where $var is the variable name), specified as either "1" (=included) or "0" (=excluded), and the transformation type (=$var_trans), transformation shape parameter (=$var_shape), and weight of the parameter when calculating the composite resistance edges (=$var_weight). For the transformation column, the types of transformations are as follows: 0=Not transformed; 1=Ricker; 2=Reverse Ricker; 3=Inverse Ricker; 4=Reverse-Inverse Ricker (the inverse Ricker of the reversed values, as in ResistanceGA; previously this duplicated the Ricker); 5=Monomolecular; 6=Reverse Monomolecular; 7=Inverse Monomolecular; 8=Reverse-Inverse Monomolecular. In all cases, the larger the shape value, the closer each transformation gets to being linear (=essentially no transformation).
@@ -302,39 +304,43 @@ Other outputs that will typically be of interest are the `modAvgWeights.tsv` and
 ```
 # RVI
 variable        RVI
-run_mm_cyr      0.9332890021100864
-tmp_dc_cyr      0.06671099788991361
-dor_pc_pva      0.0
-sgr_dk_rav      0.0
+dor_pc_pva      0.9984871240312191
+sgr_dk_rav      0.2912685950884012
+ele_mt_cav      0.29117802133349746
+run_mm_cyr      0.001422302213877187
+tmp_dc_cyr      0.0
 
 # MAW
 variable        MAW
-run_mm_cyr      0.5203998480479153
-tmp_dc_cyr      0.29394613663539537
-dor_pc_pva      -
-sgr_dk_rav      -
+dor_pc_pva      0.7960323586886692
+sgr_dk_rav      0.713724351623793
+run_mm_cyr      0.48179296005639893
+ele_mt_cav      0.1737156071057695
+tmp_dc_cyr      -
 ```
 
-Note that relative importances only compare the retained resistance models with each other, so some variable will always appear important. To judge whether the landscape variables explain genetic distances at all, compare the AIC of the best model with that of the distance-only model in `$out.Null-Model.tsv`; the Hall of Fame gives this difference for each model as `delta_aic_distance` (positive = the model fits better than distance alone). In this example the distance-only model (AIC -204.27) fits about as well as the best resistance model (AIC -204.03), so there is no evidence here that the covariates add anything beyond stream distance:
+Note that relative importances only compare the retained resistance models with each other, so some variable will always appear important. To judge whether the landscape variables explain genetic distances at all, compare the AIC of the best model with that of the distance-only model in `$out.Null-Model.tsv`; the Hall of Fame gives this difference for each model as `delta_aic_distance` (positive = the model fits better than distance alone). In this example the best model (degree of regulation, `dor_pc_pva`, i.e. the effect of dams on flow; AIC -442.85) fits much better than distance alone (AIC -418.98), a difference of 23.9:
 
 ```
                 loglik                  aic                     r2m                     delta_aic_null
-distance_only   106.13569611097171      -204.27139222194342     0.035739300700537435    17.250247310349266
-null            96.51057245579707       -187.02114491159415
+distance_only   213.48774552493063      -418.97549104986126     0.2240290803664399      32.93942935769314
+null            196.01803084608406      -386.0360616921681
 ```
+
+This short example run is not exhaustive: a longer run (600 iterations x 8 chains) finds dor_pc_pva with an inverse monomolecular transformation (shape 1), with AIC -502.0.
 
 #### Effective resistance values 
 
 The model-averaged effective resistance values are computed for each segment in the subgraph, and also output for each individual model if using `--report_all`. 
 
-If you would like to import these into other GIS plotting tools, you can simply perform a left join of the `.ResistanceEdges.tsv` table, using the specified `--reachid_col` (EDGE_ID in this example):
+If you would like to import these into other GIS plotting tools, you can simply perform a left join of the `.ResistanceEdges.tsv` table, using the reach IDs from `--reachid_col` (HYRIV_ID in this example; the column is named EDGE_ID):
 
 ```
 EDGE_ID Resistance
-40830357        0.8795201132346177
-40832271        0.8784437150687432
-40833054        0.8706223098494453
-40833364        0.8771124581022398
+70605797        0.8574536911564545
+70606280        0.8665867326456165
+70606496        0.8416048258923465
+70606497        0.842323721878829
 ...
 ...
 ```
@@ -408,35 +414,47 @@ The AIC counts the MLPE parameters, the transformation, shape and direction of e
 
 (and the same for `Model-Average`). The Hall of Fame includes `$var_asym`, `max_resistance` and `flow` (the rate; 0 = no flow term) columns. `Null-Model.tsv` includes two SAMC reference models: `samc_distance`, distance alone (equal movement weights between all neighbouring reaches, i.e. no landscape or flow effect), and `samc_flow`, flow alone (the same plus the flow term, with its rate fitted and given in the `flow` column). The Hall of Fame reports each model's AIC difference from them, `delta_aic_distance` and `delta_aic_flow` (positive = the model fits better, as for `delta_aic_null`), to judge whether the variables explain genetic distances beyond distance and flow alone.
 
-If the downstream reach of the outlet is not in the input network (e.g. it was clipped), the reaches meeting at the outlet are linked to each other directly, with a warning; including it is preferable. For example, using the bundled dataset:
+If the downstream reach of the outlet is not in the input network (e.g. it was clipped), the reaches meeting at the outlet are linked to each other directly, with a warning; including it is preferable. For example, using the bundled dataset (see [Example Dataset](#example)):
 
 ```
 runResistnet.py \
-    -s ./src/resistnet/data/test.shp \
-    -c ./src/resistnet/data/test.pointCoords.txt \
-    -g ./src/resistnet/data/test.popGenDistMat.txt \
+    -s ./src/resistnet/data/nmt.gpkg \
+    -c ./src/resistnet/data/nmt.pointCoords.txt \
+    -g ./src/resistnet/data/nmt.popGenDistMat.txt \
     -V ./src/resistnet/data/selected_vars.txt \
-    --samc --sizes ./src/resistnet/data/test.popSizes.txt \
-    -i 50 -r 4 -t 4 --seed 1234
+    --samc --sizes ./src/resistnet/data/nmt.popSizes.txt \
+    -i 50 -r 4 -t 4 --seed 1234 -o nmt_samc
 ```
+
+In this short run, the best SAMC model is stream gradient (`sgr_dk_rav`, symmetric) with a flow term of -0.22 per km (moving upstream easier; AIC -474.6), which fits better than SAMC distance alone (-416.1) and flow alone (-437.8), but less well than the standard model with degree of regulation (-502.0 with a longer run). The two models fit the same genetic distances with the same MLPE, so their AICs can be compared directly.
 
 
 ## Tutorials <a name="tutorials"></a>
 
 ### Example Dataset <a name="example"></a>
 
-A full example dataset is included in `src/resistnet/data`. You can very quickly test out if your installation is running, and explore what the outputs look like or profile runtimes by performing a short run using the bundled dataset:
+The bundled example dataset (`src/resistnet/data/nmt.*`) is from the Neosho madtom (*Noturus placidus*), a small catfish endemic to the Neosho River Basin (Kansas, Oklahoma and Missouri, USA), from [Zbinden et al. (2025)](https://doi.org/10.1016/j.gecco.2025.e03783):
+
+* `nmt.gpkg`: 176 [HydroRIVERS](https://www.hydrosheds.org/products/hydrorivers) reaches with all [HydroATLAS](https://www.hydrosheds.org/hydroatlas) covariates (Lehner & Grill 2013; Linke et al. 2019). HydroATLAS is licensed under CC-BY 4.0, and HydroRIVERS under the [HydroSHEDS license agreement](https://www.hydrosheds.org/products/hydrorivers); both require attribution. `nmt.network` is the same network, pre-built for `-n`.
+* `nmt.pointCoords.txt`: the 14 sampling sites.
+* `nmt.popGenDistMat.txt`: pairwise F<sub>ST</sub> among the sites.
+* `nmt.popSizes.txt`: a placeholder table of effective population sizes for `--sizes` (100 for every site, as the default `--ne`).
+* `selected_vars.txt`: five covariates: runoff (`run_mm_cyr`), air temperature (`tmp_dc_cyr`), stream gradient (`sgr_dk_rav`), elevation (`ele_mt_cav`) and degree of regulation (`dor_pc_pva`, the effect of dams on flow).
+
+Zbinden et al. (2025) found that dams constrain dispersal among Neosho madtom populations, and `ResistNet` recovers this: the best model is degree of regulation, which fits far better than distance alone. You can very quickly test out if your installation is running, and explore what the outputs look like or profile runtimes, with a short run:
 
 ```
 runResistnet.py \
-    -s ./src/resistnet/data/test.shp \
-    -c ./src/resistnet/data/test.pointCoords.txt \
-    -g ./src/resistnet/data/test.popGenDistMat.txt \
+    -s ./src/resistnet/data/nmt.gpkg \
+    -c ./src/resistnet/data/nmt.pointCoords.txt \
+    -g ./src/resistnet/data/nmt.popGenDistMat.txt \
     -V ./src/resistnet/data/selected_vars.txt \
-    -i 50 -r 4 -t 4 --seed 1234
+    -i 50 -r 4 -t 4 --seed 1234 -o nmt
 ```
 
-Note that this example is not necessarily useful (i.e., real runs will likely need many more iterations and chains), so you can try playing around with the running parameters, as well as the covariates included (specified in the `selected_vars.txt` file). This dataset contains all of the [HydroATLAS](https://www.hydrosheds.org/hydroatlas) covariates.
+The outputs of this command (and of the SAMC example in [Directional models](#samc)) are in `src/resistnet/data/example_output`. Note that this example is not necessarily exhaustive (real runs will likely need many more iterations and chains), so you can try playing around with the running parameters, as well as the covariates included (specified in the `selected_vars.txt` file; the network contains all of the HydroATLAS covariates).
+
+> Zbinden, Z. D., Chafin, T. K., Tiemann, J. S., Edds, D. R., Martin, B. T., Hofmeier, J., Douglas, M. E., & Douglas, M. R. (2025). Historic and contemporary selection define conservation units for a short-range endemic within an anthropogenically-altered riverscape. *Global Ecology and Conservation*, 62, e03783. https://doi.org/10.1016/j.gecco.2025.e03783
 
 
 ### Utility Scripts <a name="scripts"></a>
@@ -467,20 +485,20 @@ Arguments:
 Simulations require a compressed input network (i.e., as output by `runResistnet.py` or `autoStreamTree`), and a specifications file which should be tab-delimited and provide some covariates you would like to simulate effective resistances with, along with their weights, transformations, and shapes (using the same codes as in the Hall of Fame). An optional `AGG` column gives the method used to aggregate each variable across reaches sharing an ID (default ARITH, as in `runResistnet.py`). Resistances are computed in exactly the same way as when fitting models with `runResistnet.py`, so simulated models can be recovered using the same settings. An example can be found in `src/resistnet/data/simparams.tsv`:
 ```
 VAR     WEIGHT  TRANSFORM       SHAPE
-LENGTH_KM       1.0     0       0
+dor_pc_pva      1.0     7       1
 ```
 
-In this example, the resistance of each reach is its (rescaled) length, so pairwise resistances closely follow stream distances (i.e., isolation-by-distance). The pairwise resistance matrix is then normalised between 0 and 1.
+In this example, the resistance of each reach comes from its degree of regulation (`dor_pc_pva`) with an inverse monomolecular transformation (shape 1), the best model for the example dataset. The pairwise resistance matrix is then normalised between 0 and 1.
 
 You can specify the number of samples with `-s/--samples`, which determines the number of "populations" samples (as random nodes in the graph), as well as the number of replicated datasets to produce, using `-r/--reps`. For example, to simulate 10 datasets, each with 50 random samples and the above specifications:
 
 ```
-simResistnet.py -n src/resistnet/data/test_ensemble/test.full.network -c HYRIV_ID -s 50 -r 10 -o sim -i src/resistnet/data/simparams.tsv
+simResistnet.py -n src/resistnet/data/nmt.network -c HYRIV_ID -s 50 -r 10 -o sim -i src/resistnet/data/simparams.tsv
 ```
 
 This will produce a number of outputs named `*.ResistanceMatrix.tsv` and `*.coords`, which can be supplied directly as inputs to `runResistnet.py` via `-g` and `-c` (with the same network and `--reachid_col`), for example to test if `ResistNet` model optimisation can recover the specified model in your network, given different sample sizes.
 
-Note that because samples are random nodes, the network used for simulations should have a unique ID for every reach (such as `HYRIV_ID` in HydroRIVERS). If IDs are shared by several reaches (e.g., the `EDGE_ID` segments in `autoStreamTree` outputs such as `src/resistnet/data/test.network`, which are defined between the original sampling sites), new samples can fall within these segments, which cannot be represented. 
+Note that because samples are random nodes, the network used for simulations should have a unique ID for every reach (such as `HYRIV_ID` in HydroRIVERS). If IDs are shared by several reaches (e.g., the `EDGE_ID` segments in `autoStreamTree` outputs, which are defined between the original sampling sites), new samples can fall within these segments, which cannot be represented. If the network has several unconnected parts (e.g. other basins in the reach layer, as in `nmt.network`), samples are drawn from the largest. 
 
 #### Model-averaging across runs with ensembleResistnet.py
 
@@ -517,53 +535,33 @@ Optional Arguments:
           ...
 ```
 
-Most arguments are used in the same way as their equivalents in `runResistnet.py`, but one difference is in how a group of replicate run outputs are passed. The simplest way is to provide the path to an output directory, where outputs are named like `{prefix}_{rep}.*`. Example outputs can be found in `src/resistnet/data/test_ensemble/replicates`:
+Most arguments are used in the same way as their equivalents in `runResistnet.py`, but one difference is in how a group of replicate run outputs are passed. The simplest way is to provide the path to an output directory, where outputs are named like `{prefix}_{rep}.*`. Only the `$prefix.HallOfFame.tsv` files are read. Example outputs, from 10 short runs of the example dataset with different seeds, can be found in `src/resistnet/data/nmt_ensemble/replicates`:
 ```
-test_1.out.FitnessLog.tsv
-test_1.out.HallOfFame.tsv
-test_1.out.ICprofile.pdf
-test_1.out.Model-Average.Mantel.tsv
-test_1.out.Model-Average.PairwiseRegplot.pdf
-test_1.out.Model-Average.ResistanceEdges.tsv
-test_1.out.Model-Average.ResistanceMatrix.tsv
-test_1.out.Model-Average.streamsByResistance.pdf
-test_1.out.genDistMat.tsv
-test_1.out.genDistMat.txt
-test_1.out.incidenceMatrix.txt
-test_1.out.minimalSubgraph.net
-test_1.out.minimalSubgraph.pdf
-test_1.out.modavgWeights.tsv
-test_1.out.pairPlot.pdf
-test_1.out.pointsTable.txt
-test_1.out.snapDistances.txt
-test_1.out.subgraph.net
-test_1.out.varImportance.pdf
-test_1.out.varImportance.tsv
-test_10.out.FitnessLog.tsv
-test_10.out.HallOfFame.tsv
-...
+nmt_1.HallOfFame.tsv
+nmt_10.HallOfFame.tsv
+nmt_2.HallOfFame.tsv
 ...
 ...
 ```
 
-Creating a model-average across the 20 replicate analyses in this directory can be done like so:
+Creating a model-average across the 10 replicate analyses in this directory can be done like so:
 
 ```
 ensembleResistnet.py \
-    -n data/test_ensemble/test.full.network \
-    -i data/test_ensemble/replicates \
-    -c HYRIV_ID -C data/test_ensemble/test.pointCoords.txt \
-    -o test -t 4
+    -n src/resistnet/data/nmt.network \
+    -i src/resistnet/data/nmt_ensemble/replicates \
+    -c HYRIV_ID -C src/resistnet/data/nmt.pointCoords.txt \
+    -o ensemble -t 4
 ```
 
 To instead create a model-average of only the best models sampled in each run, you can add the `--only_best` argument:
 
 ```
 ensembleResistnet.py \
-    -n data/test_ensemble/test.full.network \
-    -i data/test_ensemble/replicates \
-    -c HYRIV_ID -C data/test_ensemble/test.pointCoords.txt \
-    -o test -t 4 --only_best
+    -n src/resistnet/data/nmt.network \
+    -i src/resistnet/data/nmt_ensemble/replicates \
+    -c HYRIV_ID -C src/resistnet/data/nmt.pointCoords.txt \
+    -o ensemble -t 4 --only_best
 ```
 
 #### Applying a model to another network with predictResistnet.py

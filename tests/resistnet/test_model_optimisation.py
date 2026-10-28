@@ -25,28 +25,28 @@ def tpe_parameters_fixture():
 @pytest.fixture
 def network_graph_path():
     base_path = os.path.dirname(resistnet.__file__)
-    file_path = os.path.join(base_path, 'data', 'test.network')
+    file_path = os.path.join(base_path, 'data', 'nmt.network')
     return file_path
 
 
 @pytest.fixture
 def shapefile_path():
     base_path = os.path.dirname(resistnet.__file__)
-    file_path = os.path.join(base_path, 'data', 'test.shp')
+    file_path = os.path.join(base_path, 'data', 'nmt.gpkg')
     return file_path
 
 
 @pytest.fixture
 def coords_path():
     base_path = os.path.dirname(resistnet.__file__)
-    file_path = os.path.join(base_path, 'data', 'test.pointCoords.txt')
+    file_path = os.path.join(base_path, 'data', 'nmt.pointCoords.txt')
     return file_path
 
 
 @pytest.fixture
 def inmat_path():
     base_path = os.path.dirname(resistnet.__file__)
-    file_path = os.path.join(base_path, 'data', 'test.popGenDistMat.txt')
+    file_path = os.path.join(base_path, 'data', 'nmt.popGenDistMat.txt')
     return file_path
 
 
@@ -65,7 +65,7 @@ def resistance_network_fixture(
             inmat=inmat_path,
             agg_opts={"run_mm_cyr": "ARITH"},
             pop_agg="ARITH",
-            reachid_col="EDGE_ID",
+            reachid_col="HYRIV_ID",
             length_col="LENGTH_KM",
             out=output_prefix,
             verbose=False
@@ -181,11 +181,11 @@ from resistnet.model_optimisation import ModelRunnerTPE
 if __name__ == "__main__":
     data, out = sys.argv[1], sys.argv[2]
     net = ResistanceNetwork(
-        network=os.path.join(data, "test.network"), shapefile=None,
-        coords=os.path.join(data, "test.pointCoords.txt"),
+        network=os.path.join(data, "nmt.network"), shapefile=None,
+        coords=os.path.join(data, "nmt.pointCoords.txt"),
         variables=["run_mm_cyr"],
-        inmat=os.path.join(data, "test.popGenDistMat.txt"),
-        agg_opts={"run_mm_cyr": "ARITH"}, reachid_col="EDGE_ID",
+        inmat=os.path.join(data, "nmt.popGenDistMat.txt"),
+        agg_opts={"run_mm_cyr": "ARITH"}, reachid_col="HYRIV_ID",
         out=out, verbose=False)
     if sys.argv[3] == "missing_network":
         net.network = out + ".missing.net"

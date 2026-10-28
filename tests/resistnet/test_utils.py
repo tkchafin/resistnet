@@ -13,14 +13,14 @@ from sortedcontainers import SortedDict
 @pytest.fixture
 def pickle_network_path():
     base_path = os.path.dirname(resistnet.__file__)
-    file_path = os.path.join(base_path, 'data', 'test.network')
+    file_path = os.path.join(base_path, 'data', 'nmt.network')
     return file_path
 
 
 @pytest.fixture
 def points_file_path():
     base_path = os.path.dirname(resistnet.__file__)
-    file_path = os.path.join(base_path, 'data', 'test.pointCoords.txt')
+    file_path = os.path.join(base_path, 'data', 'nmt.pointCoords.txt')
     return file_path
 
 
