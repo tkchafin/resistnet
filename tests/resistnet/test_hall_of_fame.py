@@ -377,3 +377,17 @@ def test_write_best(hall_of_fame_fixture_complete):
             "Best model TSV file was not created"
         assert os.path.getsize(f"{filename}.bestModel.tsv") > 0, \
             "Best model TSV file is empty"
+
+
+def test_best_model_blanks_unselected():
+    # Parameters of variables that are not in the best model are not output
+    hof = HallOfFame(["var1", "var2"], 10)
+    hof.data = pd.DataFrame([{
+        "fitness": 1.0, "var1": 1, "var1_weight": 0.4, "var1_trans": 3,
+        "var1_shape": 7, "var2": 0, "var2_weight": 0.9, "var2_trans": 5,
+        "var2_shape": 50, "loglik": 1.0, "r2m": 0.1, "aic": -1.0,
+        "delta_aic_null": 1.0}])
+    best = hof.get_best_model().set_index("Variable")
+    assert best.loc["var1", "Weight"] == 0.4
+    assert best.loc["var1", "Transformation"] == 3
+    assert best.loc["var2"].isna().all()

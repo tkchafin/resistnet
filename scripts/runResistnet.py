@@ -89,6 +89,7 @@ def main():
         awsum=params.awsum,
         only_keep=True,
         use_full=params.use_full,
+        report_all=params.report_all,
         fixed_params=params.transFile,
         out=params.out,
         plot=True,

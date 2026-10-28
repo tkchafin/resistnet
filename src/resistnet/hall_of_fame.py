@@ -345,19 +345,23 @@ class HallOfFame:
             return None
 
         best_model = self.data.iloc[0]
-        best_model_variables = [
-            {
+        best_model_variables = []
+        for var in self.variables:
+            # Parameters of variables not in the model are meaningless
+            selected = float(best_model[var]) == 1
+            row = {
                 "Variable": var,
                 "Weight": best_model[f"{var}_weight"],
                 "Shape": best_model[f"{var}_shape"],
                 "Transformation": best_model[f"{var}_trans"],
             }
-            for var in self.variables
-        ]
-        # Directional effects (SAMC models only)
-        for d in best_model_variables:
-            if f"{d['Variable']}_asym" in best_model.index:
-                d["Directional"] = best_model[f"{d['Variable']}_asym"]
+            # Directional effects (SAMC models only)
+            if f"{var}_asym" in best_model.index:
+                row["Directional"] = best_model[f"{var}_asym"]
+            if not selected:
+                row = {k: (v if k == "Variable" else np.nan)
+                       for k, v in row.items()}
+            best_model_variables.append(row)
 
         self.best = pd.DataFrame(best_model_variables)
         return self.best
