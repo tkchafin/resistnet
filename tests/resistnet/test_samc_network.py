@@ -140,3 +140,36 @@ def test_run_tpe_samc(samc_net, tmp_path):
     assert all(f"{v}_asym" in hof.columns for v in VARIABLES)
     assert os.path.exists(f"{out}.Model-Average.CFPTMatrix.tsv")
     assert os.path.exists(f"{out}.Model-Average.TransitionEdges.tsv")
+
+
+@pytest.mark.parametrize("stored", [("o", "d"), ("d", "o")])
+def test_extend_confluence_orientation(stored):
+    # The new origin must be the end of the downstream reach away from the
+    # current origin, however the edge's endpoints are stored
+    import networkx as nx
+    net = ResistanceNetworkSAMC.__new__(ResistanceNetworkSAMC)
+    net.reachid_col, net.infer_origin = "HYRIV_ID", "NEXT_DOWN"
+    net._K = nx.Graph()
+    net._K.add_edge("a", "o", HYRIV_ID=1, NEXT_DOWN=3, EDGE_ID=0)
+    net._K.add_edge("b", "o", HYRIV_ID=2, NEXT_DOWN=3, EDGE_ID=1)
+    net._G = nx.Graph(net._K)
+    net._G.add_edge(*stored, HYRIV_ID=3, NEXT_DOWN=0)
+    net._origin = "o"
+    net.extend_confluence(1, 2)
+    assert net._origin == "d"
+    assert net._reach_origin == 3
+    assert net._K.edges["o", "d"]["EDGE_ID"] == 2
+
+
+def test_uniform_ne(tmp_path):
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    net = ResistanceNetworkSAMC(
+        network=None, shapefile=os.path.join(data, "test.shp"), sizes=None,
+        coords=os.path.join(data, "test.pointCoords.txt"),
+        variables=VARIABLES[:1], inmat=None,
+        agg_opts={VARIABLES[0]: "ARITH"}, out=str(tmp_path / "ne"),
+        verbose=False, ne=50
+    )
+    R = net._R.ravel()
+    np.testing.assert_allclose(R[net._edge_site_indices], 1 / (2 * 50))
+    assert np.count_nonzero(R) == len(net._edge_site_indices)

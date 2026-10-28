@@ -42,7 +42,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
     def __init__(self, network, shapefile, sizes, coords, variables, inmat,
                  agg_opts, pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
-                 origin=None, out="out", verbose=True, minimize=False):
+                 origin=None, out="out", verbose=True, minimize=False,
+                 ne=100):
         """
         Constructs all the necessary attributes for the ResistanceNetwork
         object.
@@ -50,7 +51,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         Args:
             network (NetworkX graph): The network graph.
             shapefile (str): Path to the shapefile.
-            sizes (str): Path to file with population sizes.
+            sizes (str): Path to file with effective population sizes
+                         (columns sample, size); if None, all sites have
+                         size ne.
             coords (list): List of coordinates.
             variables (list): List of variables.
             inmat (str): Path to input matrix file.
@@ -65,10 +68,13 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             out (str): Prefix for output files. Defaults to "out".
             verbose (bool): Flag to enable verbose output. Defaults to True.
             minimize (bool): Flag to minimize subgraph. Defaults to False.
+            ne (float): Effective population size of every site, used if
+                        sizes is None. Defaults to 100.
         """
         self.network = network
         self.shapefile = shapefile
         self.pop_sizes = sizes
+        self.ne = ne
         self.coords = coords
         self.inmat = inmat
         self.pop_agg = pop_agg
@@ -144,12 +150,20 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # Read and snap point coordinate data
         points = utils.read_points_table(self.coords)
 
-        # Read population sizes file
-        sizes = self.read_sizes()
-
-        # Filter to keep only entries present in both points and sizes
-        points = points[points["sample"].isin(sizes["sample"])]
-        sizes = sizes[sizes["sample"].isin(points["sample"])]
+        # Read population sizes file, or use the same size for all sites
+        if self.pop_sizes:
+            sizes = self.read_sizes()
+            missing = points.loc[
+                ~points["sample"].isin(sizes["sample"]), "sample"]
+            if len(missing):
+                print("WARNING: No population size for samples "
+                      f"{list(missing)}; these are excluded")
+            # Filter to keep only entries present in both points and sizes
+            points = points[points["sample"].isin(sizes["sample"])]
+            sizes = sizes[sizes["sample"].isin(points["sample"])]
+        else:
+            sizes = pd.DataFrame(
+                {"sample": points["sample"], "size": float(self.ne)})
 
         # Snap points to the network graph
         self.snap_points(points, self._G, self.output_prefix)
@@ -305,15 +319,16 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         for u, v, edge_data in self._K.edges(data=True):
             add_edge_adjacency(u, v, edge_data)
 
-        # If the outlet could not be extended downstream, the reaches flowing
-        # into it share no downstream reach, which would split the network;
-        # link them directly instead (each is upstream of the other)
-        if self._K.out_degree(self._origin) == 0:
-            root_edges = [
-                edge_to_idx[d[id]]
-                for _, _, d in self._K.in_edges(self._origin, data=True)
-                if d.get(id) in edge_to_idx
-            ]
+        # If the outlet could not be extended downstream, several reaches
+        # flow into the origin but share no downstream reach, which would
+        # split the network; link them directly instead (each is upstream of
+        # the other)
+        root_edges = [
+            edge_to_idx[d[id]]
+            for _, _, d in self._K.in_edges(self._origin, data=True)
+            if d.get(id) in edge_to_idx
+        ]
+        if len(root_edges) > 1:
             for idx_i in root_edges:
                 for idx_j in root_edges:
                     if idx_i != idx_j:
@@ -493,24 +508,32 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                   "outlet instead")
             return
 
-        if not self._K.has_node(next_down_edge[1]):
-            self._K.add_node(next_down_edge[1])
-        self._K.add_edge(
-            next_down_edge[0], next_down_edge[1], **next_down_data)
+        # The new origin is the end of the downstream reach away from the
+        # current origin (edge endpoints are not stored in flow order)
+        u, v = next_down_edge
+        if self._origin not in (u, v):
+            print(f"WARNING: Downstream reach {next_down} does not meet the "
+                  "outlet; linking the reaches that meet at the outlet "
+                  "instead")
+            return
+        new_origin = v if u == self._origin else u
+
+        if not self._K.has_node(new_origin):
+            self._K.add_node(new_origin)
+        self._K.add_edge(u, v, **next_down_data)
 
         # Increment EDGE_ID and add to new edge
         nx.set_edge_attributes(
-            self._K,
-            {(next_down_edge[0], next_down_edge[1]): {"EDGE_ID": new_edge_id}}
+            self._K, {(u, v): {"EDGE_ID": new_edge_id}}
         )
 
         # Update origin to the new downstream node
-        self._origin = next_down_edge[1]
+        self._origin = new_origin
         self._edge_origin = new_edge_id
         self._reach_origin = next_down_data[self.reachid_col]
 
         # Recursive call to process further increments
-        self.extend_confluence(increments - 1)
+        self.extend_confluence(increments - 1, new_edge_id + 1)
 
     def evaluate(self, individual):
         """

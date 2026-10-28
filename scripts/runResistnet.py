@@ -34,6 +34,7 @@ def main():
             reachid_col=params.reachid_col,
             length_col=params.length_col,
             infer_origin=params.infer_origin,
+            ne=params.ne,
             out=params.out,
             verbose=True
         )

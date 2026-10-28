@@ -77,6 +77,15 @@ def test_fitmetric_default_aic():
         assert args.fitmetric == "aic"
 
 
+def test_samc_defaults():
+    testargs = ["prog", "--vars", "var1", "--samc"]
+    with patch.object(sys, 'argv', testargs):
+        args = parseArgs()
+        assert args.samc
+        assert args.sizes is None
+        assert args.ne == 100
+
+
 def test_fitmetric_delta():
     testargs = ["prog", "--vars", "var1", "-f", "delta"]
     with patch.object(sys, 'argv', testargs):

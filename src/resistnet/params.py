@@ -139,15 +139,19 @@ class parseArgs:
             help=(
                 'Use the spatial absorbing Markov chain (SAMC) model: '
                 'conditional first passage times among sites, allowing '
-                'directional effects (requires --sizes)'
+                'directional effects'
             )
         )
         parser.add_argument(
             '--sizes', type=str,
             help=(
-                'SAMC: tsv with columns sample, size (population sizes; '
-                'absorption at each site is 1/(2 * size))'
+                'SAMC: tsv with columns sample, size (effective population '
+                'sizes; absorption at each site is 1/(2 * size))'
             )
+        )
+        parser.add_argument(
+            '--ne', type=float, default=100,
+            help='SAMC: effective population size of every site, if no --sizes'
         )
         parser.add_argument(
             '--infer_origin', type=str, default='NEXT_DOWN',
@@ -176,9 +180,6 @@ class parseArgs:
         args = parser.parse_args()
         for key, value in vars(args).items():
             setattr(self, key, value)
-
-        if self.samc and not self.sizes:
-            parser.error("--samc requires --sizes")
 
         # 'delta' refers to the MLPE output column delta_aic_null
         if self.fitmetric == 'delta':
