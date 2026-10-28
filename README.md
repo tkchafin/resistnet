@@ -10,6 +10,7 @@
     2. [Input Files](#inputs)
     3. [Outputs](#outputs)
     4. [Optimisation Parameters](#opt_params)
+    5. [Directional Models (SAMC)](#samc)
 3. [Tutorials](#tutorials)
     1. [Example Dataset](#example)
     2. [Utility Scripts](#scripts)
@@ -370,6 +371,43 @@ Each of the `-r,--reps` chains is independent, and up to `-i,--max_iter` x `-r,-
 Optionally, transformations can be chosen for each variable separately before the TPE search. With `--gridSearch`, every combination of transformation and shape (up to `--max_shape`) is evaluated for each variable on its own (results are written to `$out.univariateFitness.tsv`, with heatmaps in `$out.univariateFitness.pdf`). The best transformation and shape for each variable are then fixed during the TPE search, which still optimises which variables are included and their weights. Fixed transformations can also be read from a file with `--transFile`: either a previous `$out.univariateFitness.tsv` (the best values are selected), or a tab-delimited table with columns `variable`, `transform`, and `shape` (e.g., a previous `$out.fixedParams.tsv`). Columns `sel` and `weight` can also be included, to fix whether variables are included and their weights.
 
 Note that the "right" parameters will vary by context, and you should not necessarily just run using the defaults!
+
+
+### Directional models (SAMC) <a name="samc"></a>
+
+Effective resistance (circuit theory) is symmetric: moving from A to B costs the same as moving from B to A. With `--samc`, `ResistNet` instead models movement among the reaches of the network as a spatial absorbing Markov chain (SAMC; [Fletcher et al. 2019](https://doi.org/10.1111/ele.13333), [Marx et al. 2020](https://doi.org/10.1111/ecog.04891)), in which moving between two reaches can be easier in one direction than the other, e.g. upstream versus downstream.
+
+The model is built as follows:
+
+* The states of the chain are the reaches of the sampled network, plus the reach downstream of the outlet (found using the `--infer_origin` attribute, `NEXT_DOWN` by default) and one reach beyond each terminal sample site. Each site corresponds to the reach immediately downstream of it.
+* At each step, a walker at a site is absorbed with probability 1/(2 Ne), the probability that two lineages coalesce. Effective population sizes can be provided per sample with `--sizes` (a tsv with columns `sample` and `size`); otherwise all sites have Ne = `--ne` (default 100).
+* For each selected variable (transformed and rescaled to 0-1 as for the standard model), the resistance of moving from reach i to an adjacent reach j is the mean of the two reaches' values or, if the variable is *directional*, the change in value (value at j - value at i), so that moving towards higher values is harder. A variable that changes consistently along the flow, such as distance to the outlet (`DIST_DN_KM`), elevation or upstream area, therefore captures upstream versus downstream effects. Whether each variable is directional is optimised, unless `--fixAsym` is used.
+* The weighted sum of the variables is rescaled to resistances from 1 to a maximum resistance, which is also optimised (from 1 to `--max_resist`, default 500; or fixed with `--fix_resist`). Movement probabilities are the inverse resistances, normalised over the neighbouring reaches (and scaled by 1 - absorption).
+* The distance from site i to site j is the conditional first passage time (CFPT): the expected number of steps to reach j, given that it is reached before absorption elsewhere (as `samc::cond_passage` in R). The mean of the two directions is fitted to the genetic distances with MLPE.
+
+The AIC counts the MLPE parameters, the transformation, shape and direction of each selected variable, their relative weights, and the maximum resistance. In addition to the outputs described above, SAMC runs produce:
+
+| File Name                                    | Description                                                                                         |
+|----------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| output.Model-Best.CFPTMatrix.tsv             | Conditional first passage times among sites (row = origin, column = destination); not symmetric     |
+| output.Model-Best.TransitionEdges.tsv        | Probability of moving downstream and upstream from each reach                                       |
+| output.Model-Best.streamsByTransition.pdf    | Maps of these probabilities                                                                         |
+| output.adjacencyMatrix.tsv                   | Reach adjacency (1 = column reach is downstream of row reach; -1 = upstream)                        |
+| output.graphOrigin.pdf, graphDirectionality.pdf | The inferred outlet, and the flow direction of each reach                                        |
+
+(and the same for `Model-Average`). The Hall of Fame includes `$var_asym` (1 = directional) and `max_resistance` columns, and `Null-Model.tsv` includes `samc_uniform`, the chain with equal movement probabilities to all neighbouring reaches (i.e. no landscape effect). As for the standard model, compare the AIC of the best models with these null models to judge whether the variables explain genetic distances at all.
+
+If the downstream reach of the outlet is not in the input network (e.g. it was clipped), the reaches meeting at the outlet are linked to each other directly, with a warning; including it is preferable. For example, using the bundled dataset:
+
+```
+runResistnet.py \
+    -s ./src/resistnet/data/test.shp \
+    -c ./src/resistnet/data/test.pointCoords.txt \
+    -g ./src/resistnet/data/test.popGenDistMat.txt \
+    -V ./src/resistnet/data/selected_vars.txt \
+    --samc --sizes ./src/resistnet/data/test.popSizes.txt \
+    -i 50 -r 4 -t 4 --seed 1234
+```
 
 
 ## Tutorials <a name="tutorials"></a>
