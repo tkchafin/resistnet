@@ -1,3 +1,6 @@
+import os
+import pickle
+import tempfile
 import traceback
 import random
 import pandas as pd
@@ -54,6 +57,7 @@ class ModelRunner:
         self.task_queue = Queue()
         self.result_queue = Queue()
         self.workers = []
+        self._worker_args_file = None
         self.bests = None  # model hall of fame
         self.logger = list()
 
@@ -309,6 +313,13 @@ class ModelRunner:
             worker.join()
         self.workers = []
 
+        if self._worker_args_file is not None:
+            try:
+                os.remove(self._worker_args_file)
+            except OSError:
+                pass
+            self._worker_args_file = None
+
         if self.verbose:
             print("\nAll worker processes have been terminated\n")
 
@@ -332,55 +343,60 @@ class ModelRunner:
         else:
             raise ValueError("Could not set worker type")
 
+        # Pass only necessary and picklable information. It is written once
+        # to a temporary file that each worker reads after starting: passed
+        # directly, each Process.start() blocks until that worker has
+        # imported its modules (the arguments are larger than the pipe
+        # buffer), so the workers would start one after another
+        worker_args = {
+            'worker_type': worker_type,
+            'network': self.resistance_network.network,
+            'pop_agg': self.resistance_network.pop_agg,
+            'reachid_col': self.resistance_network.reachid_col,
+            'length_col': self.resistance_network.length_col,
+            'variables': self.resistance_network.variables,
+            'agg_opts': self.resistance_network.agg_opts,
+            'inc': self.resistance_network._inc,
+            'point_coords': self.resistance_network._point_coords,
+            'points_names': self.resistance_network._points_names,
+            'points_snapped': self.resistance_network._points_snapped,
+            'points_labels': self.resistance_network._points_labels,
+            'predictors': self.resistance_network._predictors,
+            'edge_order': self.resistance_network._edge_order,
+            'gendist': self.resistance_network._gendist,
+            "fitmetric": self.fitmetric,
+            "fixWeight": self.fixWeight,
+            "fixShape": self.fixShape,
+            "min_weight": self.min_weight,
+            "max_shape": self.max_shape
+        }
+        if worker_type == "samc":
+            worker_args['adj'] = self.resistance_network._adj
+            worker_args['origin'] = self.resistance_network._origin
+            worker_args['R'] = self.resistance_network._R
+            worker_args['fixAsym'] = self.fixAsym
+            worker_args['max_resist'] = self.resistance_network.max_resist
+            worker_args['fix_resist'] = self.resistance_network.fix_resist
+            worker_args[
+                'allSymmetric'
+                ] = self.resistance_network.allSymmetric
+            worker_args[
+                'edge_site_indices'
+                ] = self.resistance_network._edge_site_indices
+
+        fd, self._worker_args_file = tempfile.mkstemp(
+            prefix="resistnet_worker_", suffix=".pkl")
+        with os.fdopen(fd, "wb") as fh:
+            pickle.dump(worker_args, fh, protocol=pickle.HIGHEST_PROTOCOL)
+
         for i in range(threads):
             worker_seed = self.seed + i
             if self.verbose:
                 print(f"Starting worker {i} with seed {worker_seed}")
-
-            # Pass only necessary and picklable information
-            worker_args = {
-                'worker_type': worker_type,
-                'network': self.resistance_network.network,
-                'pop_agg': self.resistance_network.pop_agg,
-                'reachid_col': self.resistance_network.reachid_col,
-                'length_col': self.resistance_network.length_col,
-                'variables': self.resistance_network.variables,
-                'agg_opts': self.resistance_network.agg_opts,
-                'inc': self.resistance_network._inc,
-                'point_coords': self.resistance_network._point_coords,
-                'points_names': self.resistance_network._points_names,
-                'points_snapped': self.resistance_network._points_snapped,
-                'points_labels': self.resistance_network._points_labels,
-                'predictors': self.resistance_network._predictors,
-                'edge_order': self.resistance_network._edge_order,
-                'gendist': self.resistance_network._gendist,
-                "fitmetric": self.fitmetric,
-                "fixWeight": self.fixWeight,
-                "fixShape": self.fixShape,
-                "min_weight": self.min_weight,
-                "max_shape": self.max_shape
-            }
-            if worker_type == "samc":
-                worker_args['adj'] = self.resistance_network._adj
-                worker_args['origin'] = self.resistance_network._origin
-                worker_args['R'] = self.resistance_network._R
-                worker_args['fixAsym'] = self.fixAsym
-                worker_args['max_resist'] = self.resistance_network.max_resist
-                worker_args['fix_resist'] = self.resistance_network.fix_resist
-                worker_args[
-                    'allSymmetric'
-                    ] = self.resistance_network.allSymmetric
-                worker_args[
-                    'edge_site_indices'
-                    ] = self.resistance_network._edge_site_indices
-                # worker_args[
-                #     'root_edge_indices'
-                #     ] = self.resistance_network._root_edge_indices
-
             worker_process = Process(
                 target=self.worker_task,
-                args=(self.task_queue, self.result_queue, worker_args,
-                      worker_seed)
+                args=(self.task_queue, self.result_queue,
+                      self._worker_args_file, worker_seed)
             )
             worker_process.start()
             self.workers.append(worker_process)
@@ -395,15 +411,22 @@ class ModelRunner:
         Args:
             task_queue (Queue): The queue from which tasks are retrieved.
             result_queue (Queue): The queue to which results are put.
-            worker_args (dict): Arguments required for creating a worker
-                                instance.
+            worker_args (str or dict): Arguments required for creating a
+                                worker instance, or the path of a pickle file
+                                holding them.
             seed (int): The seed value for random number generation.
         """
         random.seed(seed)
         np.random.seed(seed)
 
-        worker_type = worker_args.get('worker_type', 'base')
-        del worker_args['worker_type']
+        try:
+            if isinstance(worker_args, str):
+                with open(worker_args, "rb") as fh:
+                    worker_args = pickle.load(fh)
+            worker_type = worker_args.pop('worker_type', 'base')
+        except Exception:
+            traceback.print_exc()
+            worker_args, worker_type = None, None
         try:
             if worker_type == "base":
                 worker = ResistanceNetworkWorker(**worker_args)
@@ -763,7 +786,7 @@ class ModelRunnerTPE(ModelRunner):
     def run_tpe(self, max_evals=100, threads=4, fitmetric="aic",
                 fixWeight=None, fixShape=None, fixAsym=False, min_weight=None,
                 max_shape=None, only_keep=None,
-                use_full=False, verbose=True, report_all=False, nFail=50,
+                use_full=False, verbose=True, report_all=False, nFail=200,
                 awsum=0.95, fixed_params=None, out=None, plot=True, reps=10,
                 n_startup=40, n_candidates=48, gamma=0.15, pweight=0.7):
         """
@@ -784,7 +807,9 @@ class ModelRunnerTPE(ModelRunner):
             verbose (bool): Flag to control verbosity of output.
             report_all (bool): Flag to generate full outputs for all retained
                                models.
-            nFail (int): Number of iterations to stop if fail to improve.
+            nFail (int): Stop after this many iterations without improving
+                         the best model, counted after the n_startup random
+                         start-up iterations.
             awsum (float): Cumulative Akaike weight threshold to retain top N
                            models.
             fixed_params (dict): Fixed parameters to narrow the search space.
@@ -889,10 +914,11 @@ class ModelRunnerTPE(ModelRunner):
                         best_loss = -fitness
                         global_improved = True
 
-                # Update fails count
+                # Update fails count (the start-up iterations are random, so
+                # only count the TPE iterations after them)
                 if global_improved:
                     global_fails = 0
-                else:
+                elif iteration >= n_startup:
                     global_fails += 1
 
                 if verbose:

@@ -152,6 +152,27 @@ def test_run_tpe(model_runner_fixture, tpe_parameters_fixture):
             "ModelRunner.bests missing"
 
 
+def test_nfail_counts_after_startup(model_runner_fixture, monkeypatch):
+    # The random start-up iterations never count towards nFail, so at least
+    # n_startup + 1 iterations run; the workers' argument file is removed
+    seen = {}
+    orig = ModelRunnerTPE.process_hall_of_fame
+
+    def keep(self, trials_list):
+        seen["n"] = [len(t.trials) for t in trials_list]
+        seen["args_file"] = self._worker_args_file
+        seen["exists"] = os.path.exists(self._worker_args_file)
+        return orig(self, trials_list)
+    monkeypatch.setattr(ModelRunnerTPE, "process_hall_of_fame", keep)
+    model_runner_fixture.run_tpe(
+        max_evals=12, threads=1, reps=1, n_startup=6, nFail=1,
+        fixShape=True, max_shape=2, verbose=False, out=None)
+    assert seen["n"][0] >= 7
+    assert seen["exists"]
+    assert not os.path.exists(seen["args_file"])
+    assert model_runner_fixture._worker_args_file is None
+
+
 RUN_SCRIPT = """
 import os, sys
 from resistnet.resistance_network import ResistanceNetwork

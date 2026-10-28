@@ -80,8 +80,11 @@ class parseArgs:
             )
         )
         parser.add_argument(
-            '-F', '--nfail', type=int, default=50, required=False,
-            help='Number of iterations without improvement to stop'
+            '-F', '--nfail', type=int, default=200, required=False,
+            help=(
+                'Number of iterations without improvement to stop (counted '
+                'after the --nstart random start-up iterations)'
+            )
         )
         parser.add_argument(
             '-i', '--max_iter', type=int, default=500, required=False,

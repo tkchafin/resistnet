@@ -75,6 +75,7 @@ def test_fitmetric_default_aic():
     with patch.object(sys, 'argv', testargs):
         args = parseArgs()
         assert args.fitmetric == "aic"
+        assert args.nfail == 200
 
 
 def test_samc_defaults():
