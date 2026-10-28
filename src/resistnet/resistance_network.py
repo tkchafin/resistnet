@@ -1227,10 +1227,12 @@ class SimResistanceNetwork(ResistanceNetwork):
         network (NetworkX graph): The network graph.
         reachid_col (str): Column name for reach ID.
         length_col (str): Column name for length.
-        verbose (bool, optional): Flag to enable verbose output. Defaults to False.
+        verbose (bool, optional): Flag to enable verbose output. Defaults to
+                                  False.
         seed (int, optional): Random seed for reproducibility.
     """
-    def __init__(self, network, reachid_col, length_col, verbose=False, seed=None):
+    def __init__(self, network, reachid_col, length_col, verbose=False,
+                 seed=None):
         self.network = network
         self.reachid_col = reachid_col
         self.length_col = length_col
@@ -1252,7 +1254,9 @@ class SimResistanceNetwork(ResistanceNetwork):
 
         if seed is not None:
             if self.verbose:
-                print(f"[SimResistanceNetwork] Initializing RNG with seed {seed}")
+                print(
+                    f"[SimResistanceNetwork] Initializing RNG with seed {seed}"
+                )
             random.seed(seed)
             np.random.seed(seed)
 
