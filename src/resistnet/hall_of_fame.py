@@ -56,6 +56,9 @@ class HallOfFame:
         self.best = None
         self.zero_threshold = 1e-17
         self.use_full = use_full
+        # SAMC: effective direction of the best model's directional
+        # variables (share of moves towards higher values that are harder)
+        self.effective_direction = None
 
         if init_pop is not None:
             self.check_population(init_pop)
@@ -330,6 +333,43 @@ class HallOfFame:
             "RVI", ascending=False
         ).reset_index(drop=True)
 
+    def _direction_label(self, var, asym):
+        """
+        Describes a variable's effective direction in raw values (SAMC):
+        the direction setting applies to the transformed values, so a
+        decreasing transformation reverses it.
+        """
+        if float(asym) != 1:
+            return "symmetric"
+        share = (self.effective_direction or {}).get(var)
+        if share is None:
+            return np.nan
+        if share >= 0.95:
+            return "towards higher values harder"
+        if share <= 0.05:
+            return "towards lower values harder"
+        return f"mixed: towards higher values harder on {share:.0%} of moves"
+
+    def reference_deltas(self, table):
+        """
+        Adds each model's AIC difference from the reference models, positive
+        when the model fits better (as for delta_aic_null): delta_aic_distance
+        (from distance alone: the SAMC model with equal movement weights,
+        samc_distance, or for the standard model distance_only) and
+        delta_aic_flow (from flow alone, samc_flow; SAMC only).
+
+        Args:
+            table (DataFrame): Reference models, with an "aic" column (see
+                               evaluate_null_model()).
+        """
+        distance = ("samc_distance" if "samc_distance" in table.index
+                    else "distance_only")
+        for col, name in [("delta_aic_distance", distance),
+                          ("delta_aic_flow", "samc_flow")]:
+            if name in table.index:
+                self.data[col] = (float(table.loc[name, "aic"])
+                                  - self.data["aic"].astype(float))
+
     def get_best_model(self):
         """
         Retrieve the best model based on fitness.
@@ -358,10 +398,22 @@ class HallOfFame:
             # Directional effects (SAMC models only)
             if f"{var}_asym" in best_model.index:
                 row["Directional"] = best_model[f"{var}_asym"]
+                row["Effective_direction"] = self._direction_label(
+                    var, best_model[f"{var}_asym"])
             if not selected:
                 row = {k: (v if k == "Variable" else np.nan)
                        for k, v in row.items()}
             best_model_variables.append(row)
+
+        # Model-level parameters (SAMC only), as rows with a Value: the
+        # maximum resistance (if any variable is selected) and the flow rate
+        if "flow" in best_model.index:
+            if any(float(best_model[v]) == 1 for v in self.variables):
+                best_model_variables.append({
+                    "Variable": "max_resistance",
+                    "Value": best_model["max_resistance"]})
+            best_model_variables.append({
+                "Variable": "flow", "Value": best_model["flow"]})
 
         self.best = pd.DataFrame(best_model_variables)
         return self.best
@@ -468,8 +520,12 @@ class HallOfFame:
         """
         if self.best is None:
             self.get_best_model()
-        self.best = self.best.sort_values(
-            "Variable", ascending=False).reset_index(drop=True)
+        # Variables sorted by name, then any model-level parameters
+        is_var = self.best["Variable"].isin(self.variables)
+        self.best = pd.concat([
+            self.best[is_var].sort_values("Variable", ascending=False),
+            self.best[~is_var]
+        ]).reset_index(drop=True)
         return self.best
 
     def getRVI(self):

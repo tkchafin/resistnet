@@ -5,6 +5,7 @@ import pandas as pd
 import scipy.sparse as sp
 import momepy
 import seaborn as sns
+from scipy.optimize import minimize_scalar
 from sortedcontainers import SortedDict
 
 import resistnet.utils as utils
@@ -12,6 +13,9 @@ import resistnet.transform as trans
 import resistnet.resist_dist as rd
 import resistnet.CFPT as cfpt_samc
 from resistnet.resistance_network import ResistanceNetwork
+
+# Smallest non-zero flow rate searched (per km)
+MIN_FLOW = 1e-3
 
 
 class ResistanceNetworkSAMC(ResistanceNetwork):
@@ -43,7 +47,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                  agg_opts, pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
                  origin=None, out="out", verbose=True, minimize=False,
-                 ne=100, max_resist=500, fix_resist=None):
+                 ne=100, max_resist=500, fix_resist=None, max_flow=1.0):
         """
         Constructs all the necessary attributes for the ResistanceNetwork
         object.
@@ -75,6 +79,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                         resistant (1). Defaults to 500.
             fix_resist (float, optional): Fix that maximum resistance
                         instead of optimising it.
+            max_flow (float): Upper limit of the flow term's rate (per km;
+                        see flow_rate()). Defaults to 1.
         """
         self.network = network
         self.shapefile = shapefile
@@ -97,6 +103,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self.num_attributes = 5
         self.max_resist = max_resist
         self.fix_resist = fix_resist
+        self.max_flow = max_flow
 
         # Additional attributes for internal use
         self.minimized_subgraph = None
@@ -119,6 +126,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self._edge_absorption = None
         self._R = None
         self._edge_site_indices = None
+        self._flow_pos = None
 
         # Initialization methods
         self.initialize_network()
@@ -129,6 +137,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
         # direct graph
         self.polarise_network(self._origin)
+        self._flow_pos = self.flow_positions()
+        self.plot_upstream_changes(self.output_prefix)
 
         # calculate edge-wise absorption
         self.calculate_absorption()
@@ -381,6 +391,40 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         adj_out = self.output_prefix + ".adjacencyMatrix.tsv"
         np.savetxt(adj_out, dense_adj_matrix, delimiter='\t', fmt='%d')
 
+    def flow_positions(self):
+        """
+        Distance along the flow from the middle of each reach to the outlet of
+        the network (in the units of length_col, i.e. km).
+
+        Differences between adjacent reaches are the distance moved upstream
+        (positive) or downstream (negative) between their midpoints; up to a
+        constant, this is the distance to the sea (DIST_DN_KM in
+        HydroRIVERS) at each reach's midpoint.
+
+        Returns:
+            numpy.ndarray: Position of each reach, ordered as self._edge_order
+        """
+        eid = self.reachid_col
+        length = {d[eid]: d[self.length_col]
+                  for _, _, d in self._K.edges(data=True)}
+        L = np.array([float(length[e]) for e in self._edge_order])
+        rows, cols = self._adj.nonzero()
+        down = np.asarray(self._adj[rows, cols]).ravel() == 1
+        nxt = dict(zip(rows[down], cols[down]))
+
+        # Distance from the downstream end of each reach to the outlet
+        below = np.full(len(L), np.nan)
+        for start in range(len(L)):
+            chain = [start]
+            while chain[-1] in nxt and np.isnan(below[chain[-1]]):
+                chain.append(nxt[chain[-1]])
+            last = chain[-1]
+            if np.isnan(below[last]):
+                below[last] = 0.0
+            for s in reversed(chain[:-1]):
+                below[s] = below[nxt[s]] + L[nxt[s]]
+        return below + L / 2.0
+
     def calculate_absorption(self):
         # Initialize the array for absorption values, filled with zeros
         n = len(self._edge_order)
@@ -555,7 +599,12 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             individual (list): Model specification, with self.num_attributes
                                values (selection, weight, transformation,
                                shape, direction) per variable, optionally
-                               followed by the maximum resistance.
+                               followed by the maximum resistance and the
+                               flow rate (see flow_rate()). Direction is 0
+                               (symmetric) or 1 (moving towards higher
+                               transformed values is harder; a decreasing
+                               transformation reverses this for the raw
+                               values, see effective_directions()).
 
         Returns:
             tuple: A tuple containing the fitness value and the results of the
@@ -583,8 +632,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         """
         Counts the surface parameters estimated for a model (see
         ResistanceNetwork.surface_parameters), plus the direction setting of
-        each selected variable unless fixAsym, and the maximum resistance if
-        it was optimised.
+        each selected variable unless fixAsym, the maximum resistance if it
+        was optimised, and the flow rate if the model has a flow term.
 
         Args:
             individual (list): Model specification, as for evaluate().
@@ -602,7 +651,30 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # The maximum resistance, if it was optimised
         if len(individual) > n_var and self.fix_resist is None and n_sel:
             k += 1
+        if self.flow_rate(individual) != 0:
+            k += 1
         return k
+
+    def flow_rate(self, individual):
+        """
+        The rate of the flow term: the value following the maximum resistance
+        in the individual, or 0 (no flow term).
+
+        Each move's weight is multiplied by exp(-rate * distance moved
+        upstream in km, between reach midpoints; see flow_positions()), so a
+        positive rate makes moving upstream harder and a negative rate makes
+        it easier. The rate is per km, so it is not rescaled to the network.
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            float: The flow rate (per km).
+        """
+        n_var = len(self._predictors.columns) * self.num_attributes
+        if len(individual) > n_var + 1:
+            return float(individual[n_var + 1])
+        return 0.0
 
     def max_resistance(self, individual):
         """
@@ -625,39 +697,87 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
     def evaluate_null_model(self, oname=None):
         """
-        Evaluates the null models: distance-only and population effects only
-        (see ResistanceNetwork.evaluate_null_model), and the SAMC model with
-        equal movement weights between all adjacent reaches (no landscape
-        effect; only the MLPE parameters are counted in AIC).
+        Evaluates the reference models: distance-only and population effects
+        only (see ResistanceNetwork.evaluate_null_model), and two SAMC
+        models: distance alone (equal movement weights between all adjacent
+        reaches; only the MLPE parameters are counted in AIC) and flow alone
+        (the same, plus the flow term, with its rate fitted; see
+        flow_rate()).
 
         Args:
             oname (str, optional): The output name for saving the results.
 
         Returns:
-            DataFrame: Log likelihood, AIC, marginal R-squared, and delta AIC
-                       relative to the population-effects-only model.
+            DataFrame: Log likelihood, AIC, marginal R-squared, delta AIC
+                       relative to the population-effects-only model, and
+                       the fitted flow rate (per km).
         """
         table = super().evaluate_null_model()
         if table is None:
             return None
 
-        W = abs(self._adj).astype(float)
-        Q = cfpt_samc.transition_matrix(W, self._R)
-        _, res = rd.conditionalFirstPassTime(
-            Q, self._edge_site_indices, self._gendist, self._R.ravel())
-        r = res.iloc[0]
-        uniform = pd.DataFrame({
-            "loglik": [r["loglik"]],
-            "aic": [-r["aic"]],
-            "r2m": [r["r2m"]],
-            "delta_aic_null": [r["delta_aic_null"]]
-        }, index=["samc_uniform"])
-        table = pd.concat([table.loc[["distance_only"]], uniform,
+        rate, res = self._fit_flow_alone()
+        rows = []
+        for name, r, k, flow in [
+            ("samc_distance", self._flow_alone(0.0), 0, np.nan),
+            ("samc_flow", res, 1, rate),
+        ]:
+            r = r.iloc[0]
+            rows.append(pd.DataFrame({
+                "loglik": [r["loglik"]],
+                "aic": [-r["aic"] + 2 * k],
+                "r2m": [r["r2m"]],
+                "delta_aic_null": [r["delta_aic_null"] - 2 * k],
+                "flow": [flow]
+            }, index=[name]))
+        table = pd.concat([table.loc[["distance_only"]], *rows,
                            table.loc[["null"]]])
 
         if oname:
             table.to_csv(f"{oname}.Null-Model.tsv", sep="\t")
         return table
+
+    def _flow_alone(self, rate):
+        """
+        MLPE results for the model with equal movement weights and a flow
+        term with the given rate (None if the fit failed).
+        """
+        W = abs(self._adj).astype(float)
+        if rate != 0:
+            rows, cols = W.nonzero()
+            upstream = self._flow_pos[cols] - self._flow_pos[rows]
+            W = sp.csr_matrix(
+                (np.exp(-rate * upstream), (rows, cols)), shape=W.shape)
+        Q = cfpt_samc.transition_matrix(W, self._R.ravel())
+        _, res = rd.conditionalFirstPassTime(
+            Q, self._edge_site_indices, self._gendist, self._R.ravel())
+        return res
+
+    def _fit_flow_alone(self):
+        """
+        Fits the flow rate of the flow-alone model: a grid over both
+        directions (log-spaced, up to max_flow), refined around the best.
+
+        Returns:
+            tuple: The fitted rate, and the MLPE results.
+        """
+        def loglik(rate):
+            res = self._flow_alone(rate)
+            return -np.inf if res is None else res["loglik"].iloc[0]
+
+        mags = np.logspace(np.log10(MIN_FLOW), np.log10(self.max_flow), 13)
+        grid = np.concatenate([-mags[::-1], [0.0], mags])
+        lls = np.array([loglik(r) for r in grid])
+        i = int(np.argmax(lls))
+        lo, hi = grid[max(i - 1, 0)], grid[min(i + 1, len(grid) - 1)]
+        best = grid[i]
+        if hi > lo:
+            opt = minimize_scalar(lambda r: -loglik(r), bounds=(lo, hi),
+                                  method="bounded",
+                                  options={"xatol": 1e-4 * self.max_flow})
+            if -opt.fun > lls[i]:
+                best = float(opt.x)
+        return best, self._flow_alone(best)
 
     def model_output(self, model):
         """
@@ -720,17 +840,22 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         For each selected variable (transformed and rescaled to 0-1), the
         resistance of moving from reach i to j is the mean of the two reaches'
         values or, if the variable is directional, the difference (value at
-        j - value at i). These are rescaled to 0-1 and summed by weight. The
-        composite is rescaled to resistances from 1 to the maximum resistance
-        (see max_resistance()), and inverted to give the movement weights
-        (conductances).
+        j - value at i), so that moving towards higher (transformed) values
+        is harder. These are rescaled to 0-1 and summed by weight. The
+        composite is rescaled to resistances from 1 to the maximum
+        resistance (see max_resistance()), and inverted to give the
+        movement weights (conductances). A flow term (see
+        flow_rate()) then multiplies each weight by a factor depending on
+        the distance moved upstream; with no variables selected, the weights
+        are 1 before the flow term.
 
         Args:
             individual (list): Model specification, as for evaluate().
 
         Returns:
             scipy.sparse.csr_matrix: Movement weights, non-zero for adjacent
-                                     reaches; None if no variable is selected.
+                                     reaches; None if no variable is selected
+                                     and there is no flow term.
         """
         n_att = self.num_attributes
         rows, cols = self._adj.nonzero()
@@ -751,12 +876,51 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             link = _rescale01(link) * individual[i * n_att + 1]
             multi = link if multi is None else multi + link
 
+        rate = self.flow_rate(individual)
         if multi is None:
-            return None
-        max_r = self.max_resistance(individual)
-        resistance = 1.0 + (max_r - 1.0) * _rescale01(multi)
-        return sp.csr_matrix(
-            (1.0 / resistance, (rows, cols)), shape=self._adj.shape)
+            if rate == 0:
+                return None
+            weights = np.ones(len(rows))
+        else:
+            max_r = self.max_resistance(individual)
+            resistance = 1.0 + (max_r - 1.0) * _rescale01(multi)
+            weights = 1.0 / resistance
+        if rate != 0:
+            upstream = self._flow_pos[cols] - self._flow_pos[rows]
+            weights = weights * np.exp(-rate * upstream)
+        return sp.csr_matrix((weights, (rows, cols)), shape=self._adj.shape)
+
+    def effective_directions(self, individual):
+        """
+        The effective direction of each directional variable in its raw
+        values: the share of moves between reaches with different values on
+        which moving towards the higher value is harder (by that variable).
+        The direction setting applies to the transformed values, so a
+        decreasing transformation reverses it, and a humped one (Ricker)
+        gives a mix.
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            dict: Share for each selected directional variable.
+        """
+        n_att = self.num_attributes
+        rows, cols = self._adj.nonzero()
+        out = {}
+        for i, v in enumerate(self._predictors.columns):
+            if individual[i * n_att] != 1 or individual[i * n_att + 4] != 1:
+                continue
+            raw = self._predictors[v].to_numpy(dtype=float)
+            x = self.transform(self._predictors[v], individual[i * n_att + 2],
+                               individual[i * n_att + 3]).to_numpy(dtype=float)
+            rises = np.sign(raw[cols] - raw[rows])
+            moved = rises != 0
+            if not moved.any():
+                continue
+            harder = np.sign(x[cols] - x[rows])[moved] == rises[moved]
+            out[v] = float(np.mean(harder))
+        return out
 
     def plot_inferred_origin(self, oname):
         # Extract the positions of the nodes in the graph
@@ -812,6 +976,63 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # Save the plot to a file
         plt.savefig(f"{oname}.graphDirectionality.pdf")
         plt.close()
+
+    def upstream_changes(self):
+        """
+        How each variable changes on a step upstream: the share of upstream
+        moves between adjacent reaches on which it rises, stays the same, or
+        falls (moves between the reaches meeting at a clipped outlet are
+        neither up nor down, so they are left out).
+
+        A variable that changes the same way on most upstream steps (e.g.
+        upstream area, discharge) gives an asymmetric effect that overlaps
+        with the flow term; one that goes either way gives only local
+        asymmetries.
+
+        Returns:
+            DataFrame: Columns rises, no_change, falls (shares), and steps
+                       (number of upstream moves), one row per variable.
+        """
+        rows, cols = self._adj.nonzero()
+        sign = np.asarray(self._adj[rows, cols]).ravel()
+        back = np.asarray(self._adj[cols, rows]).ravel()
+        up = (sign == -1) & (back != -1)
+        out = {}
+        for var in self._predictors.columns:
+            v = self._predictors[var].to_numpy(dtype=float)
+            d = v[cols][up] - v[rows][up]
+            out[var] = {"rises": np.mean(d > 0), "no_change": np.mean(d == 0),
+                        "falls": np.mean(d < 0), "steps": int(up.sum())}
+        return pd.DataFrame(out).T
+
+    def plot_upstream_changes(self, oname):
+        """
+        Writes upstream_changes() to {oname}.upstreamChanges.tsv and plots
+        it to {oname}.upstreamChanges.pdf.
+
+        Args:
+            oname (str): The output prefix.
+        """
+        table = self.upstream_changes()
+        table.to_csv(f"{oname}.upstreamChanges.tsv", sep="\t",
+                     index_label="variable")
+        fig, ax = plt.subplots(figsize=(8, 0.5 * len(table) + 1.5))
+        left = np.zeros(len(table))
+        for col, label, color in [("rises", "rises", "#2a78d6"),
+                                  ("no_change", "no change", "#b0aea6"),
+                                  ("falls", "falls", "#eb6834")]:
+            ax.barh(table.index, table[col], left=left, label=label,
+                    color=color, height=0.6, edgecolor="white")
+            left += table[col].to_numpy(dtype=float)
+        ax.set_xlim(0, 1)
+        ax.invert_yaxis()
+        ax.set_xlabel("Share of upstream steps")
+        ax.set_title("How each variable changes on a step upstream")
+        ax.legend(ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.15),
+                  frameon=False)
+        fig.tight_layout()
+        fig.savefig(f"{oname}.upstreamChanges.pdf")
+        plt.close(fig)
 
     def output_and_plot_model(self, oname, mat_r, edge_r, plot=True):
         """
@@ -921,13 +1142,17 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         fixAsym (bool): Directional variables are not searched.
         max_resist (float): Upper limit of the maximum resistance.
         fix_resist (float): Fixed maximum resistance (None to optimise).
+        flow_pos (numpy.ndarray): Position of each reach along the flow (see
+                                  flow_positions()).
+        max_flow (float): Upper limit of the flow rate.
     """
     def __init__(self, network, pop_agg, reachid_col, length_col,
                  variables, agg_opts, fitmetric, fixWeight, fixShape,
                  min_weight, max_shape, inc, point_coords, points_names,
                  points_snapped, points_labels, predictors, edge_order,
                  gendist, adj, origin, R, allSymmetric, edge_site_indices,
-                 fixAsym=False, max_resist=500, fix_resist=None):
+                 fixAsym=False, max_resist=500, fix_resist=None,
+                 flow_pos=None, max_flow=1.0):
 
         self.network = network
         self.pop_agg = pop_agg
@@ -948,6 +1173,7 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self.num_attributes = 5
         self.max_resist = max_resist
         self.fix_resist = fix_resist
+        self.max_flow = max_flow
 
         self._inc = inc
         self._origin = origin
@@ -963,3 +1189,4 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self._adj = adj
         self._R = R
         self._edge_site_indices = edge_site_indices
+        self._flow_pos = flow_pos

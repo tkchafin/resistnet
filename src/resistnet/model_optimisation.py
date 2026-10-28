@@ -18,6 +18,7 @@ from resistnet.resistance_network import ResistanceNetwork
 from resistnet.resistance_network import ResistanceNetworkWorker
 from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.samc_network import ResistanceNetworkSAMCWorker
+from resistnet.samc_network import MIN_FLOW
 from resistnet.hall_of_fame import HallOfFame
 
 
@@ -71,6 +72,7 @@ class ModelRunner:
         self.fixWeight = None
         self.fixShape = None
         self.fixAsym = False
+        self.fixFlow = False
         self.min_weight = None
         self.max_shape = None
 
@@ -121,6 +123,14 @@ class ModelRunner:
             verbose (bool): Verbose output flag.
             plot (bool): Flag to enable or disable plotting.
         """
+        # Reference models (if genetic distances present), so that each
+        # model's AIC difference from them can be reported
+        null = None
+        if self.resistance_network._gendist is not None:
+            null = self.resistance_network.evaluate_null_model(out)
+            if null is not None:
+                self.bests.reference_deltas(null)
+
         # Various calculations and print/write operations
         self.bests.use_full = self.use_full
         self.bests.delta_aic()
@@ -128,6 +138,13 @@ class ModelRunner:
         self.bests.cumulative_akaike(threshold=self.awsum)
         self.bests.relative_variable_importance(not self.only_keep)
         self.bests.model_average_weights(not self.only_keep)
+
+        # Effective direction of the best model's directional variables
+        if isinstance(self.resistance_network, ResistanceNetworkSAMC):
+            best = self.bests.getHOF().iloc[0]
+            self.bests.effective_direction = (
+                self.resistance_network.effective_directions(
+                    self._row_individual(best)))
 
         # Printing and writing the results
         if verbose:
@@ -164,15 +181,31 @@ class ModelRunner:
         if out:
             self.model_average(out, plot)
 
-        # Evaluate the null model (if genetic distances present)
-        if self.resistance_network._gendist is not None:
-            null = self.resistance_network.evaluate_null_model(out)
-            if verbose:
-                print("\nEvaluating null model...")
-                with pd.option_context(
-                    'display.max_rows', None, 'display.max_columns', None
-                ):
-                    print(null)
+        # Reference models
+        if null is not None and verbose:
+            print("\nReference models:")
+            with pd.option_context(
+                'display.max_rows', None, 'display.max_columns', None
+            ):
+                print(null)
+
+    def _row_individual(self, row):
+        """
+        The model specification (as for evaluate()) of a Hall of Fame row,
+        built by name in the order the workers expect.
+        """
+        individual = []
+        for var in self.resistance_network._predictors.columns:
+            individual.extend([
+                row[var], row[f"{var}_weight"], row[f"{var}_trans"],
+                row[f"{var}_shape"]
+            ])
+            if self.num_attributes == 5:
+                individual.append(row[f"{var}_asym"])
+        if self.num_attributes == 5:
+            individual.append(row["max_resistance"])
+            individual.append(row.get("flow", 0.0))
+        return individual
 
     def model_average(self, out="", plot=True):
         """
@@ -188,18 +221,7 @@ class ModelRunner:
         weights = {}
         hof = self.bests.getHOF(only_keep=self.only_keep)
         for _, row in hof.iterrows():
-            # Build by name, in the order the workers expect
-            model_string = []
-            for var in self.resistance_network._predictors.columns:
-                model_string.extend([
-                    row[var], row[f"{var}_weight"], row[f"{var}_trans"],
-                    row[f"{var}_shape"]
-                ])
-                if self.num_attributes == 5:
-                    model_string.append(row[f"{var}_asym"])
-            if self.num_attributes == 5:
-                model_string.append(row["max_resistance"])
-            models.append([mod_num, model_string])
+            models.append([mod_num, self._row_individual(row)])
             weights[mod_num] = row["akaike_weight"]
             mod_num += 1
 
@@ -377,6 +399,8 @@ class ModelRunner:
             worker_args['fixAsym'] = self.fixAsym
             worker_args['max_resist'] = self.resistance_network.max_resist
             worker_args['fix_resist'] = self.resistance_network.fix_resist
+            worker_args['flow_pos'] = self.resistance_network._flow_pos
+            worker_args['max_flow'] = self.resistance_network.max_flow
             worker_args[
                 'allSymmetric'
                 ] = self.resistance_network.allSymmetric
@@ -721,15 +745,17 @@ class ModelRunnerTPE(ModelRunner):
                     [0]
                 )
 
-            # Directional effect (SAMC only)
+            # Directional effect (SAMC only): 1 = moving towards higher
+            # (transformed) values is harder, 0 = symmetric; the reversed
+            # transformations give the opposite direction
             if self.num_attributes == 5:
                 self.space[f"{var_name}_asym"] = hp.choice(
                     f"{var_name}_asym",
                     [0] if self.fixAsym else [0, 1]
                 )
 
-        # Maximum resistance of the composite surface (SAMC only)
         if self.num_attributes == 5:
+            # Maximum resistance of the composite surface (SAMC only)
             net = self.resistance_network
             if net.fix_resist is not None:
                 self.space["max_resistance"] = hp.choice(
@@ -739,13 +765,22 @@ class ModelRunnerTPE(ModelRunner):
                 self.space["max_resistance"] = hp.loguniform(
                     "max_resistance", 0.0, np.log(net.max_resist)
                 )
+            # Flow term (SAMC only): direction (1 = moving upstream is
+            # harder, -1 = easier, 0 = no flow term) and rate per km
+            self.space["flow_dir"] = hp.choice(
+                "flow_dir", [0] if self.fixFlow else [-1, 0, 1]
+            )
+            self.space["flow_rate"] = hp.loguniform(
+                "flow_rate", np.log(MIN_FLOW), np.log(net.max_flow)
+            )
 
     def set_tpe_parameters(self, max_evals=100, num_workers=10,
                            fitmetric="aic", fixWeight=None,
                            fixShape=None, fixAsym=False, min_weight=None,
                            max_shape=None, only_keep=None,
                            use_full=False, verbose=True, report_all=False,
-                           awsum=0.95, fixed_params=None, out=None):
+                           awsum=0.95, fixed_params=None, out=None,
+                           fixFlow=False):
         """
         Sets the TPE optimization parameters.
 
@@ -764,6 +799,7 @@ class ModelRunnerTPE(ModelRunner):
             report_all (bool): Flag to generate full outputs for all models.
             awsum (float): Cumulative Akaike weight threshold to retain models.
             fixed_params (dict): Fixed parameters to narrow the search space.
+            fixFlow (bool): Leave out the flow term (SAMC only).
         """
         self.max_evals = max_evals
         self.num_workers = num_workers
@@ -771,6 +807,7 @@ class ModelRunnerTPE(ModelRunner):
         self.fixWeight = fixWeight
         self.fixShape = fixShape
         self.fixAsym = fixAsym
+        self.fixFlow = fixFlow
         self.min_weight = min_weight
         self.max_shape = max_shape
         self.only_keep = only_keep
@@ -788,7 +825,8 @@ class ModelRunnerTPE(ModelRunner):
                 max_shape=None, only_keep=None,
                 use_full=False, verbose=True, report_all=False, nFail=200,
                 awsum=0.95, fixed_params=None, out=None, plot=True, reps=10,
-                n_startup=40, n_candidates=48, gamma=0.15, pweight=0.7):
+                n_startup=40, n_candidates=48, gamma=0.15, pweight=0.7,
+                fixFlow=False):
         """
         Runs the TPE optimization for optimizing the ResistNet model.
 
@@ -815,13 +853,15 @@ class ModelRunnerTPE(ModelRunner):
             fixed_params (dict): Fixed parameters to narrow the search space.
             reps (int): Number of independent TPE chains; the best model from
                         each is retained in the Hall of Fame.
+            fixFlow (bool): Leave out the flow term (SAMC only).
         """
         try:
             # Set TPE parameters
             self.set_tpe_parameters(max_evals, threads, fitmetric, fixWeight,
                                     fixShape, fixAsym, min_weight, max_shape,
                                     only_keep, use_full, verbose,
-                                    report_all, awsum, fixed_params, out)
+                                    report_all, awsum, fixed_params, out,
+                                    fixFlow)
 
             # Parse optional input fixed_params
             if fixed_params:
@@ -975,6 +1015,8 @@ class ModelRunnerTPE(ModelRunner):
                 individual[idx_base + 4] = int(model[f"{var_name}_asym"])
         if num_attributes == 5:
             individual.append(float(model["max_resistance"]))
+            individual.append(
+                float(model["flow_dir"]) * float(model["flow_rate"]))
         return individual
 
     def process_hall_of_fame(self, trials_list):
@@ -1025,7 +1067,7 @@ class ModelRunnerTPE(ModelRunner):
                     individual_columns[idx_base + 4] = f"{var_name}_asym"
 
             if num_attributes == 5:
-                individual_columns.append("max_resistance")
+                individual_columns.extend(["max_resistance", "flow"])
             res_columns = ['loglik', 'r2m', 'aic', 'delta_aic_null']
             columns = ['fitness'] + individual_columns + res_columns
 

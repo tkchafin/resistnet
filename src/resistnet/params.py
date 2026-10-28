@@ -176,6 +176,17 @@ class parseArgs:
             '--fixAsym', action='store_true',
             help='SAMC: do not consider directional effects of variables'
         )
+        parser.add_argument(
+            '--max_flow', type=float, default=1.0,
+            help=(
+                'SAMC: upper limit for the rate of the flow (upstream vs '
+                'downstream) term, per km'
+            )
+        )
+        parser.add_argument(
+            '--fixFlow', action='store_true',
+            help='SAMC: leave out the flow (upstream vs downstream) term'
+        )
 
         # Multi-model inference options
         parser.add_argument(
@@ -200,6 +211,9 @@ class parseArgs:
             parser.error("--max_resist must be greater than 1")
         if self.fix_resist is not None and self.fix_resist < 1:
             parser.error("--fix_resist must be at least 1")
+        # The smallest flow rate searched (samc_network.MIN_FLOW)
+        if self.max_flow <= 0.001:
+            parser.error("--max_flow must be greater than 0.001")
 
         # 'delta' refers to the MLPE output column delta_aic_null
         if self.fitmetric == 'delta':

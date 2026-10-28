@@ -37,6 +37,7 @@ def main():
             ne=params.ne,
             max_resist=params.max_resist,
             fix_resist=params.fix_resist,
+            max_flow=params.max_flow,
             out=params.out,
             verbose=True
         )
@@ -84,6 +85,7 @@ def main():
         fixWeight=params.fixWeight,
         fixShape=params.fixShape,
         fixAsym=params.fixAsym,
+        fixFlow=params.fixFlow,
         min_weight=params.min_weight,
         max_shape=params.max_shape,
         awsum=params.awsum,

@@ -391,3 +391,47 @@ def test_best_model_blanks_unselected():
     assert best.loc["var1", "Weight"] == 0.4
     assert best.loc["var1", "Transformation"] == 3
     assert best.loc["var2"].isna().all()
+
+
+def test_best_model_lists_flow():
+    # SAMC: the maximum resistance and flow rate follow the variables; a
+    # flow-only best model still reports its rate
+    hof = HallOfFame(["var1", "var2"], 10)
+    row = {
+        "fitness": 1.0, "var1": 1, "var1_weight": 0.4, "var1_trans": 3,
+        "var1_shape": 7, "var1_asym": 1, "var2": 0, "var2_weight": 0.9,
+        "var2_trans": 5, "var2_shape": 50, "var2_asym": 0,
+        "max_resistance": 40.0, "flow": -0.02, "loglik": 1.0, "r2m": 0.1,
+        "aic": -1.0, "delta_aic_null": 1.0}
+    hof.data = pd.DataFrame([row])
+    best = hof.getBest()
+    assert list(best["Variable"]) == ["var2", "var1", "max_resistance",
+                                      "flow"]
+    best = best.set_index("Variable")
+    assert best.loc["var1", "Directional"] == 1
+    assert best.loc["flow", "Value"] == -0.02
+    assert best.loc["max_resistance", "Value"] == 40.0
+    row.update({"var1": 0, "flow": 0.01})
+    hof.data, hof.best = pd.DataFrame([row]), None
+    best = hof.getBest().set_index("Variable")
+    assert "max_resistance" not in best.index
+    assert best.loc["flow", "Value"] == 0.01
+    assert best.loc[["var1", "var2"], "Weight"].isna().all()
+
+
+def test_best_model_effective_direction():
+    # SAMC: the direction setting is described in raw values, using the
+    # effective directions computed for the best model
+    hof = HallOfFame(["var1", "var2", "var3"], 10)
+    row = {"fitness": 1.0, "loglik": 1.0, "r2m": 0.1, "aic": -1.0,
+           "delta_aic_null": 1.0, "max_resistance": 10.0, "flow": 0.0}
+    for v, asym in [("var1", 1), ("var2", 1), ("var3", 0)]:
+        row.update({v: 1, f"{v}_weight": 0.5, f"{v}_trans": 7,
+                    f"{v}_shape": 50, f"{v}_asym": asym})
+    hof.data = pd.DataFrame([row])
+    hof.effective_direction = {"var1": 0.0, "var2": 0.6}
+    best = hof.get_best_model().set_index("Variable")
+    assert best.loc["var1", "Effective_direction"] == \
+        "towards lower values harder"
+    assert best.loc["var2", "Effective_direction"].startswith("mixed")
+    assert best.loc["var3", "Effective_direction"] == "symmetric"

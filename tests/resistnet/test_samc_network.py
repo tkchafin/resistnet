@@ -145,6 +145,24 @@ def test_evaluate_and_output(samc_net):
     np.testing.assert_allclose(total, 1)
 
 
+def test_search_space(samc_net):
+    runner = ModelRunnerTPE(samc_net, seed=1, verbose=False)
+    runner.set_tpe_parameters(max_shape=10)
+    runner.initialize_space()
+    from hyperopt.pyll.stochastic import sample
+    rng = np.random.default_rng(1)
+    draws = [sample(runner.space, rng=rng) for _ in range(300)]
+    assert {d["run_mm_cyr_asym"] for d in draws} == {0, 1}
+    assert {d["flow_dir"] for d in draws} == {-1, 0, 1}
+    rates = [d["flow_rate"] for d in draws]
+    assert min(rates) >= 1e-3 and max(rates) <= samc_net.max_flow
+    runner.set_tpe_parameters(max_shape=10, fixAsym=True, fixFlow=True)
+    runner.initialize_space()
+    draws = [sample(runner.space, rng=rng) for _ in range(50)]
+    assert {d["run_mm_cyr_asym"] for d in draws} == {0}
+    assert {d["flow_dir"] for d in draws} == {0}
+
+
 def test_surface_parameters(samc_net):
     ind = model({"run_mm_cyr": (0.7, 3, 10, 0), "sgr_dk_rav": (0.4, 0, 1, 1)})
     # 2 x (transformation, shape) + 1 relative weight + 2 directions
@@ -163,11 +181,23 @@ def test_run_tpe_samc(samc_net, tmp_path):
     out = str(tmp_path / "run")
     runner.run_tpe(max_evals=3, threads=1, reps=2, max_shape=10,
                    n_startup=2, out=out, verbose=False, plot=False)
-    hof = pd.read_csv(f"{out}.HallOfFame.tsv", sep="\t")
+    hof = pd.read_csv(f"{out}.HallOfFame.tsv", sep="\t", na_values="-")
     assert all(f"{v}_asym" in hof.columns for v in VARIABLES)
+    for v in VARIABLES:
+        assert hof[f"{v}_asym"].dropna().isin([0, 1]).all()
     assert hof["max_resistance"].between(1, samc_net.max_resist).all()
+    assert hof["flow"].abs().le(samc_net.max_flow).all()
+    # AIC differences from the reference models (positive = better)
+    null = pd.read_csv(f"{out}.Null-Model.tsv", sep="\t", index_col=0)
+    for col, ref in [("delta_aic_distance", "samc_distance"),
+                     ("delta_aic_flow", "samc_flow")]:
+        np.testing.assert_allclose(
+            hof[col], null.loc[ref, "aic"] - hof["aic"], rtol=1e-9)
     assert os.path.exists(f"{out}.Model-Average.CFPTMatrix.tsv")
     assert os.path.exists(f"{out}.Model-Average.TransitionEdges.tsv")
+    # The best model's effective directions
+    best = pd.read_csv(f"{out}.bestModel.tsv", sep="\t")
+    assert "Effective_direction" in best.columns
 
 
 @pytest.mark.parametrize("stored", [("o", "d"), ("d", "o")])
@@ -205,11 +235,113 @@ def test_uniform_ne(tmp_path):
 
 def test_null_models(samc_net):
     table = samc_net.evaluate_null_model()
-    assert list(table.index) == ["distance_only", "samc_uniform", "null"]
+    assert list(table.index) == [
+        "distance_only", "samc_distance", "samc_flow", "null"]
     # Equal movement weights = any model with a maximum resistance of 1
     ind = model({"run_mm_cyr": (1.0, 4, 20, 1)}) + [1.0]
     _, res = samc_net.evaluate(ind)
-    assert table.loc["samc_uniform", "loglik"] == pytest.approx(res[0])
+    assert table.loc["samc_distance", "loglik"] == pytest.approx(res[0])
     # Only the MLPE parameters (intercept, slope, 2 variances) are counted
-    assert table.loc["samc_uniform", "aic"] == pytest.approx(
+    assert table.loc["samc_distance", "aic"] == pytest.approx(
         2 * 4 - 2 * res[0])
+    # Flow alone: the fitted rate, plus one parameter; it includes distance
+    # alone (rate 0), so it fits at least as well
+    rate = table.loc["samc_flow", "flow"]
+    _, res = samc_net.evaluate(model({}) + [1.0, rate])
+    assert table.loc["samc_flow", "loglik"] == pytest.approx(res[0])
+    assert table.loc["samc_flow", "aic"] == pytest.approx(2 * 5 - 2 * res[0])
+    assert (table.loc["samc_flow", "loglik"]
+            >= table.loc["samc_distance", "loglik"])
+    for r in [rate * 0.8, rate * 1.25]:
+        _, res = samc_net.evaluate(model({}) + [1.0, r])
+        assert res[0] <= table.loc["samc_flow", "loglik"] + 1e-6
+
+
+def test_upstream_changes(samc_net):
+    table = samc_net.upstream_changes()
+    assert list(table.index) == VARIABLES
+    shares = table[["rises", "no_change", "falls"]].astype(float)
+    np.testing.assert_allclose(shares.sum(axis=1), 1)
+    # 629 upstream moves (the link between the outlet reaches is neither)
+    assert (table["steps"] == 629).all()
+    # dor_pc_pva (degree of regulation) is the same on almost every step
+    assert shares.loc["dor_pc_pva", "no_change"] > 0.95
+    prefix = samc_net.output_prefix
+    assert os.path.exists(f"{prefix}.upstreamChanges.pdf")
+    written = pd.read_csv(f"{prefix}.upstreamChanges.tsv", sep="\t",
+                          index_col=0)
+    np.testing.assert_allclose(written["rises"], shares["rises"])
+
+
+def test_effective_directions(samc_net):
+    # The direction setting applies to the transformed values: increasing
+    # transformations keep it, decreasing ones reverse it, and a humped
+    # Ricker (peak within the data: runoff spans the range) gives a mix
+    v = "sgr_dk_rav"
+    share = {}
+    for t, s in [(0, 1), (5, 100), (6, 100), (7, 100), (8, 100)]:
+        d = samc_net.effective_directions(model({v: (1.0, t, s, 1)}))
+        share[(t, s)] = d[v]
+    assert share[(0, 1)] == 1.0
+    assert share[(5, 100)] == 1.0 and share[(8, 100)] == 1.0
+    assert share[(6, 100)] == 0.0 and share[(7, 100)] == 0.0
+    mixed = samc_net.effective_directions(
+        model({"run_mm_cyr": (1.0, 1, 3, 1)}))["run_mm_cyr"]
+    assert 0.05 < mixed < 0.95
+    # Symmetric variables have no direction
+    assert samc_net.effective_directions(model({v: (1.0, 0, 1, 0)})) == {}
+    # Values read back from the Hall of Fame are numpy scalars
+    ind = model({v: (1.0, np.int64(7), np.int64(100), np.int64(1))})
+    assert samc_net.effective_directions(ind)[v] == 0.0
+
+
+def test_flow_positions(samc_net):
+    # Differences between adjacent reaches are the distance moved upstream
+    # between midpoints: the change in DIST_DN_KM + LENGTH_KM / 2 (which
+    # HydroRIVERS stores to 0.1 km)
+    eid = samc_net.reachid_col
+    att = {d[eid]: (d["DIST_DN_KM"], d["LENGTH_KM"])
+           for _, _, d in samc_net._K.edges(data=True)}
+    dd, L = np.array([att[e] for e in samc_net._edge_order]).T
+    mid = dd + L / 2
+    rows, cols = samc_net._adj.nonzero()
+    pos = samc_net._flow_pos
+    np.testing.assert_allclose(pos[cols] - pos[rows], mid[cols] - mid[rows],
+                               atol=0.3)
+    # Upstream moves (adjacency -1, except between the outlet reaches) are
+    # positive
+    sign = np.asarray(samc_net._adj[rows, cols]).ravel()
+    root = (sign == -1) & (np.asarray(samc_net._adj[cols, rows]).ravel() == -1)
+    assert np.all(pos[cols][(sign == -1) & ~root]
+                  > pos[rows][(sign == -1) & ~root])
+
+
+def test_flow_term(samc_net):
+    rows, cols = samc_net._adj.nonzero()
+    up = samc_net._flow_pos[cols] - samc_net._flow_pos[rows]
+    for rate in [0.2, -0.05]:
+        # Flow alone: weights are exp(-rate * km moved upstream)
+        W = samc_net._build_composite_surface(model({}) + [10.0, rate])
+        np.testing.assert_allclose(np.asarray(W[rows, cols]).ravel(),
+                                   np.exp(-rate * up), rtol=1e-12)
+        # With variables, it multiplies their weights; it is per km, so
+        # not affected by the maximum resistance
+        spec = model({"run_mm_cyr": (1.0, 0, 1, 0)})
+        W0 = samc_net._build_composite_surface(spec + [10.0, 0.0])
+        Wf = samc_net._build_composite_surface(spec + [10.0, rate])
+        np.testing.assert_allclose(
+            np.asarray(Wf[rows, cols]).ravel(),
+            np.asarray(W0[rows, cols]).ravel() * np.exp(-rate * up),
+            rtol=1e-12)
+    # Neither variables nor flow: no model
+    assert samc_net._build_composite_surface(model({}) + [10.0, 0.0]) is None
+    fitness, _ = samc_net.evaluate(model({}) + [10.0, 0.0])
+    assert fitness == float("-inf")
+
+
+def test_surface_parameters_flow(samc_net):
+    ind = model({"run_mm_cyr": (0.7, 3, 10, 0), "sgr_dk_rav": (0.4, 0, 1, 1)})
+    assert samc_net.surface_parameters(ind + [50.0, 0.0]) == 8
+    assert samc_net.surface_parameters(ind + [50.0, -0.1]) == 9
+    # Flow alone: only the rate (no maximum resistance without variables)
+    assert samc_net.surface_parameters(model({}) + [50.0, 0.1]) == 1
