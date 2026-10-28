@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -13,6 +16,7 @@ import resistnet.transform as trans
 import resistnet.resist_dist as rd
 import resistnet.CFPT as cfpt_samc
 from resistnet.resistance_network import ResistanceNetwork
+from resistnet.resistance_network import SimResistanceNetwork
 
 # Smallest non-zero flow rate searched (per km)
 MIN_FLOW = 1e-3
@@ -1235,3 +1239,95 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self._R = R
         self._edge_site_indices = edge_site_indices
         self._flow_pos = flow_pos
+
+
+class SimResistanceNetworkSAMC(SimResistanceNetwork):
+    """
+    Simulates validation datasets under a SAMC model: the conditional first
+    passage times among random sites, averaged over the two directions (as
+    fitted), with movement weights built exactly as when fitting models.
+
+    Args:
+        network (str): Path of the pickled network.
+        reachid_col (str): Column name for reach ID.
+        length_col (str): Column name for length.
+        verbose (bool, optional): Flag to enable verbose output. Defaults to
+                                  False.
+        seed (int, optional): Random seed for reproducibility.
+        ne (float, optional): Effective population size at every site
+                              (absorption 1/(2 Ne)). Defaults to 100.
+        max_resistance (float, optional): Maximum resistance of the
+                                          composite surface. Defaults to 100.
+        flow (float, optional): Rate of the flow term, per km (0 = no flow
+                                term; see ResistanceNetworkSAMC.flow_rate()).
+        infer_origin (str, optional): Attribute giving each reach's next
+                                      downstream reach. Defaults to NEXT_DOWN.
+    """
+    def __init__(self, network, reachid_col, length_col, verbose=False,
+                 seed=None, ne=100, max_resistance=100.0, flow=0.0,
+                 infer_origin="NEXT_DOWN"):
+        super().__init__(network, reachid_col, length_col, verbose=verbose,
+                         seed=seed)
+        self.ne = ne
+        self.sim_max_resistance = float(max_resistance)
+        self.sim_flow = float(flow)
+        self.infer_origin = infer_origin
+
+    def simulated_distances(self, vars, base):
+        """
+        Mean conditional first passage times (over both directions) among
+        the sampled points. The passage times themselves are written to
+        {base}.CFPTMatrix.tsv (row = origin, column = destination).
+
+        Args:
+            vars (DataFrame): Model specification, as for
+                              simulate_resistance(), with an optional ASYM
+                              column (1 = directional; default 0). With no
+                              variables, movement weights are equal (plus
+                              the flow term, if any).
+            base (str): Output prefix of the replicate.
+
+        Returns:
+            numpy.ndarray: Distances, ordered as self._points_labels.
+        """
+        self.write_points(base, self._points_labels)
+        variables = list(vars["VAR"]) or [self.length_col]
+        agg = (dict(zip(vars["VAR"], vars["AGG"]))
+               if "AGG" in vars.columns else {})
+        # The SAMC network of the sampled sites, built as when fitting
+        with tempfile.TemporaryDirectory() as tmp:
+            net = ResistanceNetworkSAMC(
+                network=self.network, shapefile=None, sizes=None,
+                coords=f"{base}.coords", variables=variables, inmat=None,
+                agg_opts={v: agg.get(v, "ARITH") for v in variables},
+                reachid_col=self.reachid_col, length_col=self.length_col,
+                infer_origin=self.infer_origin, ne=self.ne,
+                max_flow=max(1.0, abs(self.sim_flow)),
+                out=os.path.join(tmp, "sim"), verbose=False)
+
+        individual = []
+        for v in net._predictors.columns:
+            spec = vars[vars["VAR"] == v]
+            if spec.empty:
+                individual += [0, 1.0, 0, 1.0, 0]
+                continue
+            spec = spec.iloc[0]
+            individual += [1, float(spec["WEIGHT"]), int(spec["TRANSFORM"]),
+                           float(spec["SHAPE"]), int(spec.get("ASYM", 0))]
+        individual += [self.sim_max_resistance, self.sim_flow]
+
+        R = net._R.ravel()
+        Q = net._transition_matrix(individual)
+        if Q is None:
+            # No variable and no flow term: equal movement weights
+            Q = cfpt_samc.transition_matrix(abs(net._adj).astype(float), R)
+        T = cfpt_samc.CFPT(Q, net._edge_site_indices, R)
+        utils.write_matrix(f"{base}.CFPTMatrix.tsv", T,
+                           list(net._points_labels.values()))
+
+        # Order the sites as the sampled points
+        pos = {str(lab): i for i, lab in enumerate(
+            net._points_labels.values())}
+        order = [pos[str(lab)] for lab in self._points_labels.values()]
+        T = T[np.ix_(order, order)]
+        return (T + T.T) / 2.0

@@ -548,3 +548,127 @@ def test_mlpe_reference_inputs_nmt(ref_net):
     T = CFPT(_ref_transition_matrix(ref_net, "ele_dir_flow"),
              ref_net._edge_site_indices, ref_net._R)
     np.testing.assert_allclose((T + T.T) / 2, X, rtol=1e-12)
+
+
+def _simulate_samc(tmp_path, spec, flow, seed=4, samples=12):
+    from resistnet.samc_network import SimResistanceNetworkSAMC
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    spec_file = tmp_path / "spec.tsv"
+    spec.to_csv(spec_file, sep="\t", index=False)
+    sim = SimResistanceNetworkSAMC(
+        network=os.path.join(data, "nmt.network"), reachid_col="HYRIV_ID",
+        length_col="LENGTH_KM", seed=seed, max_resistance=20.0, flow=flow)
+    out = str(tmp_path / "sim")
+    sim.simulate(str(spec_file), 1, samples, out)
+    return data, f"{out}_1"
+
+
+def test_simulate_samc_recovers_flow(tmp_path):
+    # Distances simulated under flow alone are recovered by fitting flow
+    # alone to them, with the same rate
+    spec = pd.DataFrame(columns=["VAR", "WEIGHT", "TRANSFORM", "SHAPE"])
+    data, base = _simulate_samc(tmp_path, spec, flow=0.05)
+    sim = pd.read_csv(f"{base}.ResistanceMatrix.tsv", sep="\t", index_col=0)
+    assert np.allclose(sim.to_numpy(), sim.to_numpy().T)
+    assert sim.to_numpy().max() == pytest.approx(1.0)
+    cfpt = pd.read_csv(f"{base}.CFPTMatrix.tsv", sep="\t", index_col=0)
+    assert not np.allclose(cfpt.to_numpy(), cfpt.to_numpy().T)
+    net = ResistanceNetworkSAMC(
+        network=os.path.join(data, "nmt.network"), shapefile=None,
+        sizes=None, coords=f"{base}.coords", variables=["LENGTH_KM"],
+        inmat=f"{base}.ResistanceMatrix.tsv",
+        agg_opts={"LENGTH_KM": "ARITH"}, out=str(tmp_path / "fit"),
+        verbose=False)
+    rate, res = net._fit_flow_alone()
+    assert rate == pytest.approx(0.05, rel=1e-3)
+    assert res["r2m"].iloc[0] > 0.999
+
+
+def test_simulate_samc_matches_fitted_model(tmp_path):
+    # The simulated distances are those of the same model as fitted: the
+    # mean passage times of both directions, ordered by sample
+    from resistnet.CFPT import CFPT
+    spec = pd.DataFrame({"VAR": ["ele_mt_cav", "sgr_dk_rav"],
+                         "WEIGHT": [1.0, 0.5], "TRANSFORM": [0, 5],
+                         "SHAPE": [1, 3], "ASYM": [1, 0]})
+    data, base = _simulate_samc(tmp_path, spec, flow=-0.02)
+    sim = pd.read_csv(f"{base}.ResistanceMatrix.tsv", sep="\t", index_col=0)
+    net = ResistanceNetworkSAMC(
+        network=os.path.join(data, "nmt.network"), shapefile=None,
+        sizes=None, coords=f"{base}.coords", variables=list(spec["VAR"]),
+        inmat=None, agg_opts={v: "ARITH" for v in spec["VAR"]},
+        out=str(tmp_path / "fit"), verbose=False)
+    ind = []
+    for v in net._predictors.columns:
+        s = spec.set_index("VAR").loc[v]
+        ind += [1, s["WEIGHT"], s["TRANSFORM"], s["SHAPE"], s["ASYM"]]
+    T = CFPT(net._transition_matrix(ind + [20.0, -0.02]),
+             net._edge_site_indices, net._R)
+    fitted = pd.DataFrame((T + T.T) / 2,
+                          index=list(net._points_labels.values()),
+                          columns=list(net._points_labels.values()))
+    fitted.index = fitted.index.astype(str)
+    fitted.columns = fitted.columns.astype(str)
+    sim.index = sim.index.astype(str)
+    sim.columns = sim.columns.astype(str)
+    fitted = fitted.loc[sim.index, sim.columns]
+    np.testing.assert_allclose(sim.to_numpy(),
+                               fitted.to_numpy() / fitted.to_numpy().max(),
+                               rtol=1e-12)
+
+
+def test_ensemble_samc(samc_net, tmp_path):
+    # ensembleResistnet.py averages SAMC runs as a SAMC model, and refuses
+    # to mix them with standard runs
+    import json
+    import shutil
+    import subprocess
+    import sys
+    from resistnet.CFPT import CFPT
+    reps = tmp_path / "reps"
+    reps.mkdir()
+    for seed in (1, 2):
+        runner = ModelRunnerTPE(samc_net, seed=seed, verbose=False)
+        runner.run_tpe(max_evals=3, threads=1, reps=2, max_shape=10,
+                       n_startup=2, out=str(reps / f"samc_{seed}"),
+                       verbose=False, plot=False)
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    script = os.path.join(os.path.dirname(__file__), "..", "..", "scripts",
+                          "ensembleResistnet.py")
+    args = ["-n", os.path.join(data, "nmt.network"), "-c", "HYRIV_ID",
+            "-C", os.path.join(data, "nmt.pointCoords.txt"), "-t", "1",
+            "-X"]
+    out = str(tmp_path / "ens")
+    p = subprocess.run([sys.executable, script, "-i", str(reps), "-o", out,
+                        *args], capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr[-2000:]
+    with open(f"{out}.modelSpec.json") as fh:
+        assert all(m["type"] == "samc" for m in json.load(fh)["models"])
+    best = pd.read_csv(f"{out}.bestModel.tsv", sep="\t")
+    assert "Effective_direction" in best.columns
+    # The best model's passage times, as computed directly
+    row = pd.read_csv(f"{out}.HallOfFame.tsv", sep="\t",
+                      na_values="-").iloc[0]
+    ind = []
+    for v in samc_net._predictors.columns:
+        ind += ([1, row[f"{v}_weight"], row[f"{v}_trans"],
+                 row[f"{v}_shape"], row[f"{v}_asym"]] if row[v] == 1
+                else [0, 1.0, 0, 1.0, 0])
+    ind += [row["max_resistance"], row["flow"]]
+    T = CFPT(samc_net._transition_matrix(ind),
+             samc_net._edge_site_indices, samc_net._R)
+    written = pd.read_csv(f"{out}.Model-Best.CFPTMatrix.tsv", sep="\t",
+                          index_col=0)
+    np.testing.assert_allclose(written.to_numpy(), T, rtol=1e-10)
+
+    # Mixed with a standard run: refused
+    mixed = tmp_path / "mixed"
+    mixed.mkdir()
+    shutil.copy(reps / "samc_1.HallOfFame.tsv", mixed)
+    shutil.copy(os.path.join(data, "nmt_ensemble", "replicates",
+                             "nmt_1.HallOfFame.tsv"), mixed)
+    p = subprocess.run([sys.executable, script, "-i", str(mixed), "-o",
+                        str(tmp_path / "mix"), *args],
+                       capture_output=True, text=True)
+    assert p.returncode != 0
+    assert "mix standard and SAMC" in p.stderr + p.stdout

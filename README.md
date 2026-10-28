@@ -480,6 +480,16 @@ Arguments:
     -c, --id_col: Reach ID attribute (def=EDGE_ID)
     -o, --out: Output file name (default=sim)
     -z, --seed: Random seed (optional)
+
+SAMC (directional) simulations:
+    --samc: Simulate conditional first passage times (mean of the two
+        directions) under a SAMC model, instead of effective resistances;
+        the input table may have an ASYM column (1 = directional)
+    --ne: Effective population size at every site (default=100)
+    --max_resistance: Maximum resistance of the composite (default=100)
+    --flow: Flow rate per km (positive = moving upstream harder;
+        default=0, no flow term)
+    --infer_origin: Next downstream reach attribute (def=NEXT_DOWN)
 ```
 
 Simulations require a compressed input network (i.e., as output by `runResistnet.py` or `autoStreamTree`), and a specifications file which should be tab-delimited and provide some covariates you would like to simulate effective resistances with, along with their weights, transformations, and shapes (using the same codes as in the Hall of Fame). An optional `AGG` column gives the method used to aggregate each variable across reaches sharing an ID (default ARITH, as in `runResistnet.py`). Resistances are computed in exactly the same way as when fitting models with `runResistnet.py`, so simulated models can be recovered using the same settings. An example can be found in `src/resistnet/data/simparams.tsv`:
@@ -497,6 +507,15 @@ simResistnet.py -n src/resistnet/data/nmt.network -c HYRIV_ID -s 50 -r 10 -o sim
 ```
 
 This will produce a number of outputs named `*.ResistanceMatrix.tsv` and `*.coords`, which can be supplied directly as inputs to `runResistnet.py` via `-g` and `-c` (with the same network and `--reachid_col`), for example to test if `ResistNet` model optimisation can recover the specified model in your network, given different sample sizes.
+
+With `--samc`, the distances are instead the conditional first passage times of a SAMC model (see [Directional models](#samc)), averaged over the two directions as when fitting, and rescaled to 0-1; the passage times themselves (row = origin, column = destination) are written to `*.CFPTMatrix.tsv`. The specifications file can then include an `ASYM` column (1 = directional, 0 = symmetric; default 0), and `--max_resistance`, `--flow` and `--ne` set the maximum resistance, the flow rate (per km) and the effective population size at every site. With no variables (a header line only), movement weights are equal, so e.g. `--flow 0.05` simulates flow alone. For example:
+
+```
+simResistnet.py -n src/resistnet/data/nmt.network -c HYRIV_ID -s 20 -r 10 \
+    -o samc_sim -i spec.tsv --samc --max_resistance 50 --flow -0.05
+```
+
+The movement weights and passage times are computed exactly as when fitting SAMC models, so simulated models can be recovered with `runResistnet.py --samc` (with the same `--ne`).
 
 Note that because samples are random nodes, the network used for simulations should have a unique ID for every reach (such as `HYRIV_ID` in HydroRIVERS). If IDs are shared by several reaches (e.g., the `EDGE_ID` segments in `autoStreamTree` outputs, which are defined between the original sampling sites), new samples can fall within these segments, which cannot be represented. If the network has several unconnected parts (e.g. other basins in the reach layer, as in `nmt.network`), samples are drawn from the largest. 
 
@@ -533,9 +552,14 @@ Optional Arguments:
           var1   <Optional aggregator function>
           var2   <Optional aggregator function>
           ...
+
+SAMC runs (detected from their Hall of Fame columns):
+--sizes: Effective population sizes (tsv: sample, size)
+--ne: Effective population size for all sites without
+      --sizes [default=100]
 ```
 
-Most arguments are used in the same way as their equivalents in `runResistnet.py`, but one difference is in how a group of replicate run outputs are passed. The simplest way is to provide the path to an output directory, where outputs are named like `{prefix}_{rep}.*`. Only the `$prefix.HallOfFame.tsv` files are read. Example outputs, from 10 short runs of the example dataset with different seeds, can be found in `src/resistnet/data/nmt_ensemble/replicates`:
+Most arguments are used in the same way as their equivalents in `runResistnet.py`, but one difference is in how a group of replicate run outputs are passed. Runs of the SAMC model (`--samc`) are recognised from their Hall of Fame columns and averaged as a SAMC model (with `--sizes` or `--ne` as for `runResistnet.py`), giving model-averaged passage times and transition probabilities; standard and SAMC runs can't be mixed in one ensemble. The simplest way is to provide the path to an output directory, where outputs are named like `{prefix}_{rep}.*`. Only the `$prefix.HallOfFame.tsv` files are read. Example outputs, from 10 short runs of the example dataset with different seeds, can be found in `src/resistnet/data/nmt_ensemble/replicates`:
 ```
 nmt_1.HallOfFame.tsv
 nmt_10.HallOfFame.tsv

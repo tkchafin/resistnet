@@ -1373,6 +1373,32 @@ class SimResistanceNetwork(ResistanceNetwork):
             ])
         return self._build_composite_surface(model)
 
+    def simulated_distances(self, vars, base):
+        """
+        Pairwise distances among the sampled points under the specified
+        model: effective resistances (sums of reach resistances along the
+        paths).
+
+        Args:
+            vars (DataFrame): Model specification (see simulate_resistance()).
+            base (str): Output prefix of the replicate.
+
+        Returns:
+            numpy.ndarray: Distances, ordered as self._points_labels.
+        """
+        # Compute subgraph and annotate edges
+        self._K = self.parse_subgraph_from_points(base)
+        self._K = self.annotate_edges()
+
+        # Simulate composite resistance
+        multi = self.simulate_resistance(vars)
+
+        # Build incidence matrix and compute resistance matrix
+        self.build_incidence_matrix(self.reachid_col, out=None)
+        return rd.effectiveResistanceMatrix(
+            self._points_snapped, self._inc, multi
+        )
+
     def write_points(self, oname, points):
         """
         Writes the point data to a file.
@@ -1436,18 +1462,7 @@ class SimResistanceNetwork(ResistanceNetwork):
             samples = utils.sample_nodes(G, num_samples)
             self.format_sampled_points(samples)
 
-            # Compute subgraph and annotate edges
-            self._K = self.parse_subgraph_from_points(base)
-            self._K = self.annotate_edges()
-
-            # Simulate composite resistance
-            multi = self.simulate_resistance(vars)
-
-            # Build incidence matrix and compute resistance matrix
-            self.build_incidence_matrix(self.reachid_col, out=None)
-            res = rd.effectiveResistanceMatrix(
-                self._points_snapped, self._inc, multi
-            )
+            res = self.simulated_distances(vars, base)
             # Rescale to 0-1 over the whole matrix (the diagonal is 0), so it
             # stays symmetric
             res = res / res.max()

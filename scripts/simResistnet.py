@@ -2,19 +2,33 @@
 import sys
 import getopt
 from resistnet.resistance_network import SimResistanceNetwork
+from resistnet.samc_network import SimResistanceNetworkSAMC
 
 
 def main():
     params = ParseArgs()
 
     # Step 1: Read network
-    sim_engine = SimResistanceNetwork(
-        network=params.network,
-        reachid_col=params.id_col,
-        length_col=params.length_col,
-        verbose=True,
-        seed=params.seed
-    )
+    if params.samc:
+        sim_engine = SimResistanceNetworkSAMC(
+            network=params.network,
+            reachid_col=params.id_col,
+            length_col=params.length_col,
+            verbose=True,
+            seed=params.seed,
+            ne=params.ne,
+            max_resistance=params.max_resistance,
+            flow=params.flow,
+            infer_origin=params.infer_origin
+        )
+    else:
+        sim_engine = SimResistanceNetwork(
+            network=params.network,
+            reachid_col=params.id_col,
+            length_col=params.length_col,
+            verbose=True,
+            seed=params.seed
+        )
 
     # Step 2: Write simulated outputs
     sim_engine.simulate(
@@ -32,7 +46,8 @@ class ParseArgs:
             options, _ = getopt.getopt(
                 sys.argv[1:], 'ho:i:n:s:r:l:c:z:',
                 ["help", "out=", "in=", "network=", "reps=", "samples=",
-                 "len_col=", "id_col=", "seed="]
+                 "len_col=", "id_col=", "seed=", "samc", "ne=",
+                 "max_resistance=", "flow=", "infer_origin="]
             )
         except getopt.GetoptError as err:
             print(err)
@@ -49,6 +64,11 @@ class ParseArgs:
         self.length_col = "LENGTH_KM"
         self.id_col = "EDGE_ID"
         self.seed = None
+        self.samc = False
+        self.ne = 100.0
+        self.max_resistance = 100.0
+        self.flow = 0.0
+        self.infer_origin = "NEXT_DOWN"
 
         # First pass to see if help menu was called
         for o, _ in options:
@@ -77,6 +97,16 @@ class ParseArgs:
                 self.length_col = arg
             elif opt in ("seed", "z"):
                 self.seed = int(arg)
+            elif opt == "samc":
+                self.samc = True
+            elif opt == "ne":
+                self.ne = float(arg)
+            elif opt == "max_resistance":
+                self.max_resistance = float(arg)
+            elif opt == "flow":
+                self.flow = float(arg)
+            elif opt == "infer_origin":
+                self.infer_origin = arg
             else:
                 assert False, f"Unhandled option {opt!r}"
 
@@ -103,6 +133,16 @@ Arguments:
     -c, --id_col: Reach ID attribute (def=EDGE_ID)
     -o, --out: Output file name (default=sim)
     -z, --seed: Random seed (optional)
+
+SAMC (directional) simulations:
+    --samc: Simulate conditional first passage times (mean of the two
+        directions) under a SAMC model, instead of effective resistances;
+        the input table may have an ASYM column (1 = directional)
+    --ne: Effective population size at every site (default=100)
+    --max_resistance: Maximum resistance of the composite (default=100)
+    --flow: Flow rate per km (positive = moving upstream harder;
+        default=0, no flow term)
+    --infer_origin: Next downstream reach attribute (def=NEXT_DOWN)
 """)
         sys.exit()
 

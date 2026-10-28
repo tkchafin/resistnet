@@ -7,6 +7,7 @@ import getopt
 import glob
 import pandas as pd
 from resistnet.resistance_network import ResistanceNetwork
+from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.model_optimisation import ModelRunner
 from resistnet.hall_of_fame import HallOfFame
 
@@ -37,6 +38,17 @@ def main():
     hofs = read_and_concat_files(
         params.paths, ".HallOfFame.tsv", local_rows=local_rows
     )
+
+    # SAMC runs have a direction setting for each variable, and a maximum
+    # resistance and flow rate; the two kinds of runs can't be averaged
+    samc_cols = [c for c in hofs.columns if c.endswith("_asym")]
+    samc_cols += [c for c in ("max_resistance", "flow") if c in hofs.columns]
+    samc = bool(samc_cols)
+    if samc and hofs[samc_cols].isna().any().any():
+        sys.exit("The inputs mix standard and SAMC (--samc) runs, which "
+                 "can't be averaged together; ensemble them separately")
+    if samc:
+        print("SAMC runs: building a SAMC ensemble")
 
     hofs.replace('-', '0.0', inplace=True)
     for col in hofs.columns:
@@ -81,18 +93,34 @@ def main():
     params.coords = params.out + ".coords"
 
     # Get network
-    network = ResistanceNetwork(
-        network=params.network,
-        shapefile=params.shapefile,
-        coords=params.coords,
-        variables=variables,
-        agg_opts=agg_opts,
-        inmat=None,
-        reachid_col=params.reachid_col,
-        length_col=params.length_col,
-        out=params.out,
-        verbose=True
-    )
+    if samc:
+        network = ResistanceNetworkSAMC(
+            network=params.network,
+            shapefile=params.shapefile,
+            sizes=params.sizes,
+            coords=params.coords,
+            variables=variables,
+            agg_opts=agg_opts,
+            inmat=None,
+            reachid_col=params.reachid_col,
+            length_col=params.length_col,
+            ne=params.ne,
+            out=params.out,
+            verbose=True
+        )
+    else:
+        network = ResistanceNetwork(
+            network=params.network,
+            shapefile=params.shapefile,
+            coords=params.coords,
+            variables=variables,
+            agg_opts=agg_opts,
+            inmat=None,
+            reachid_col=params.reachid_col,
+            length_col=params.length_col,
+            out=params.out,
+            verbose=True
+        )
 
     # Step 3: Set up ModelRunner
     runner = ModelRunner(
@@ -210,7 +238,8 @@ class ParseArgs:
                  "len_col=", "id_col=", "split_samples", "max_keep=",
                  "awsum=", "list=", "threads=", "edge_agg=", "varFile=",
                  "report_all", "noPlot", "only_best",
-                 "only_keep", "coords=", "seed=", "use_full"]
+                 "only_keep", "coords=", "seed=", "use_full", "sizes=",
+                 "ne="]
             )
 
         except getopt.GetoptError as err:
@@ -256,6 +285,8 @@ class ParseArgs:
         self.plot = True
         self.coords = None
         self.use_full = False
+        self.sizes = None
+        self.ne = 100
 
     def check_mandatory_options(self):
         """ Checks if mandatory options are set """
@@ -316,6 +347,10 @@ class ParseArgs:
                 self.report_all = True
             elif opt in ("C", "coords"):
                 self.coords = arg
+            elif opt == "sizes":
+                self.sizes = arg
+            elif opt == "ne":
+                self.ne = float(arg)
             elif opt in ("id_col", "c"):
                 self.reachid_col = arg
             elif opt in ("l", "len_col"):
@@ -374,7 +409,11 @@ class ParseArgs:
             "-V, --varfile: Optional file with variables provided like so:\n"
             "          var1 \t <Optional aggregator function>\n"
             "          var2 \t <Optional aggregator function>\n"
-            "          ...\n"
+            "          ...\n\n"
+            "SAMC runs (detected from their Hall of Fame columns):\n"
+            "--sizes: Effective population sizes (tsv: sample, size)\n"
+            "--ne: Effective population size for all sites without\n"
+            "      --sizes [default=100]\n"
         )
 
         print()
