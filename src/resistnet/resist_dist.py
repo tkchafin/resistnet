@@ -53,7 +53,7 @@ def effectiveResistanceMatrix(points, inc_matrix, edge_resistance):
     return r
 
 
-def conditionalFirstPassTime(Q, sites_i, gendist):
+def conditionalFirstPassTime(Q, sites_i, gendist, absorption=None):
     """
     Conditional first passage times (CFPT) among sites, fitted to genetic
     distances with MLPE.
@@ -65,11 +65,15 @@ def conditionalFirstPassTime(Q, sites_i, gendist):
         Q (scipy.sparse matrix): Transient transition matrix.
         sites_i (list): State index of each site.
         gendist (numpy.ndarray): Genetic distance matrix.
+        absorption (array-like, optional): Total absorption of each state
+            (see CFPT.cond_passage).
 
     Returns:
         tuple: The CFPT matrix (row = origin, column = destination), and the
-               MLPE results.
+               MLPE results (None if some passage times are not finite).
     """
-    cfpt = cfpt_samc.CFPT(Q, sites_i)
+    cfpt = cfpt_samc.CFPT(Q, sites_i, absorption)
+    if not np.all(np.isfinite(cfpt)):
+        return cfpt, None
     res = mlpe.MLPE(gendist, (cfpt + cfpt.T) / 2.0, scale=True)
     return cfpt, res

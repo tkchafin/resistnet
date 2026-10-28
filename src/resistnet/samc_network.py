@@ -566,7 +566,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
 
         _, res = rd.conditionalFirstPassTime(
-            Q, self._edge_site_indices, self._gendist)
+            Q, self._edge_site_indices, self._gendist, self._R.ravel())
+        if res is None:
+            return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
 
         # Penalise AIC for the surface parameters (aic is negated, so higher
         # is better)
@@ -642,7 +644,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         W = abs(self._adj).astype(float)
         Q = cfpt_samc.transition_matrix(W, self._R)
         _, res = rd.conditionalFirstPassTime(
-            Q, self._edge_site_indices, self._gendist)
+            Q, self._edge_site_indices, self._gendist, self._R.ravel())
         r = res.iloc[0]
         uniform = pd.DataFrame({
             "loglik": [r["loglik"]],
@@ -673,7 +675,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         Q = self._transition_matrix(model)
         if Q is None:
             return None, None
-        cfpt = cfpt_samc.CFPT(Q, self._edge_site_indices)
+        cfpt = cfpt_samc.CFPT(Q, self._edge_site_indices, self._R.ravel())
         return cfpt, self._transition_vectors(Q)
 
     def _transition_vectors(self, Q):
