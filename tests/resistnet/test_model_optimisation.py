@@ -13,7 +13,6 @@ def tpe_parameters_fixture():
         'fixShape': True,
         'min_weight': 0.5,
         'max_shape': 2.0,
-        'max_hof_size': 100,
         'fitmetric': 'aic',
         'awsum': 0.75,
         'only_keep': True,
@@ -110,7 +109,6 @@ def test_model_runner_initialization(resistance_network_fixture):
     assert model_runner.fixShape is None
     assert model_runner.min_weight is None
     assert model_runner.max_shape is None
-    assert model_runner.max_hof_size is None
     assert model_runner.fitmetric is None
     assert model_runner.awsum is None
     assert model_runner.only_keep is None

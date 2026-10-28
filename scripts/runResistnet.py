@@ -65,7 +65,6 @@ def main():
         fixShape=params.fixShape,
         min_weight=params.min_weight,
         max_shape=params.max_shape,
-        max_hof_size=params.max_hof_size,
         awsum=params.awsum,
         only_keep=True,
         use_full=params.use_full,

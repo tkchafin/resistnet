@@ -77,11 +77,9 @@ usage: runResistnet.py [-h] [-g INMAT] [-s SHAPEFILE] [-c COORDS] [-n NETWORK]
                        [--transFile TRANSFILE] [-v VARS] [-V VARFILE]
                        [-F NFAIL] [-i MAX_ITER] [-r REPS] [-P PWEIGHT]
                        [-S NSTART] [-C NCAND] [-G GAMMA]
-                       [-f {aic,loglik,r2m,delta}]
-                       [--max_hof_size MAX_HOF_SIZE] [--fixWeight]
-                       [--fixShape] [--max_shape MAX_SHAPE]
-                       [--min_weight MIN_WEIGHT] [-a AWSUM] [--use_full]
-                       [--report_all]
+                       [-f {aic,loglik,r2m,delta}] [--fixWeight] [--fixShape]
+                       [--max_shape MAX_SHAPE] [--min_weight MIN_WEIGHT]
+                       [-a AWSUM] [--use_full] [--report_all]
 
 Optimise resistance networks using Tree-structured Parzen Estimators (TPE)
 
@@ -130,9 +128,7 @@ options:
                         (default: 0.15)
   -f, --fitmetric {aic,loglik,r2m,delta}
                         Fitness metric used to evaluate models (delta = change
-                        in AIC relative to the null model) (default: loglik)
-  --max_hof_size MAX_HOF_SIZE
-                        Maximum models retained (default: 100)
+                        in AIC relative to the null model) (default: aic)
   --fixWeight           Fix all variable weights at 1.0 (default: False)
   --fixShape            Turn off variable transformations (default: False)
   --max_shape MAX_SHAPE
@@ -192,7 +188,7 @@ Note that a valid path is required between all sites. Thus, if you are analyzing
 
 ### Outputs <a name="outputs"></a>
 
-After parsing all of the inputs, `ResistNet` runs `-r,--reps` independent TPE chains. In each iteration, every chain proposes one model parameterization (which variables are included, and their weights, transformations, and shapes), and these are evaluated in parallel by `-t,--procs` worker processes. Each model is fitted to the genetic distances with a maximum-likelihood population effects (MLPE) mixed model (Clarke et al. 2002, as implemented in [ResistanceGA](https://github.com/wpeterman/ResistanceGA)), and scored using the fitness metric chosen with `-f,--fitmetric` (by default the log-likelihood). The first `-S,--nstart` models in each chain are random; after that, TPE uses the previous evaluations to propose new models. After each iteration, the best result so far across all chains is printed to the terminal (stdout), as a loss (i.e., the negative fitness):
+After parsing all of the inputs, `ResistNet` runs `-r,--reps` independent TPE chains. In each iteration, every chain proposes one model parameterization (which variables are included, and their weights, transformations, and shapes), and these are evaluated in parallel by `-t,--procs` worker processes. Each model is fitted to the genetic distances with a maximum-likelihood population effects (MLPE) mixed model (Clarke et al. 2002, as implemented in [ResistanceGA](https://github.com/wpeterman/ResistanceGA)), and scored using the fitness metric chosen with `-f,--fitmetric` (by default AIC). The first `-S,--nstart` models in each chain are random; after that, TPE uses the previous evaluations to propose new models. After each iteration, the best result so far across all chains is printed to the terminal (stdout), as a loss to be minimised (for the default `-f aic` this is the AIC itself; for the other metrics it is their negative):
 ```
 Building network from shapefile: /Users/tyler/projects/resistnet/src/resistnet/data/test.shp
 WARNING: This can take a while with very large files!
@@ -209,8 +205,8 @@ Starting worker 1 with seed 1235
 Starting worker 2 with seed 1236
 Starting worker 3 with seed 1237
 
-Iteration 1, Current Best: -106.86059436359557
-Iteration 2, Current Best: -107.4116473510621
+Iteration 1, Current Best: -195.72118872719113
+Iteration 2, Current Best: -200.6166879746323
 ...
 ...
 ```
@@ -218,11 +214,11 @@ The optimisation stops after `-i,--max_iter` iterations, or earlier if the best 
 ```
 ...
 ...
-Iteration 50, Current Best: -108.08709867868279
-Chain 1: Best = -107.73535543168757
-Chain 2: Best = -107.80320790331623
-Chain 3: Best = -108.08709867868279
-Chain 4: Best = -108.05893122329154
+Iteration 50, Current Best: -204.03180307252435
+Chain 1: Best = -204.03180307252435
+Chain 2: Best = -203.60641580663247
+Chain 3: Best = -200.6447098270069
+Chain 4: Best = -203.4931430990202
 ...
 ...
 ```
@@ -263,10 +259,10 @@ The output table `$out.HallOfFame.tsv` contains textual representations of the r
 
 ```
 fitness run_mm_cyr      run_mm_cyr_weight       run_mm_cyr_trans        run_mm_cyr_shape ... akaike_weight   acc_akaike_weight       keep
-108.08709867868279      1       0.6048545684327914      3.0     11.0    ... 0.2916697543382834      0.2916697543382834      True
+-204.03180307252435     1       0.5723350842617511      7.0     5.0     ... 0.36282348471442094     0.36282348471442094     True
 ```
 
-The table contains the best model from each of the `-r,--reps` TPE chains. Some of these columns are self-explanatory (i.e., "fitness" is the model fitness, which by default is the log-likelihood). Other summary metrics included are the Akaike weights, change in AIC relative to the null and "best" models, as well as the other fitness metrics (marginal R^2, log-likelihoods). As in ResistanceGA, the AIC counts both the parameters of the MLPE model (intercept, slope, and two variance components) and the resistance surface parameters: a transformation and shape for each included variable, and their weights. Because the composite resistance surface is rescaled, only relative weights matter, so a model with m included variables has m - 1 weight parameters. Parameters fixed with `--fixWeight` or `--fixShape` are not counted. The marginal R^2 is computed as in `MuMIn::r.squaredGLMM` (as used by ResistanceGA). Other values in the table include whether or not a variable is included in a model ($var, where $var is the variable name), specified as either "1" (=included) or "0" (=excluded), and the transformation type (=$var_trans), transformation shape parameter (=$var_shape), and weight of the parameter when calculating the composite resistance edges (=$var_weight). For the transformation column, the types of transformations are as follows: 0=Not transformed; 1=Ricker; 2=Reverse Ricker; 3=Inverse Ricker; 4=Reverse-Inverse Ricker; 5=Monomolecular; 6=Reverse Monomolecular; 7=Inverse Monomolecular; 8=Reverse-Inverse Monomolecular. In all cases, the larger the shape value, the closer each transformation gets to being linear (=essentially no transformation).
+The table contains the best model from each of the `-r,--reps` TPE chains. Some of these columns are self-explanatory (i.e., "fitness" is the model fitness, which with the default `-f aic` is the AIC). Other summary metrics included are the Akaike weights, change in AIC relative to the null and "best" models, as well as the other fitness metrics (marginal R^2, log-likelihoods). As in ResistanceGA, the AIC counts both the parameters of the MLPE model (intercept, slope, and two variance components) and the resistance surface parameters: a transformation and shape for each included variable, and their weights. Because the composite resistance surface is rescaled, only relative weights matter, so a model with m included variables has m - 1 weight parameters. Parameters fixed with `--fixWeight` or `--fixShape` are not counted. The marginal R^2 is computed as in `MuMIn::r.squaredGLMM` (as used by ResistanceGA). Other values in the table include whether or not a variable is included in a model ($var, where $var is the variable name), specified as either "1" (=included) or "0" (=excluded), and the transformation type (=$var_trans), transformation shape parameter (=$var_shape), and weight of the parameter when calculating the composite resistance edges (=$var_weight). For the transformation column, the types of transformations are as follows: 0=Not transformed; 1=Ricker; 2=Reverse Ricker; 3=Inverse Ricker; 4=Reverse-Inverse Ricker; 5=Monomolecular; 6=Reverse Monomolecular; 7=Inverse Monomolecular; 8=Reverse-Inverse Monomolecular. In all cases, the larger the shape value, the closer each transformation gets to being linear (=essentially no transformation).
 
 #### Covariate relative importance 
 
@@ -275,17 +271,25 @@ Other outputs that will typically be of interest are the `modAvgWeights.tsv` and
 ```
 # RVI
 variable        RVI
-run_mm_cyr      1.0
-tmp_dc_cyr      0.0
+run_mm_cyr      0.9332890021100864
+tmp_dc_cyr      0.06671099788991361
 dor_pc_pva      0.0
 sgr_dk_rav      0.0
 
 # MAW
 variable        MAW
-run_mm_cyr      0.5970020251670678
-tmp_dc_cyr      -
+run_mm_cyr      0.5203998480479153
+tmp_dc_cyr      0.29394613663539537
 dor_pc_pva      -
 sgr_dk_rav      -
+```
+
+Note that relative importances only compare the retained resistance models with each other, so some variable will always appear important. To judge whether the landscape variables explain genetic distances at all, compare the AIC of the best model with that of the distance-only model in `$out.Null-Model.tsv`. In this example the distance-only model (AIC -204.27) fits about as well as the best resistance model (AIC -204.03), so there is no evidence here that the covariates add anything beyond stream distance:
+
+```
+                loglik                  aic                     r2m                     delta_aic_null
+distance_only   106.13569611097171      -204.27139222194342     0.035739300700537435    17.250247310349266
+null            96.51057245579707       -187.02114491159415
 ```
 
 #### Effective resistance values 
@@ -296,10 +300,10 @@ If you would like to import these into other GIS plotting tools, you can simply 
 
 ```
 EDGE_ID Resistance
-40830357        0.9283818455709922
-40832271        0.912867455423229
-40833054        0.8909524621585521
-40833364        0.8871870301118978
+40830357        0.8795201132346177
+40832271        0.8784437150687432
+40833054        0.8706223098494453
+40833364        0.8771124581022398
 ...
 ...
 ```

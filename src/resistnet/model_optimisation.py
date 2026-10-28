@@ -69,7 +69,6 @@ class ModelRunner:
         self.fixAsym = False
         self.min_weight = None
         self.max_shape = None
-        self.max_hof_size = None
 
         self.num_attributes = 4
 
@@ -695,9 +694,9 @@ class ModelRunnerTPE(ModelRunner):
                 )
 
     def set_tpe_parameters(self, max_evals=100, num_workers=10,
-                           fitmetric="likelihood", fixWeight=None,
+                           fitmetric="aic", fixWeight=None,
                            fixShape=None, fixAsym=False, min_weight=None,
-                           max_shape=None, max_hof_size=None, only_keep=None,
+                           max_shape=None, only_keep=None,
                            use_full=False, verbose=True, report_all=False,
                            awsum=0.95, fixed_params=None, out=None):
         """
@@ -712,7 +711,6 @@ class ModelRunnerTPE(ModelRunner):
             fixAsym (bool): Constrain asymmetry to 0.
             min_weight (float): Minimum allowable weight.
             max_shape (float): Maximum shape value.
-            max_hof_size (int): Maximum Hall of Fame size.
             only_keep (bool): Only retain models where column "keep"=True.
             use_full (bool): Flag to use full dataset.
             verbose (bool): Flag to control verbosity of output.
@@ -728,7 +726,6 @@ class ModelRunnerTPE(ModelRunner):
         self.fixAsym = fixAsym
         self.min_weight = min_weight
         self.max_shape = max_shape
-        self.max_hof_size = max_hof_size
         self.only_keep = only_keep
         self.use_full = use_full
         self.verbose = verbose
@@ -739,9 +736,9 @@ class ModelRunnerTPE(ModelRunner):
             self.fixed_params = fixed_params
         self.out = out
 
-    def run_tpe(self, max_evals=100, threads=4, fitmetric="loglik",
+    def run_tpe(self, max_evals=100, threads=4, fitmetric="aic",
                 fixWeight=None, fixShape=None, fixAsym=False, min_weight=None,
-                max_shape=None, max_hof_size=None, only_keep=None,
+                max_shape=None, only_keep=None,
                 use_full=False, verbose=True, report_all=False, nFail=50,
                 awsum=0.95, fixed_params=None, out=None, plot=True, reps=10,
                 n_startup=40, n_candidates=48, gamma=0.15, pweight=0.7):
@@ -758,7 +755,6 @@ class ModelRunnerTPE(ModelRunner):
             fixAsym (bool): Constrain asymmetry to 0.
             min_weight (float): Minimum allowable weight.
             max_shape (float): Maximum shape value.
-            max_hof_size (int): Maximum Hall of Fame size.
             only_keep (bool): Only retain models where column "keep"=True.
             use_full (bool): Flag to use full dataset.
             verbose (bool): Flag to control verbosity of output.
@@ -775,7 +771,7 @@ class ModelRunnerTPE(ModelRunner):
             # Set TPE parameters
             self.set_tpe_parameters(max_evals, threads, fitmetric, fixWeight,
                                     fixShape, fixAsym, min_weight, max_shape,
-                                    max_hof_size, only_keep, use_full, verbose,
+                                    only_keep, use_full, verbose,
                                     report_all, awsum, fixed_params, out)
 
             # Parse optional input fixed_params

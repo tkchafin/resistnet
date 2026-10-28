@@ -9,7 +9,7 @@ def test_parseArgs_with_args():
                 "--network", "network.pkl", "--procs", "4", "--out", "results",
                 "--gridSearch", "--transFile", "trans.txt", "--vars", "var1,var2", "--varfile", "vars.txt",
                 "--nfail", "60", "--max_iter", "600", "--reps", "20", "--pweight", "0.8", "--nstart", "30",
-                "--ncand", "50", "--gamma", "0.2", "--fitmetric", "r2m", "--max_hof_size", "150",
+                "--ncand", "50", "--gamma", "0.2", "--fitmetric", "r2m",
                 "--fixWeight", "--fixShape", "--max_shape", "200", "--min_weight", "0.1", "--awsum", "2.0",
                 "--use_full", "--report_all"]
     with patch.object(sys, 'argv', testargs):
@@ -33,7 +33,6 @@ def test_parseArgs_with_args():
         assert args.ncand == 50
         assert args.gamma == 0.2
         assert args.fitmetric == "r2m"
-        assert args.max_hof_size == 150
         assert args.fixWeight
         assert args.fixShape
         assert args.max_shape == 200
@@ -69,6 +68,13 @@ def test_varfile_aggregators(tmp_path):
         assert args.agg_opts == {
             "var1": "SUM", "var2": "ARITH", "var3": "MAX"
         }
+
+
+def test_fitmetric_default_aic():
+    testargs = ["prog", "--vars", "var1"]
+    with patch.object(sys, 'argv', testargs):
+        args = parseArgs()
+        assert args.fitmetric == "aic"
 
 
 def test_fitmetric_delta():

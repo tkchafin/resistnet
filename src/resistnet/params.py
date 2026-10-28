@@ -110,15 +110,11 @@ class parseArgs:
         parser.add_argument(
             '-f', '--fitmetric', type=str, choices=['aic', 'loglik', 'r2m',
                                                     'delta'],
-            default='loglik', required=False,
+            default='aic', required=False,
             help=(
                 'Fitness metric used to evaluate models (delta = change in '
                 'AIC relative to the null model)'
             )
-        )
-        parser.add_argument(
-            '--max_hof_size', type=int, default=100, required=False,
-            help='Maximum models retained'
         )
         parser.add_argument(
             '--fixWeight', action='store_true',
