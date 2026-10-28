@@ -158,6 +158,18 @@ class parseArgs:
             help='SAMC: attribute giving the next downstream reach ID'
         )
         parser.add_argument(
+            '--max_resist', type=float, default=500,
+            help=(
+                'SAMC: upper limit for the maximum resistance of the '
+                'composite surface (relative to a minimum of 1), which is '
+                'optimised'
+            )
+        )
+        parser.add_argument(
+            '--fix_resist', type=float,
+            help='SAMC: fix the maximum resistance instead of optimising it'
+        )
+        parser.add_argument(
             '--fixAsym', action='store_true',
             help='SAMC: do not consider directional effects of variables'
         )
@@ -180,6 +192,11 @@ class parseArgs:
         args = parser.parse_args()
         for key, value in vars(args).items():
             setattr(self, key, value)
+
+        if self.max_resist <= 1:
+            parser.error("--max_resist must be greater than 1")
+        if self.fix_resist is not None and self.fix_resist < 1:
+            parser.error("--fix_resist must be at least 1")
 
         # 'delta' refers to the MLPE output column delta_aic_null
         if self.fitmetric == 'delta':

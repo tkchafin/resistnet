@@ -35,6 +35,8 @@ def main():
             length_col=params.length_col,
             infer_origin=params.infer_origin,
             ne=params.ne,
+            max_resist=params.max_resist,
+            fix_resist=params.fix_resist,
             out=params.out,
             verbose=True
         )

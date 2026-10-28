@@ -13,9 +13,10 @@ from resistnet.model_optimisation import ModelRunnerTPE
 VARIABLES = ["run_mm_cyr", "tmp_dc_cyr", "dor_pc_pva", "sgr_dk_rav"]
 
 # 50-digit reference (sparse Gaussian elimination in decimal arithmetic) for
-# the conditional passage times from each site to site 8, under the model
-# with run_mm_cyr as a directional variable; without iterative refinement,
-# the LU solves were off by up to 0.5%
+# the conditional passage times from each site to site 8, with movement
+# weights from directional run_mm_cyr under the original (unbounded)
+# resistance-to-conductance mapping; without iterative refinement, the LU
+# solves were off by up to 0.5%
 REF_RUN_DIR_TO_SITE8 = [
     4534.0497886998983, 4569.7948874062749, 4326.7003348945245,
     4118.7409360978836, 223.04489990490589, 180.64915345825153,
@@ -98,10 +99,32 @@ def test_directional_orientation(samc_net):
 
 
 def test_cfpt_precision(samc_net):
-    Q = samc_net._transition_matrix(model({"run_mm_cyr": (1.0, 0, 1, 1)}))
-    from resistnet.CFPT import CFPT
-    T = CFPT(Q, samc_net._edge_site_indices)
+    from resistnet.CFPT import CFPT, transition_matrix
+    from resistnet.utils import minmax, minmax_nonzero
+    v = samc_net._predictors["run_mm_cyr"].to_numpy(dtype=float)
+    v = (v - v.min()) / (v.max() - v.min())
+    rows, cols = samc_net._adj.nonzero()
+    w = minmax_nonzero(1 / minmax_nonzero(minmax(v[cols] - v[rows])))
+    W = sp.csr_matrix((w, (rows, cols)), shape=samc_net._adj.shape)
+    T = CFPT(transition_matrix(W, samc_net._R), samc_net._edge_site_indices)
     np.testing.assert_allclose(T[:, 8], REF_RUN_DIR_TO_SITE8, rtol=1e-10)
+
+
+def test_resistance_mapping(samc_net):
+    # Resistances run from 1 to the maximum resistance, so conductances
+    # span exactly that contrast, and two-level variables are kept
+    for var in ["run_mm_cyr", "dor_pc_pva"]:
+        for k in [1.0, 37.0, 500.0]:
+            W = samc_net._build_composite_surface(
+                model({var: (1.0, 0, 1, 0)}) + [k])
+            assert W.data.max() == pytest.approx(1.0)
+            assert W.data.max() / W.data.min() == pytest.approx(k)
+    W = samc_net._build_composite_surface(
+        model({"dor_pc_pva": (1.0, 0, 1, 0)}) + [100.0])
+    assert len(np.unique(W.data)) == 3   # mean of two levels: 0, 0.5, 1
+    # Without a maximum resistance in the model, the default is used
+    assert samc_net.max_resistance(model({"run_mm_cyr": (1, 0, 1, 0)})) \
+        == 100.0
 
 
 def test_evaluate_and_output(samc_net):
@@ -126,9 +149,13 @@ def test_surface_parameters(samc_net):
     ind = model({"run_mm_cyr": (0.7, 3, 10, 0), "sgr_dk_rav": (0.4, 0, 1, 1)})
     # 2 x (transformation, shape) + 1 relative weight + 2 directions
     assert samc_net.surface_parameters(ind) == 7
+    # + the maximum resistance, when it is part of the model
+    assert samc_net.surface_parameters(ind + [50.0]) == 8
     net = copy.copy(samc_net)
     net.fixAsym = True
     assert net.surface_parameters(ind) == 5
+    net.fix_resist = 50.0
+    assert net.surface_parameters(ind + [50.0]) == 5
 
 
 def test_run_tpe_samc(samc_net, tmp_path):
@@ -138,6 +165,7 @@ def test_run_tpe_samc(samc_net, tmp_path):
                    n_startup=2, out=out, verbose=False, plot=False)
     hof = pd.read_csv(f"{out}.HallOfFame.tsv", sep="\t")
     assert all(f"{v}_asym" in hof.columns for v in VARIABLES)
+    assert hof["max_resistance"].between(1, samc_net.max_resist).all()
     assert os.path.exists(f"{out}.Model-Average.CFPTMatrix.tsv")
     assert os.path.exists(f"{out}.Model-Average.TransitionEdges.tsv")
 

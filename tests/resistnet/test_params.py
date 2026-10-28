@@ -84,6 +84,17 @@ def test_samc_defaults():
         assert args.samc
         assert args.sizes is None
         assert args.ne == 100
+        assert args.max_resist == 500
+        assert args.fix_resist is None
+
+
+@pytest.mark.parametrize("opt", [["--max_resist", "1"],
+                                 ["--fix_resist", "0.5"]])
+def test_samc_resistance_limits(opt):
+    testargs = ["prog", "--vars", "var1", "--samc"] + opt
+    with patch.object(sys, 'argv', testargs):
+        with pytest.raises(SystemExit):
+            parseArgs()
 
 
 def test_fitmetric_delta():

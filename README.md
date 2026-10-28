@@ -79,8 +79,10 @@ usage: runResistnet.py [-h] [-g INMAT] [-s SHAPEFILE] [-c COORDS] [-n NETWORK]
                        [-S NSTART] [-C NCAND] [-G GAMMA]
                        [-f {aic,loglik,r2m,delta}] [--fixWeight] [--fixShape]
                        [--max_shape MAX_SHAPE] [--min_weight MIN_WEIGHT]
-                       [--samc] [--sizes SIZES] [--infer_origin INFER_ORIGIN]
-                       [--fixAsym] [-a AWSUM] [--use_full] [--report_all]
+                       [--samc] [--sizes SIZES] [--ne NE]
+                       [--infer_origin INFER_ORIGIN] [--max_resist MAX_RESIST]
+                       [--fix_resist FIX_RESIST] [--fixAsym] [-a AWSUM]
+                       [--use_full] [--report_all]
 
 Optimise resistance networks using Tree-structured Parzen Estimators (TPE)
 
@@ -138,14 +140,22 @@ options:
                         Minimum weight parameter (default: 0.0)
   --samc                Use the spatial absorbing Markov chain (SAMC) model:
                         conditional first passage times among sites, allowing
-                        directional effects (requires --sizes) (default:
-                        False)
-  --sizes SIZES         SAMC: tsv with columns sample, size (population sizes;
-                        absorption at each site is 1/(2 * size)) (default:
-                        None)
+                        directional effects (default: False)
+  --sizes SIZES         SAMC: tsv with columns sample, size (effective
+                        population sizes; absorption at each site is 1/(2 *
+                        size)) (default: None)
+  --ne NE               SAMC: effective population size of every site, if no
+                        --sizes (default: 100)
   --infer_origin INFER_ORIGIN
                         SAMC: attribute giving the next downstream reach ID
                         (default: NEXT_DOWN)
+  --max_resist MAX_RESIST
+                        SAMC: upper limit for the maximum resistance of the
+                        composite surface (relative to a minimum of 1), which
+                        is optimised (default: 500)
+  --fix_resist FIX_RESIST
+                        SAMC: fix the maximum resistance instead of optimising
+                        it (default: None)
   --fixAsym             SAMC: do not consider directional effects of variables
                         (default: False)
   -a, --awsum AWSUM     Cumulative Akaike weight threshold (default: 1.0)

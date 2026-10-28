@@ -193,6 +193,8 @@ class ModelRunner:
                 ])
                 if self.num_attributes == 5:
                     model_string.append(row[f"{var}_asym"])
+            if self.num_attributes == 5:
+                model_string.append(row["max_resistance"])
             models.append([mod_num, model_string])
             weights[mod_num] = row["akaike_weight"]
             mod_num += 1
@@ -363,6 +365,8 @@ class ModelRunner:
                 worker_args['origin'] = self.resistance_network._origin
                 worker_args['R'] = self.resistance_network._R
                 worker_args['fixAsym'] = self.fixAsym
+                worker_args['max_resist'] = self.resistance_network.max_resist
+                worker_args['fix_resist'] = self.resistance_network.fix_resist
                 worker_args[
                     'allSymmetric'
                     ] = self.resistance_network.allSymmetric
@@ -701,6 +705,18 @@ class ModelRunnerTPE(ModelRunner):
                     [0] if self.fixAsym else [0, 1]
                 )
 
+        # Maximum resistance of the composite surface (SAMC only)
+        if self.num_attributes == 5:
+            net = self.resistance_network
+            if net.fix_resist is not None:
+                self.space["max_resistance"] = hp.choice(
+                    "max_resistance", [float(net.fix_resist)]
+                )
+            else:
+                self.space["max_resistance"] = hp.loguniform(
+                    "max_resistance", 0.0, np.log(net.max_resist)
+                )
+
     def set_tpe_parameters(self, max_evals=100, num_workers=10,
                            fitmetric="aic", fixWeight=None,
                            fixShape=None, fixAsym=False, min_weight=None,
@@ -931,6 +947,8 @@ class ModelRunnerTPE(ModelRunner):
                 )
             if num_attributes == 5:
                 individual[idx_base + 4] = int(model[f"{var_name}_asym"])
+        if num_attributes == 5:
+            individual.append(float(model["max_resistance"]))
         return individual
 
     def process_hall_of_fame(self, trials_list):
@@ -980,6 +998,8 @@ class ModelRunnerTPE(ModelRunner):
                 if num_attributes == 5:
                     individual_columns[idx_base + 4] = f"{var_name}_asym"
 
+            if num_attributes == 5:
+                individual_columns.append("max_resistance")
             res_columns = ['loglik', 'r2m', 'aic', 'delta_aic_null']
             columns = ['fitness'] + individual_columns + res_columns
 

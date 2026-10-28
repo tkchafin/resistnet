@@ -43,7 +43,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                  agg_opts, pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
                  origin=None, out="out", verbose=True, minimize=False,
-                 ne=100):
+                 ne=100, max_resist=500, fix_resist=None):
         """
         Constructs all the necessary attributes for the ResistanceNetwork
         object.
@@ -70,6 +70,11 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             minimize (bool): Flag to minimize subgraph. Defaults to False.
             ne (float): Effective population size of every site, used if
                         sizes is None. Defaults to 100.
+            max_resist (float): Upper limit when optimising the resistance
+                        of the most resistant moves, relative to the least
+                        resistant (1). Defaults to 500.
+            fix_resist (float, optional): Fix that maximum resistance
+                        instead of optimising it.
         """
         self.network = network
         self.shapefile = shapefile
@@ -90,6 +95,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self.origin = origin
         self.allSymmetric = False
         self.num_attributes = 5
+        self.max_resist = max_resist
+        self.fix_resist = fix_resist
 
         # Additional attributes for internal use
         self.minimized_subgraph = None
@@ -547,7 +554,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         Args:
             individual (list): Model specification, with self.num_attributes
                                values (selection, weight, transformation,
-                               shape, direction) per variable.
+                               shape, direction) per variable, optionally
+                               followed by the maximum resistance.
 
         Returns:
             tuple: A tuple containing the fitness value and the results of the
@@ -573,7 +581,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         """
         Counts the surface parameters estimated for a model (see
         ResistanceNetwork.surface_parameters), plus the direction setting of
-        each selected variable unless fixAsym.
+        each selected variable unless fixAsym, and the maximum resistance if
+        it was optimised.
 
         Args:
             individual (list): Model specification, as for evaluate().
@@ -581,10 +590,36 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         Returns:
             int: The number of surface parameters.
         """
-        k = super().surface_parameters(individual)
+        n_var = len(self._predictors.columns) * self.num_attributes
+        n_sel = sum(
+            1 for s in individual[0:n_var:self.num_attributes] if s == 1
+        )
+        k = super().surface_parameters(individual[:n_var])
         if not getattr(self, "fixAsym", False):
-            k += sum(1 for s in individual[0::self.num_attributes] if s == 1)
+            k += n_sel
+        # The maximum resistance, if it was optimised
+        if len(individual) > n_var and self.fix_resist is None and n_sel:
+            k += 1
         return k
+
+    def max_resistance(self, individual):
+        """
+        The maximum resistance for a model: the value following the variable
+        attributes in the individual if present (when it is optimised),
+        otherwise fix_resist, or 100 (capped at max_resist).
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            float: The maximum resistance.
+        """
+        n_var = len(self._predictors.columns) * self.num_attributes
+        if len(individual) > n_var:
+            return float(individual[n_var])
+        if self.fix_resist is not None:
+            return float(self.fix_resist)
+        return min(100.0, float(self.max_resist))
 
     def model_output(self, model):
         """
@@ -647,8 +682,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         For each selected variable (transformed and rescaled to 0-1), the
         resistance of moving from reach i to j is the mean of the two reaches'
         values or, if the variable is directional, the difference (value at
-        j - value at i). These are rescaled to 0-1 and summed by weight, and
-        the composite resistance is inverted to give the movement weights
+        j - value at i). These are rescaled to 0-1 and summed by weight. The
+        composite is rescaled to resistances from 1 to the maximum resistance
+        (see max_resistance()), and inverted to give the movement weights
         (conductances).
 
         Args:
@@ -674,14 +710,15 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                 link = var[cols] - var[rows]
             else:
                 link = (var[rows] + var[cols]) / 2.0
-            link = utils.minmax(link) * individual[i * n_att + 1]
+            link = _rescale01(link) * individual[i * n_att + 1]
             multi = link if multi is None else multi + link
 
         if multi is None:
             return None
-        multi = utils.minmax_nonzero(multi)
-        multi = utils.minmax_nonzero(1 / multi)
-        return sp.csr_matrix((multi, (rows, cols)), shape=self._adj.shape)
+        max_r = self.max_resistance(individual)
+        resistance = 1.0 + (max_r - 1.0) * _rescale01(multi)
+        return sp.csr_matrix(
+            (1.0 / resistance, (rows, cols)), shape=self._adj.shape)
 
     def plot_inferred_origin(self, oname):
         # Extract the positions of the nodes in the graph
@@ -799,6 +836,17 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         plt.close()
 
 
+def _rescale01(x):
+    """
+    Rescales an array to 0-1 (all zeros if it is constant).
+    """
+    x = np.asarray(x, dtype=float)
+    span = x.max() - x.min()
+    if span == 0:
+        return np.zeros_like(x)
+    return (x - x.min()) / span
+
+
 class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
     """
     A subclass of ResistanceNetworkSAMC that handles specific worker
@@ -833,13 +881,15 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         allSymmetric (bool): Ignore flow direction in the adjacency matrix.
         edge_site_indices (list): Reach index of each site.
         fixAsym (bool): Directional variables are not searched.
+        max_resist (float): Upper limit of the maximum resistance.
+        fix_resist (float): Fixed maximum resistance (None to optimise).
     """
     def __init__(self, network, pop_agg, reachid_col, length_col,
                  variables, agg_opts, fitmetric, fixWeight, fixShape,
                  min_weight, max_shape, inc, point_coords, points_names,
                  points_snapped, points_labels, predictors, edge_order,
                  gendist, adj, origin, R, allSymmetric, edge_site_indices,
-                 fixAsym=False):
+                 fixAsym=False, max_resist=500, fix_resist=None):
 
         self.network = network
         self.pop_agg = pop_agg
@@ -858,6 +908,8 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self.max_shape = max_shape
         self.allSymmetric = allSymmetric
         self.num_attributes = 5
+        self.max_resist = max_resist
+        self.fix_resist = fix_resist
 
         self._inc = inc
         self._origin = origin
