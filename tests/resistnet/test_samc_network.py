@@ -195,7 +195,15 @@ def test_run_tpe_samc(samc_net, tmp_path):
             hof[col], null.loc[ref, "aic"] - hof["aic"], rtol=1e-9)
     assert os.path.exists(f"{out}.Model-Average.CFPTMatrix.tsv")
     assert os.path.exists(f"{out}.Model-Average.TransitionEdges.tsv")
-    # The best model's effective directions
+    # The models' specifications, best first, and the best model's
+    # effective directions
+    import json
+    with open(f"{out}.modelSpec.json") as fh:
+        spec = json.load(fh)
+    assert [m["rank"] for m in spec["models"]] == list(
+        range(1, len(hof) + 1))
+    np.testing.assert_allclose([m["aic"] for m in spec["models"]],
+                               hof["aic"])
     best = pd.read_csv(f"{out}.bestModel.tsv", sep="\t")
     assert "Effective_direction" in best.columns
 
@@ -293,6 +301,85 @@ def test_effective_directions(samc_net):
     # Values read back from the Hall of Fame are numpy scalars
     ind = model({v: (1.0, np.int64(7), np.int64(100), np.int64(1))})
     assert samc_net.effective_directions(ind)[v] == 0.0
+
+
+def _raw(net):
+    """Raw values of the predictors, from their 0-10 values and ranges."""
+    raw = net._predictors.copy()
+    for v, (lo, hi) in net._predictor_range.items():
+        raw[v] = lo + raw[v] / 10 * (hi - lo)
+    return raw
+
+
+@pytest.mark.parametrize("t,s", [(0, 1), (1, 3), (2, 5), (3, 4), (4, 6),
+                                 (5, 2), (6, 8), (7, 3), (8, 2)])
+def test_model_spec_reproduces_weights(samc_net, t, s):
+    # Applying the saved specification to the training reaches' raw values
+    # gives exactly the fitted model's movement weights
+    import resistnet.predict as pr
+    ind = model({"sgr_dk_rav": (0.6, t, s, 1),
+                 "run_mm_cyr": (0.4, 3, 7, 0)}) + [37.0, -0.04]
+    spec = samc_net.model_spec(ind)
+    W = samc_net._build_composite_surface(ind).tocsr()
+    rows, cols = samc_net._adj.nonzero()
+    up = samc_net._flow_pos[cols] - samc_net._flow_pos[rows]
+    w = pr.samc_weights(_raw(samc_net), rows, cols, up, spec)
+    np.testing.assert_allclose(w, np.asarray(W[rows, cols]).ravel(),
+                               rtol=1e-12)
+
+
+def test_predict_reach_layer(samc_net, tmp_path):
+    # From the HydroRIVERS layer itself (each state is one reach), the
+    # predicted weights are those of the fitted model, for every move
+    # except between the two reaches at the clipped outlet (not linked in
+    # the layer)
+    import geopandas as gpd
+    import json
+    import subprocess
+    import sys
+    import resistnet.predict as pr
+    ind = model({"sgr_dk_rav": (0.6, 7, 3, 1),
+                 "run_mm_cyr": (0.4, 1, 4, 0)}) + [20.0, 0.03]
+    spec = {"reachid_col": "HYRIV_ID", "length_col": "LENGTH_KM",
+            "models": [samc_net.model_spec(ind)]}
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    reaches = gpd.read_file(os.path.join(data, "test.shp"))
+    table, moves, clamped = pr.predict_reaches(reaches, spec)
+    assert all(v == 0 for v in clamped.values())
+    W = samc_net._build_composite_surface(ind).tocsr()
+    idx = {e: i for i, e in enumerate(samc_net._edge_order)}
+    a = np.array([idx[e] for e in moves["from"]])
+    b = np.array([idx[e] for e in moves["to"]])
+    assert len(moves) == 2 * 629
+    np.testing.assert_allclose(moves["weight"], np.asarray(W[a, b]).ravel(),
+                               rtol=1e-12)
+    # The command-line script writes the same values
+    path = tmp_path / "spec.json"
+    path.write_text(json.dumps(spec))
+    script = os.path.join(os.path.dirname(__file__), "..", "..", "scripts",
+                          "predictResistnet.py")
+    out = str(tmp_path / "pred")
+    p = subprocess.run([sys.executable, script, "-s",
+                        os.path.join(data, "test.shp"), "-m", str(path),
+                        "-o", out], capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    written = pd.read_csv(f"{out}.predicted.tsv", sep="\t")
+    np.testing.assert_allclose(written["p_downstream"],
+                               table["p_downstream"], rtol=1e-12)
+    assert os.path.exists(f"{out}.predicted.gpkg")
+    assert os.path.exists(f"{out}.predictedMoves.tsv")
+
+
+def test_predict_clamps_to_training_range(samc_net):
+    import resistnet.predict as pr
+    spec = samc_net.model_spec(
+        model({"sgr_dk_rav": (1.0, 5, 3, 1)}) + [10.0, 0.0])
+    var = spec["variables"]["sgr_dk_rav"]
+    lo, hi = var["min"], var["max"]
+    inside = pr.variable_values([lo, hi], var)
+    outside = pr.variable_values([lo - 5, hi + 5], var)
+    np.testing.assert_allclose(outside, inside)
+    assert pr.out_of_range([lo - 1, lo, hi, hi + 1], var) == 0.5
 
 
 def test_flow_positions(samc_net):

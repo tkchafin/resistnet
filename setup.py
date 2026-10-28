@@ -14,7 +14,8 @@ setup(
     scripts=[
         'scripts/runResistnet.py',
         'scripts/simResistnet.py',
-        'scripts/ensembleResistnet.py'
+        'scripts/ensembleResistnet.py',
+        'scripts/predictResistnet.py'
     ],
     install_requires=[
         "numpy",

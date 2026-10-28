@@ -100,6 +100,7 @@ class ResistanceNetwork:
         self._points_snapped = None
         self._points_labels = None
         self._predictors = None
+        self._predictor_range = None
         self._edge_order = None
         self._gendist = None
 
@@ -143,7 +144,12 @@ class ResistanceNetwork:
         # Save the order of edges
         self._edge_order = df.index
 
-        # Rescale variables to a specified range (0 to 10)
+        # Rescale variables to a specified range (0 to 10), keeping each
+        # variable's range in this network (see model_spec())
+        self._predictor_range = {
+            v: (float(df[v].min()), float(df[v].max()))
+            for v in self.variables
+        }
         predictors = trans.rescaleCols(df[self.variables], 0, 10)
 
         # Deprecated functionality for edgewise genetic distance aggregation
@@ -1128,6 +1134,59 @@ class ResistanceNetwork:
             multi = trans.rescaleCols(multi, 0, 1)
         return multi
 
+    def model_spec(self, individual):
+        """
+        Everything needed to compute a model's resistances for the reaches
+        of another network (see resistnet.predict). For each selected
+        variable: its range in this network (for the 0-10 rescaling), its
+        transformation, shape and weight, and its range after the
+        transformation (for the 0-1 rescaling); and the range of the
+        composite surface (for its 0-1 rescaling).
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            dict: The model specification (JSON-serialisable).
+        """
+        n_att = self.num_attributes
+        spec = {"type": "standard", "variables": {}}
+        multi = None
+        for i, v in enumerate(self._predictors.columns):
+            if individual[i * n_att] != 1:
+                continue
+            var = self._variable_spec(v, individual[i * n_att + 2],
+                                      individual[i * n_att + 3])
+            var["weight"] = float(individual[i * n_att + 1])
+            spec["variables"][v] = var
+            x = self._spec_values(v, var) * var["weight"]
+            multi = x if multi is None else multi + x
+        if multi is not None:
+            spec["composite_min"] = float(multi.min())
+            spec["composite_max"] = float(multi.max())
+        return spec
+
+    def _variable_spec(self, variable, transformation, shape):
+        """
+        A variable's range in this network, transformation and shape, and
+        range after the transformation (see model_spec()).
+        """
+        t, s = int(transformation), float(shape)
+        if t <= 0 or s == 0:
+            t, s = 0, 0.0
+        y = trans.apply_transformation(self._predictors[variable], t, s)
+        lo, hi = self._predictor_range[variable]
+        return {"min": lo, "max": hi, "transform": t, "shape": s,
+                "tmin": float(y.min()), "tmax": float(y.max())}
+
+    def _spec_values(self, variable, var):
+        """A variable's 0-1 values in this network, as for transform()."""
+        y = trans.apply_transformation(
+            self._predictors[variable], var["transform"], var["shape"])
+        y = np.asarray(y, dtype=float)
+        span = var["tmax"] - var["tmin"]
+        return (y - var["tmin"]) / span if span > 0 else np.zeros_like(y)
+
 
 class ResistanceNetworkWorker(ResistanceNetwork):
     """
@@ -1223,6 +1282,7 @@ class SimResistanceNetwork(ResistanceNetwork):
         self._points_snapped = None
         self._points_labels = None
         self._predictors = None
+        self._predictor_range = None
         self._edge_order = None
         self._gendist = None
 
@@ -1273,6 +1333,7 @@ class SimResistanceNetwork(ResistanceNetwork):
         self._points_snapped = None
         self._points_labels = None
         self._predictors = None
+        self._predictor_range = None
         self._edge_order = None
         self._gendist = None
 

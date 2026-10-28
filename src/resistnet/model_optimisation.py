@@ -1,3 +1,4 @@
+import json
 import os
 import pickle
 import tempfile
@@ -162,8 +163,9 @@ class ModelRunner:
                 self.bests.plotMetricPW(out)
                 self.bests.plotVariableImportance(out)
 
-            # Writing Hall of Fame to file
+            # Writing Hall of Fame to file, and the models' specifications
             self.bests.writeModelSummary(out)
+            self.write_model_specs(out)
 
         # Writing log of fitnesses
         if out and len(self.logger) > 0:
@@ -206,6 +208,32 @@ class ModelRunner:
             individual.append(row["max_resistance"])
             individual.append(row.get("flow", 0.0))
         return individual
+
+    def write_model_specs(self, out):
+        """
+        Writes {out}.modelSpec.json: each Hall of Fame model (best first)
+        with the constants needed to apply it to other networks (see
+        model_spec() and resistnet.predict).
+
+        Args:
+            out (str): Output file base name.
+        """
+        net = self.resistance_network
+        models = []
+        hof = self.bests.getHOF()
+        for rank, (_, row) in enumerate(hof.iterrows(), start=1):
+            spec = net.model_spec(self._row_individual(row))
+            spec.update({"rank": rank, "aic": float(row["aic"]),
+                         "akaike_weight": float(row["akaike_weight"])})
+            models.append(spec)
+        with open(f"{out}.modelSpec.json", "w") as fh:
+            json.dump({
+                "format": "resistnet model specification",
+                "version": 1,
+                "reachid_col": net.reachid_col,
+                "length_col": net.length_col,
+                "models": models
+            }, fh, indent=1)
 
     def model_average(self, out="", plot=True):
         """

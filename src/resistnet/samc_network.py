@@ -117,6 +117,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self._points_snapped = None
         self._points_labels = None
         self._predictors = None
+        self._predictor_range = None
         self._edge_order = None
         self._gendist = None
         self._origin = None
@@ -889,6 +890,50 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             upstream = self._flow_pos[cols] - self._flow_pos[rows]
             weights = weights * np.exp(-rate * upstream)
         return sp.csr_matrix((weights, (rows, cols)), shape=self._adj.shape)
+
+    def model_spec(self, individual):
+        """
+        Everything needed to compute a model's movement weights for the
+        reaches of another network (see resistnet.predict): for each
+        selected variable, as for ResistanceNetwork.model_spec() plus its
+        direction setting, the range of its link values, and its effective
+        direction (see effective_directions()); and the range of the
+        composite surface, the maximum resistance and the flow rate.
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            dict: The model specification (JSON-serialisable).
+        """
+        n_att = self.num_attributes
+        rows, cols = self._adj.nonzero()
+        directions = self.effective_directions(individual)
+        spec = {"type": "samc", "variables": {}}
+        multi = None
+        for i, v in enumerate(self._predictors.columns):
+            if individual[i * n_att] != 1:
+                continue
+            var = self._variable_spec(v, individual[i * n_att + 2],
+                                      individual[i * n_att + 3])
+            var["weight"] = float(individual[i * n_att + 1])
+            var["asym"] = int(individual[i * n_att + 4] == 1)
+            x = self._spec_values(v, var)
+            link = (x[cols] - x[rows] if var["asym"]
+                    else (x[rows] + x[cols]) / 2.0)
+            var["link_min"] = float(link.min())
+            var["link_max"] = float(link.max())
+            if v in directions:
+                var["higher_harder"] = directions[v]
+            spec["variables"][v] = var
+            link = _rescale01(link) * var["weight"]
+            multi = link if multi is None else multi + link
+        if multi is not None:
+            spec["composite_min"] = float(multi.min())
+            spec["composite_max"] = float(multi.max())
+            spec["max_resistance"] = self.max_resistance(individual)
+        spec["flow"] = self.flow_rate(individual)
+        return spec
 
     def effective_directions(self, individual):
         """
