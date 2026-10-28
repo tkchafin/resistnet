@@ -1007,35 +1007,9 @@ class ResistanceNetwork:
                            transformation.
 
         Returns:
-            array-like: The transformed data, rescaled between 0 and 10.
+            array-like: The transformed data, rescaled between 0 and 1.
         """
-        d = dat
-
-        if transformation == 0 or shape == 0:
-            return trans.rescaleCols(d, 0, 1)
-
-        # Apply transformation based on the specified type
-        if transformation == 1:
-            d = trans.ricker(dat, shape, 1)
-        elif transformation == 2:
-            d = trans.revRicker(dat, shape, 1)
-        elif transformation == 3:
-            d = trans.invRicker(dat, shape, 1)
-        elif transformation == 4:
-            d = trans.revInvRicker(dat, shape, 1)
-        elif transformation == 5:
-            d = trans.monomolecular(dat, shape, 1)
-        elif transformation == 6:
-            d = trans.revMonomolecular(dat, shape, 1)
-        elif transformation == 7:
-            d = trans.invMonomolecular(dat, shape, 1)
-        elif transformation == 8:
-            d = trans.revInvMonomolecular(dat, shape, 1)
-        elif transformation <= 0:
-            pass
-        else:
-            print("WARNING: Invalid transformation type.")
-
+        d = trans.apply_transformation(dat, max(0, transformation), shape)
         return trans.rescaleCols(d, 0, 1)
 
     def evaluate(self, individual):

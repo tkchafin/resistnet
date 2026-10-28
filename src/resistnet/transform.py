@@ -1,3 +1,5 @@
+import numbers
+
 import numpy as np
 import pandas as pd
 
@@ -96,7 +98,8 @@ def invRicker(dat, shape, ceiling):
 
 def revInvRicker(dat, shape, ceiling):
     """
-    Apply the reverse inverse Ricker model transformation to data.
+    Apply the reverse inverse Ricker model transformation to data: the
+    inverse Ricker of the reversed data (as Inv.Rev.Ricker in ResistanceGA).
 
     Args:
         dat: The input data.
@@ -104,7 +107,7 @@ def revInvRicker(dat, shape, ceiling):
         ceiling: The ceiling parameter of the Ricker model.
 
     Returns:
-        pandas.DataFrame: The transformed and rescaled DataFrame.
+        ndarray: The transformed data.
 
     Raises:
         TypeError: If 'dat' is not a numeric array.
@@ -112,8 +115,8 @@ def revInvRicker(dat, shape, ceiling):
                     'shape' is zero.
     """
     validate_arguments(dat, shape, ceiling)
-    d = invRicker(dat, shape, ceiling)
-    return rescaleCols((-1 * d), min(d), max(d))
+    d = rescaleCols((-1 * dat), min(dat), max(dat))
+    return invRicker(d, shape, ceiling)
 
 
 def revRicker(dat, shape, ceiling):
@@ -225,6 +228,40 @@ def revMonomolecular(dat, shape, ceiling):
     return monomolecular(d, shape, ceiling)
 
 
+TRANSFORMATIONS = {
+    1: ricker,
+    2: revRicker,
+    3: invRicker,
+    4: revInvRicker,
+    5: monomolecular,
+    6: revMonomolecular,
+    7: invMonomolecular,
+    8: revInvMonomolecular,
+}
+
+
+def apply_transformation(dat, transformation, shape):
+    """
+    Applies a transformation by its code (0 or shape 0 = none), before the
+    result is rescaled.
+
+    Args:
+        dat (pd.Series): Variable values (rescaled to 0-10).
+        transformation (int): Transformation code, 0-8.
+        shape (float): Shape parameter.
+
+    Returns:
+        pd.Series: The transformed values.
+    """
+    transformation = int(transformation)
+    if transformation == 0 or shape == 0:
+        return dat
+    if transformation not in TRANSFORMATIONS:
+        print("WARNING: Invalid transformation type.")
+        return dat
+    return TRANSFORMATIONS[transformation](dat, shape, 1)
+
+
 def validate_arguments(dat, shape, ceiling):
     """
     Validate the input arguments for transformation functions.
@@ -246,8 +283,10 @@ def validate_arguments(dat, shape, ceiling):
             "Input 'dat' must be a pd.Series"
         )
 
-    if not (isinstance(shape, (int, float)) and
-            isinstance(ceiling, (int, float))):
+    # numbers.Real includes numpy's scalar types (e.g. values read back from
+    # a DataFrame row)
+    if not (isinstance(shape, numbers.Real) and
+            isinstance(ceiling, numbers.Real)):
         raise ValueError("'shape' and 'ceiling' must be numeric values.")
 
     if shape == 0:

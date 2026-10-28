@@ -57,3 +57,34 @@ def test_transformations(function, shape, ceiling, expected_exception,
     else:
         transformed_data = function(example_data, shape, ceiling)
         assert isinstance(transformed_data, (np.ndarray, pd.Series))
+
+
+def test_reverse_inverse_ricker():
+    # As Inv.Rev.Ricker in ResistanceGA: the inverse Ricker of the reversed
+    # data (it was the inverse of the inverse Ricker, i.e. the Ricker)
+    x = pd.Series(np.linspace(0, 10, 51))
+    np.testing.assert_allclose(tr.revInvRicker(x, 3, 1),
+                               tr.invRicker(10 - x, 3, 1))
+
+
+def test_transformations_distinct():
+    # After rescaling to 0-1, the eight transformations all differ
+    x = pd.Series(np.linspace(0, 10, 51))
+    curves = []
+    for t in range(1, 9):
+        y = tr.apply_transformation(x, t, 3)
+        curves.append(tr.rescaleCols(y, 0, 1).to_numpy())
+    for i in range(8):
+        for j in range(i + 1, 8):
+            assert np.abs(curves[i] - curves[j]).max() > 0.05, (i + 1, j + 1)
+    # No transformation (code 0, or shape 0) returns the data unchanged
+    assert tr.apply_transformation(x, 0, 3) is x
+    assert tr.apply_transformation(x, 5, 0) is x
+
+
+def test_numpy_shape_accepted():
+    # Shapes read back from a DataFrame row are numpy scalars
+    x = pd.Series(np.linspace(0, 10, 11))
+    for shape in [np.int64(3), np.float64(3.0)]:
+        np.testing.assert_allclose(tr.monomolecular(x, shape, 1),
+                                   tr.monomolecular(x, 3, 1))
