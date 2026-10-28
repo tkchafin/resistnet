@@ -1,6 +1,6 @@
 # ResistNet
 
-`ResistNet` is a Python program for optimising environmental resistance models in dendritic spatial networks, such as riverscapes. It includes utilities for optimising models from an arbitrary number of environmental covariates using a genetic algorithm, simulating datasets (e.g., for power analyses), and model-averaging results within runs or across replicates.
+`ResistNet` is a Python program for optimising environmental resistance models in dendritic spatial networks, such as riverscapes. It includes utilities for optimising models from an arbitrary number of environmental covariates using Bayesian optimisation (Tree-structured Parzen Estimators; TPE), simulating datasets (e.g., for power analyses), and model-averaging results within runs or across replicates.
 
 ## Table of Contents:
 1. [Installation](#install)
@@ -9,7 +9,7 @@
     1. [Command-line Interface](#usage_cli)
     2. [Input Files](#inputs)
     3. [Outputs](#outputs)
-    4. [GA Parameters](#ga_params)
+    4. [Optimisation Parameters](#opt_params)
 3. [Tutorials](#tutorials)
     1. [Example Dataset](#example)
     2. [Utility Scripts](#scripts)
@@ -70,69 +70,79 @@ runResistnet.py -h
 This will show the currently available options:
 
 ```
-resistnet.py
+usage: runResistnet.py [-h] [-g INMAT] [-s SHAPEFILE] [-c COORDS] [-n NETWORK]
+                       [--seed SEED] [--reachid_col REACHID_COL]
+                       [--length_col LENGTH_COL] [-t PROCS] [-o OUT]
+                       [-O {SHP,GPKG,GDB}] [--gridSearch]
+                       [--transFile TRANSFILE] [-v VARS] [-V VARFILE]
+                       [-F NFAIL] [-i MAX_ITER] [-r REPS] [-P PWEIGHT]
+                       [-S NSTART] [-C NCAND] [-G GAMMA]
+                       [-f {aic,loglik,r2m,delta}]
+                       [--max_hof_size MAX_HOF_SIZE] [--fixWeight]
+                       [--fixShape] [--max_shape MAX_SHAPE]
+                       [--min_weight MIN_WEIGHT] [-a AWSUM] [--use_full]
+                       [--report_all]
 
-Author: Tyler K Chafin
-Contact: tyler.chafin@bioss.ac.uk
-Description: Genetic algorithm to optimise resistance networks
+Optimise resistance networks using Tree-structured Parzen Estimators (TPE)
 
-Input options:
-    -g, --genmat: Genetic distance matrix
-    -s, --shp: Path to shapefile, geodatabase, or GPKG file
-    -c, --coords: Input tsv containing sample coordinates
-
-General options:
-    --seed: Random number seed (default=taken from clock time)
-    --reachid_col: Reach ID [default="REACH_ID"]
-    --length_col: Length [default="LENGTH_KM"]
-    -t, --procs: Number of parallel processors
-    -X, --noPlot: Turn off plotting
-    -o, --out: Output file prefix
-    -h, --help: Displays help menu
-
-Aggregation options:
-    --edge_agg: Method for combining variables across segments
-    --pop_agg: Method to combine population genetic distances
-      Options: ARITH (-metic mean), MEDIAN, HARM (-monic mean),
-      ADJHARM (adjusted HARM, see docs), GEOM (geometric mean),
-      MIN, MAX, FIRST, SD (standard deviation), VAR (variance),
-      SUM (simple sum), CV (coefficient of variation = SD/MEAN)
-
-Genetic Algorithm Options:
-    -P, --maxPop: Maximum population size [default = 100]
-    -G, --maxGen: Maximum number of generations [default = 500]
-    -s, --size: Manually set population size to <-p int>,
-        NOTE: By default, #params * 15
-    -m, --mutpb: Mutation probability per trait [default=0.5]
-    --indpb: Mutation probability per individual [default=0.5]
-    --cxpb: Cross-over probability [default=0.5]
-    -T, --tSize: Tournament size [default=10]
-    --posWeight: Constrain parameter weights to between 0.0-1.0
-    --minWeight: Sets minimum allowable weight (w/--posWeight)
-    --fixWeight: Constrain parameter weights to 1.0
-    --fixShape: Turn off feature transformation
-    --allShapes: Allow inverse and reverse transformations
-    --maxShape: Maximum shape value [default=100]
-
-Model optimization/selection options:
-    -v, --vars: Comma-separated list of variables to use
-    -V, --varfile: Optional file with variables provided as:
-        var1 \t <Optional aggregator function>
-        var2 \t <Optional aggregator function>
-        ...
-    -F, --nfail: Number of failed gens to stop optimization
-    -d, --delt: Threshold absolute change in fitness [def.=0.0]
-    -D, --deltP: Threshold as decimal percentage [def.=0.001]
-    -f, --fit: Fitness metric used to evaluate models
-        Options: aic (default), loglik (log-likelihood),
-        r2m (marginal R^2), delta (Change in AIC vs null model)
-        NOTE: Case-insensitive
-    -b, --burn: Number of generations for pre-burnin [def.=0]
-    --max_hof_size: Maximum models retained [default=100]
-
-Multi-model inference options:
-    -a, --awsum: Cumulative Akaike weight threshold [def.=0.95]
-    --report_all: Plot outputs for all retained models
+options:
+  -h, --help            show this help message and exit
+  -g, --inmat INMAT     Input distance matrix (usually genetic distances)
+                        (default: None)
+  -s, --shapefile SHAPEFILE
+                        Path to shapefile, geodatabase, or GPKG file (default:
+                        None)
+  -c, --coords COORDS   Input tsv containing sample coordinates (default:
+                        None)
+  -n, --network NETWORK
+                        Pre-formatted pickled network file (default: None)
+  --seed SEED           Random number seed (default: None)
+  --reachid_col REACHID_COL
+                        Reach ID in geodatabase (default: HYRIV_ID)
+  --length_col LENGTH_COL
+                        Length attribute in geodatabase (default: LENGTH_KM)
+  -t, --procs PROCS     Number of parallel processors (default: 1)
+  -o, --out OUT         Output file prefix (default: output)
+  -O, --output_driver {SHP,GPKG,GDB}
+                        Output driver for annotated geodataframe (default:
+                        GPKG)
+  --gridSearch          Run grid-search to find fixed transformations
+                        (default: False)
+  --transFile TRANSFILE
+                        Read fixed transformations from file (default: None)
+  -v, --vars VARS       Comma-separated list of variables to use (default:
+                        None)
+  -V, --varfile VARFILE
+                        Optional file with variables provided as: var \t
+                        <Optional aggregator function> (default: None)
+  -F, --nfail NFAIL     Number of iterations without improvement to stop
+                        (default: 50)
+  -i, --max_iter MAX_ITER
+                        Maximum number of iterations (one model per chain
+                        each) (default: 500)
+  -r, --reps REPS       Number of independent TPE chains (default: 10)
+  -P, --pweight PWEIGHT
+                        TPE prior weight (default: 0.7)
+  -S, --nstart NSTART   Initial random evaluations per chain (default: 20)
+  -C, --ncand NCAND     TPE expected improvement candidate points (default:
+                        48)
+  -G, --gamma GAMMA     TPE gamma (0-1; fraction of trials treated as "good")
+                        (default: 0.15)
+  -f, --fitmetric {aic,loglik,r2m,delta}
+                        Fitness metric used to evaluate models (delta = change
+                        in AIC relative to the null model) (default: loglik)
+  --max_hof_size MAX_HOF_SIZE
+                        Maximum models retained (default: 100)
+  --fixWeight           Fix all variable weights at 1.0 (default: False)
+  --fixShape            Turn off variable transformations (default: False)
+  --max_shape MAX_SHAPE
+                        Maximum shape parameter (default: 100)
+  --min_weight MIN_WEIGHT
+                        Minimum weight parameter (default: 0.0)
+  -a, --awsum AWSUM     Cumulative Akaike weight threshold (default: 1.0)
+  --use_full            Use full rather than natural model averaging (default:
+                        False)
+  --report_all          Plot outputs for all retained models (default: False)
 ```
 
 The use of these options are described below.
@@ -157,7 +167,7 @@ The columns required are "sample", "lat", and "long", any other present columns 
 
 #### Genetic distance matrix 
 
-The input genetic distance matrix, supplied via the `-g/ --genmat` argument, should be a tab-delimited file with both column and row names, matching the samples provided in the coordinates file. 
+The input genetic distance matrix, supplied via the `-g/ --inmat` argument, should be a tab-delimited file with both column and row names, matching the samples provided in the coordinates file. 
 
 The example dataset comes with an input genetic distance matrix for reference, at `src/resistnet/data/test.popGenDistMat.txt`:
 
@@ -173,7 +183,7 @@ There are a number of packages available to generate this pairwise distance matr
 
 #### Geodatabase
 
-The input stream network can be provided as a shapefile, geodatabase, or GPKG file, all passed uing the `-s/--shp` option. There are a number of requirements for this file in order for the result to create a valid network. I highly recommend using the existing global stream datasets provided by the [HydroLab group](https://wp.geog.mcgill.ca/hydrolab/) at McGill University, specifically the [HydroAtlas](https://www.hydrosheds.org/page/hydroatlas) or [free-flowing rivers dataset](https://wp.geog.mcgill.ca/hydrolab/free-flowing-rivers/) as these are already properly formatted for use, and contain a large number of covariates as reach-level annotations which can be analysed by `ResistNet`. You will also need to provide the reach identifier `--reachid_col` (default is "HYRIV_ID") and reach length (`--length_col`) (default "LENGTH_KM"). 
+The input stream network can be provided as a shapefile, geodatabase, or GPKG file, all passed using the `-s/--shapefile` option. Alternatively, a network previously built by `ResistNet` or `autoStreamTree` (e.g., `$out.subgraph.net`) can be passed with `-n/--network`, which avoids re-building the network from the shapefile. There are a number of requirements for this file in order for the result to create a valid network. I highly recommend using the existing global stream datasets provided by the [HydroLab group](https://wp.geog.mcgill.ca/hydrolab/) at McGill University, specifically the [HydroAtlas](https://www.hydrosheds.org/page/hydroatlas) or [free-flowing rivers dataset](https://wp.geog.mcgill.ca/hydrolab/free-flowing-rivers/) as these are already properly formatted for use, and contain a large number of covariates as reach-level annotations which can be analysed by `ResistNet`. You will also need to provide the reach identifier `--reachid_col` (default is "HYRIV_ID") and reach length (`--length_col`) (default "LENGTH_KM"). 
 
 If for some reason you cannot use the HydroRIVERS dataset, you will need to do some things first before loading your shapefile into autoStreamTree. First, you will need to include two variables in the attribute table of your shapefile: 1) a reach ID must provide a unique identifier to each stream reach; and 2) a reach length variable should give the length of each segment. Next, because sometime large stream layers will have small gaps in between streams, you will need to span any small gaps between streams which should be contiguous, and also dissolve any lines that overlap with one another so that any given section of river is represented by a single line. There are some scripts in a complementary package that can help with these steps using the ArcPy API: <https://github.com/stevemussmann/StreamTree_arcpy>.
 
@@ -182,9 +192,9 @@ Note that a valid path is required between all sites. Thus, if you are analyzing
 
 ### Outputs <a name="outputs"></a>
 
-After parsing all of the inputs, `ResistNet` will randomly generate a population of 'individuals' (=model parameterizations), which is by default 15X the number of parameter, up to a maximum size specified by `-P,--maxPop`. Each 'generation', individuals will be selected using the desired fitness function (specified with `-f,--fit`; e.g. `-f AIC` to use AIC), and the maximum, minimum, mean, and standard deviation of population fitness values will be output to the terminal (stdout):
+After parsing all of the inputs, `ResistNet` runs `-r,--reps` independent TPE chains. In each iteration, every chain proposes one model parameterization (which variables are included, and their weights, transformations, and shapes), and these are evaluated in parallel by `-t,--procs` worker processes. Each model is fitted to the genetic distances with a maximum-likelihood population effects (MLPE) mixed model (Clarke et al. 2002, as implemented in [ResistanceGA](https://github.com/wpeterman/ResistanceGA)), and scored using the fitness metric chosen with `-f,--fitmetric` (by default the log-likelihood). The first `-S,--nstart` models in each chain are random; after that, TPE uses the previous evaluations to propose new models. After each iteration, the best result so far across all chains is printed to the terminal (stdout), as a loss (i.e., the negative fitness):
 ```
-Building network from shapefile: /Users/tyler/resistnet/src/resistnet/data/test.shp
+Building network from shapefile: /Users/tyler/projects/resistnet/src/resistnet/data/test.shp
 WARNING: This can take a while with very large files!
 Read 37 points.
 
@@ -193,48 +203,38 @@ Extracting full subgraph...
 
 Merging redundant paths...
 
-Initializing genetic algorithm parameters...
-
-Establishing a population of size: 10
 
 Starting worker 0 with seed 1234
 Starting worker 1 with seed 1235
 Starting worker 2 with seed 1236
 Starting worker 3 with seed 1237
 
--- Generation 1 --
-  Worst -1200.4747471654575
-  Best -1163.9990149524226
-  Avg -1178.6391094740154
-  Std 15.774111494879024
-  nFails 0
+Iteration 1, Current Best: -106.86059436359557
+Iteration 2, Current Best: -107.4116473510621
 ...
 ...
-
 ```
-Also included is the number of consecutive generations that the genetic algorithm has failed to find a 'better' model (defined using thresholds set with `-d,--delt` or `-D,--deltP`). After either a specified number of generations (`-G,--maxGen`) have passed, or nFail exceeds the user-specified number (`-F,--nFail`), the algorithm will stop, and report to the screen which stopping criteria was met:
+The optimisation stops after `-i,--max_iter` iterations, or earlier if the best result has not improved for `-F,--nfail` consecutive iterations. The best model found by each chain is then reported:
 ```
 ...
 ...
--- Generation 5 --
-  Worst -1217.011714840949
-  Best -1134.9919179075587
-  Avg -1162.9318785505388
-  Std 32.02090507102848
-  nFails 2
-Stopping optimization after 5 generations.
-Reason: Exceeded maxGens
+Iteration 50, Current Best: -108.08709867868279
+Chain 1: Best = -107.73535543168757
+Chain 2: Best = -107.80320790331623
+Chain 3: Best = -108.08709867868279
+Chain 4: Best = -108.05893122329154
 ...
 ...
 ```
 
-At this time a series of plots and tables will be produced using the output path/ prefix defined with `-o,--out`):
+The best model from each chain is retained in the Hall of Fame, which is used for multi-model inference (Akaike weights, relative variable importance, and model-averaged weights and resistances). A series of plots and tables will then be produced using the output path/ prefix defined with `-o,--out`:
 
 | File Name                                    | Description                                                                                                                     |
 |----------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
-| output.FitnessLog.tsv                        | Log of fitness min, mean, max, and spread across generations                                                                    |
 | output.minimalSubgraph.net                   | Compressed representation of the minimized subgraph                                                                             |
 | output.HallOfFame.tsv                        | Full text specification of the retained models for the run                                                                      |
+| output.bestModel.tsv                         | Weights, transformations, and shapes of the best model                                                                          |
+| output.ICprofile.pdf                         | AIC of the retained models                                                                                                      |
 | output.minimalSubgraph.pdf                   | Graphical representation of the minimized subgraph                                                                              |
 | output.modavgWeights.tsv                     | Table giving the model-averaged weights for each covariate                                                                      |
 | output.Model-Average.PairwiseRegplot.pdf     | Regression of pairwise resistance X genetic distances                                                                           |
@@ -244,13 +244,17 @@ At this time a series of plots and tables will be produced using the output path
 | output.Model-Average.ResistanceMatrix.tsv    | Pairwise effective resistance distances                                                                                         |
 | output.snapDistances.txt                     | Table giving the distance (in km) between input sampling points and nearest graph nodes (useful to diagnose mis-snapped points) |
 | output.Model-Average.streamsByResistance.pdf | Plot of model-averaged effective resistance values for each segment in the network                                              |
+| output.Model-Best.*                          | As for the output.Model-Average.* files, for the best model                                                                     |
 | output.subgraph.net                          | Compressed representation of the subgraph                                                                                       |
 | output.Null-Model.tsv                        | Table giving fitness metrics for the distance-only and null (population effect only) models                                     |
 | output.varImportance.pdf                     | Bar plot of relative variable importances                                                                                       |
 | output.incidenceMatrix.txt                   | Incidence matrix for paths between each pair of samples (only used internally)                                                  |
 | output.varImportance.tsv                     | Table giving the model-averaged relative variable importances for each covariate                                                |
+| output.gpkg                                  | The input geodatabase, subset to the reaches in the subgraph (only with `-s`; format set with `-O,--output_driver`)             |
+| output.univariateFitness.tsv/.pdf            | Fitness of each transformation and shape for each variable (only with `--gridSearch`)                                           |
+| output.fixedParams.tsv                       | Fixed transformations and shapes used during optimisation (only with `--gridSearch` or `--transFile`)                           |
 
-A full set of example outputs can be seen in `src/resistnet/data/example_output`. If using the `--report_all` option, these plots will also be produced for every one of the "kept" models from the Hall of Fame, with naming as `$out.Model-#.Pairwise.pdf` (etc), where "#" is the row number from the `HallofFame.tsv` table (with 0-based indexing; i.e. 0="best" model; 1=second-best, and so on).
+A full set of example outputs can be seen in `src/resistnet/data/example_output`. If using the `--report_all` option, these plots will also be produced for every one of the "kept" models from the Hall of Fame, with naming as `$out.Model-#.PairwiseRegplot.pdf` (etc), where "#" is the row number from the `HallofFame.tsv` table (with 0-based indexing; i.e. 0="best" model; 1=second-best, and so on).
 
 
 #### $out.HallOfFame.tsv 
@@ -258,11 +262,11 @@ A full set of example outputs can be seen in `src/resistnet/data/example_output`
 The output table `$out.HallOfFame.tsv` contains textual representations of the retained models for a run, with a format like:
 
 ```
-fitness run_mm_cyr      run_mm_cyr_weight       run_mm_cyr_trans        run_mm_cyr_shape ... akaike_weight   acc_akaike_weight       keep 
-1165.2161145651664      1       0.5381247419039517      1   ... 0.9999999697774224      0.9999999697774224      True
+fitness run_mm_cyr      run_mm_cyr_weight       run_mm_cyr_trans        run_mm_cyr_shape ... akaike_weight   acc_akaike_weight       keep
+108.08709867868279      1       0.6048545684327914      3.0     11.0    ... 0.2916697543382834      0.2916697543382834      True
 ```
 
-Some of these are self-explanatory (i.e., "fitness" is the model fitness, which by default is AIC). Other summary metrics included are the Akaike weights, change in AIC relative to the null and "best" models, as well as the other fitness metrics (marginal R^2, log-likelihoods). Other values in the table include whether or not a variable is included in a model ($var, where $var is the variable name), specified as either "1" (=included) or "0" (=excluded), and the transformation type (=$var_trans), transformation shape parameter (=$var_shape), and weight of the parameter when calculating the composite resistance edges (=$var_weight). For the transformation column, the types of transformations are as follows: 0=Not transformed; 1=Ricker; 2=Reverse Ricker; 3=Inverse Ricker; 4=Reverse-Inverse Ricker; 5=Monomolecular; 6=Reverse Monomolecular; 7=Inverse Monomolecular; 8=Reverse-Inverse Monomolecular. In all cases, the larger the shape value, the closer each transformation gets to being linear (=essentially no transformation).
+The table contains the best model from each of the `-r,--reps` TPE chains. Some of these columns are self-explanatory (i.e., "fitness" is the model fitness, which by default is the log-likelihood). Other summary metrics included are the Akaike weights, change in AIC relative to the null and "best" models, as well as the other fitness metrics (marginal R^2, log-likelihoods). As in ResistanceGA, the AIC counts both the parameters of the MLPE model (intercept, slope, and two variance components) and the resistance surface parameters: a transformation and shape for each included variable, and their weights. Because the composite resistance surface is rescaled, only relative weights matter, so a model with m included variables has m - 1 weight parameters. Parameters fixed with `--fixWeight` or `--fixShape` are not counted. The marginal R^2 is computed as in `MuMIn::r.squaredGLMM` (as used by ResistanceGA). Other values in the table include whether or not a variable is included in a model ($var, where $var is the variable name), specified as either "1" (=included) or "0" (=excluded), and the transformation type (=$var_trans), transformation shape parameter (=$var_shape), and weight of the parameter when calculating the composite resistance edges (=$var_weight). For the transformation column, the types of transformations are as follows: 0=Not transformed; 1=Ricker; 2=Reverse Ricker; 3=Inverse Ricker; 4=Reverse-Inverse Ricker; 5=Monomolecular; 6=Reverse Monomolecular; 7=Inverse Monomolecular; 8=Reverse-Inverse Monomolecular. In all cases, the larger the shape value, the closer each transformation gets to being linear (=essentially no transformation).
 
 #### Covariate relative importance 
 
@@ -271,59 +275,72 @@ Other outputs that will typically be of interest are the `modAvgWeights.tsv` and
 ```
 # RVI
 variable        RVI
-run_mm_cyr      0.9999999992728014
-sgr_dk_rav      0.9999999777043529
-tmp_dc_cyr      0.999999974582615
-dor_pc_pva      5.403280690464821e-10
+run_mm_cyr      1.0
+tmp_dc_cyr      0.0
+dor_pc_pva      0.0
+sgr_dk_rav      0.0
 
 # MAW
 variable        MAW
-sgr_dk_rav      0.9438627249077166
-run_mm_cyr      0.5381247256404349
-dor_pc_pva      -0.0
-tmp_dc_cyr      -0.24636058036382147
+run_mm_cyr      0.5970020251670678
+tmp_dc_cyr      -
+dor_pc_pva      -
+sgr_dk_rav      -
 ```
 
 #### Effective resistance values 
 
-The model-averaged effective resistance values are computed for each segment in the subgraph, and also output for each individual model if using `--report-all`. 
+The model-averaged effective resistance values are computed for each segment in the subgraph, and also output for each individual model if using `--report_all`. 
 
 If you would like to import these into other GIS plotting tools, you can simply perform a left join of the `.ResistanceEdges.tsv` table, using the specified `--reachid_col` (EDGE_ID in this example):
 
 ```
 EDGE_ID Resistance
-40830357        8.842640424633727
-40832271        8.22649846960403
-40833054        7.926278241834325
-40833364        4.568026911233788
+40830357        0.9283818455709922
+40832271        0.912867455423229
+40833054        0.8909524621585521
+40833364        0.8871870301118978
 ...
 ...
 ```
 
 These are also plotted for simple visualisation on the input spatial network, in the `.streamsByResistance.pdf` files. Pairwise effective values (between points) are also output as tab-delimited text (`.ResistanceMatrix.tsv`).
-### Genetic Algorithm parameters <a name="ga_params"></a>
 
-ResistNet provides options for manipulating the relevant parameters of the genetic algorithm:
+### Optimisation parameters <a name="opt_params"></a>
+
+`ResistNet` searches the space of models using the TPE algorithm implemented in [`hyperopt`](https://github.com/hyperopt/hyperopt). The relevant options are:
 
 ```
-Genetic Algorithm Options:
-    -P, --maxPop: Maximum population size [default = 100]
-    -G, --maxGen: Maximum number of generations [default = 500]
-    -s, --size: Manually set population size to <-p int>,
-        NOTE: By default, #params * 15
-    -m, --mutpb: Mutation probability per trait [default=0.5]
-    --indpb: Mutation probability per individual [default=0.5]
-    --cxpb: Cross-over probability [default=0.5]
-    -T, --tSize: Tournament size [default=10]
-    --posWeight: Constrain parameter weights to between 0.0-1.0
-    --minWeight: Sets minimum allowable weight (w/--posWeight)
-    --fixWeight: Constrain parameter weights to 1.0
-    --fixShape: Turn off feature transformation
-    --allShapes: Allow inverse and reverse transformations
-    --maxShape: Maximum shape value [default=100]
+  -F, --nfail NFAIL     Number of iterations without improvement to stop
+                        (default: 50)
+  -i, --max_iter MAX_ITER
+                        Maximum number of iterations (one model per chain
+                        each) (default: 500)
+  -r, --reps REPS       Number of independent TPE chains (default: 10)
+  -P, --pweight PWEIGHT
+                        TPE prior weight (default: 0.7)
+  -S, --nstart NSTART   Initial random evaluations per chain (default: 20)
+  -C, --ncand NCAND     TPE expected improvement candidate points (default:
+                        48)
+  -G, --gamma GAMMA     TPE gamma (0-1; fraction of trials treated as "good")
+                        (default: 0.15)
+  --fixWeight           Fix all variable weights at 1.0 (default: False)
+  --fixShape            Turn off variable transformations (default: False)
+  --max_shape MAX_SHAPE
+                        Maximum shape parameter (default: 100)
+  --min_weight MIN_WEIGHT
+                        Minimum weight parameter (default: 0.0)
+  --gridSearch          Run grid-search to find fixed transformations
+                        (default: False)
+  --transFile TRANSFILE
+                        Read fixed transformations from file (default: None)
 ```
 
-The `--posWeight` and `--fixWeight` options are used to either constrain parameter weights to 0.0 - 1.0, or to fix all weights at 1.0. By default, weights can vary from -1.0 to 1.0, and all 'negatively weighted' transformations are not available (inverse and reverse). Only ricker, monomolecular, and inverse-reverse versions of both are available unless `--allShapes` is used. I don't recommend using both negative weights and `--allShapes` together, because this creates a situation where there are multiple ways to get the same possible result (i.e., ricker with -1.0 weighting has the same impact on composite surface as reverse ricker with 1.0 weighting). 
+For each variable, the search space includes whether it is included in the model, its weight (between `--min_weight` and 1.0), one of the nine transformations listed above, and the transformation shape (between 1 and `--max_shape`). `--fixWeight` fixes all weights at 1.0, and `--fixShape` turns off the transformations.
+
+Each of the `-r,--reps` chains is independent, and up to `-i,--max_iter` x `-r,--reps` models will be evaluated in total. Because the best model from each chain is retained in the Hall of Fame, `-r,--reps` also sets the number of models available for model-averaging. `-t,--procs` only sets how many models are evaluated in parallel.
+
+Optionally, transformations can be chosen for each variable separately before the TPE search. With `--gridSearch`, every combination of transformation and shape (up to `--max_shape`) is evaluated for each variable on its own (results are written to `$out.univariateFitness.tsv`, with heatmaps in `$out.univariateFitness.pdf`). The best transformation and shape for each variable are then fixed during the TPE search, which still optimises which variables are included and their weights. Fixed transformations can also be read from a file with `--transFile`: either a previous `$out.univariateFitness.tsv` (the best values are selected), or a tab-delimited table with columns `variable`, `transform`, and `shape` (e.g., a previous `$out.fixedParams.tsv`). Columns `sel` and `weight` can also be included, to fix whether variables are included and their weights.
 
 Note that the "right" parameters will vary by context, and you should not necessarily just run using the defaults!
 
@@ -340,10 +357,10 @@ runResistnet.py \
     -c ./src/resistnet/data/test.pointCoords.txt \
     -g ./src/resistnet/data/test.popGenDistMat.txt \
     -V ./src/resistnet/data/selected_vars.txt \
-    -P 10 -G 5 -t 4 --seed 1234
+    -i 50 -r 4 -t 4 --seed 1234
 ```
 
-Note that this example is not necessarily useful (i.e., real runs will likely need to be run for much longer, and with a larger population size), so you can try playing around with the running parameters, as well as the covariates included (specified in the `selected_vars.txt` file). This dataset contains all of the [HydroATLAS](https://www.hydrosheds.org/hydroatlas) covariates.
+Note that this example is not necessarily useful (i.e., real runs will likely need many more iterations and chains), so you can try playing around with the running parameters, as well as the covariates included (specified in the `selected_vars.txt` file). This dataset contains all of the [HydroATLAS](https://www.hydrosheds.org/hydroatlas) covariates.
 
 
 ### Utility Scripts <a name="scripts"></a>
@@ -368,23 +385,26 @@ Arguments:
     -l, --len_col: Edge length attribute (def=LENGTH_KM)
     -c, --id_col: Reach ID attribute (def=EDGE_ID)
     -o, --out: Output file name (default=sim)
+    -z, --seed: Random seed (optional)
 ```
 
-Simulations require a compressed input network (i.e., as output by `runResistnet.py` or `autoStreamTree`), and a specifications file which should be tab-delimited and provide some covariates you would like to simulate effective resistances with. An example can be found in `src/resistnet/data/simparams.tsv`:
+Simulations require a compressed input network (i.e., as output by `runResistnet.py` or `autoStreamTree`), and a specifications file which should be tab-delimited and provide some covariates you would like to simulate effective resistances with, along with their weights, transformations, and shapes (using the same codes as in the Hall of Fame). An optional `AGG` column gives the method used to aggregate each variable across reaches sharing an ID (default ARITH, as in `runResistnet.py`). Resistances are computed in exactly the same way as when fitting models with `runResistnet.py`, so simulated models can be recovered using the same settings. An example can be found in `src/resistnet/data/simparams.tsv`:
 ```
 VAR     WEIGHT  TRANSFORM       SHAPE
 LENGTH_KM       1.0     0       0
 ```
 
-In this example, a pairwise resistance matrix will simply be the sum of pairwise segment lengths (i.e., isolation-by-distance), which will then be normalised between 0 and 1. 
+In this example, the resistance of each reach is its (rescaled) length, so pairwise resistances closely follow stream distances (i.e., isolation-by-distance). The pairwise resistance matrix is then normalised between 0 and 1.
 
 You can specify the number of samples with `-s/--samples`, which determines the number of "populations" samples (as random nodes in the graph), as well as the number of replicated datasets to produce, using `-r/--reps`. For example, to simulate 10 datasets, each with 50 random samples and the above specifications:
 
 ```
-simResistnet.py -n src/resistnet/data/test.network -s 50 -r 10 -o sim -i src/resistnet/data/simparams.tsv
+simResistnet.py -n src/resistnet/data/test_ensemble/test.full.network -c HYRIV_ID -s 50 -r 10 -o sim -i src/resistnet/data/simparams.tsv
 ```
 
-This will produce a number of outputs named `*.ResistanceMatrix.tsv` and `*.coords`, which can be supplied directly as inputs to `runResistnet.py` via `-g` and `-c`, for example to test if `ResistNet` model optimisation can recover the specified model in your network, given different sample sizes. 
+This will produce a number of outputs named `*.ResistanceMatrix.tsv` and `*.coords`, which can be supplied directly as inputs to `runResistnet.py` via `-g` and `-c` (with the same network and `--reachid_col`), for example to test if `ResistNet` model optimisation can recover the specified model in your network, given different sample sizes.
+
+Note that because samples are random nodes, the network used for simulations should have a unique ID for every reach (such as `HYRIV_ID` in HydroRIVERS). If IDs are shared by several reaches (e.g., the `EDGE_ID` segments in `autoStreamTree` outputs such as `src/resistnet/data/test.network`, which are defined between the original sampling sites), new samples can fall within these segments, which cannot be represented. 
 
 #### Model-averaging across runs with ensembleResistnet.py
 
@@ -412,10 +432,9 @@ Optional Arguments:
 -X, --noPlot: Turn off plotting
 -m, --max_keep: Maximum models to keep (default = all models)
 -l, --len_col: Edge length attribute (def=LENGTH_KM)
--c, --id_col: Reach ID attribute (def=EDGE_ID)
+-c, --id_col: Reach ID attribute (def=HYRIV_ID)
 -o, --out: Output file prefix (default=ensemble)
 --report_all: Plot full outputs for all retained models
---allShapes: Allow inverse and reverse transformations
 -V, --varfile: Optional file with variables provided like so:
           var1   <Optional aggregator function>
           var2   <Optional aggregator function>
