@@ -451,3 +451,35 @@ def test_simulate_samples_connected_part(
             d = np.hypot(nodes[:, 0] - lon, nodes[:, 1] - lat)
             assert d.min() < 1e-9
             assert in_largest[np.argmin(d)]
+
+
+def test_mlpe_reference_inputs_nmt(tmp_path):
+    # The genetic distances and the standard-model distances behind the
+    # lme4 references (test_MLPE.py) are what ResistNet computes for NMT:
+    # river distance in km, and degree of regulation (inverse
+    # monomolecular, shape 1)
+    import resistnet.resist_dist as rd
+    ref = os.path.join(os.path.dirname(__file__), "reference")
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    net = ResistanceNetwork(
+        network=None, shapefile=os.path.join(data, "nmt.gpkg"),
+        coords=os.path.join(data, "nmt.pointCoords.txt"),
+        variables=["dor_pc_pva"],
+        inmat=os.path.join(data, "nmt.popGenDistMat.txt"),
+        agg_opts={"dor_pc_pva": "ARITH"}, out=str(tmp_path / "net"),
+        verbose=False)
+    Y = np.loadtxt(os.path.join(ref, "nmt_mlpe_Y.tsv"))
+    np.testing.assert_array_equal(net._gendist, Y)
+    length = {d[net.reachid_col]: d[net.length_col]
+              for _, _, d in net._K.edges(data=True)}
+    km = np.array([float(length[e]) for e in net._edge_order])
+    np.testing.assert_allclose(
+        rd.effectiveResistanceMatrix(net._points_snapped, net._inc, km),
+        np.loadtxt(os.path.join(ref, "nmt_mlpe_X_streamkm.tsv")),
+        rtol=1e-12)
+    np.testing.assert_allclose(
+        rd.effectiveResistanceMatrix(
+            net._points_snapped, net._inc,
+            net._build_composite_surface([1, 1.0, 7, 1])),
+        np.loadtxt(os.path.join(ref, "nmt_mlpe_X_dor_inv_mono.tsv")),
+        rtol=1e-12)

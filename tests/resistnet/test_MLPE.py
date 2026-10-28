@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -125,3 +127,22 @@ def test_mlpe_outputs():
     assert 0.0 <= row["r2m"] <= 1.0
     # distance should explain the simulated data better than the null
     assert row["loglik"] > row["loglik_null"]
+
+
+REFERENCE = os.path.join(os.path.dirname(__file__), "reference")
+
+
+@pytest.mark.parametrize("surface", ["streamkm", "dor_inv_mono",
+                                     "samc_ele_dir_flow"])
+def test_mlpe_matches_resistancega_lme4_nmt(surface):
+    # ResistanceGA's MLPE.lmm (lme4) and MuMIn, fitted in R to the NMT
+    # genetic distances and three model distances (reference/README.md)
+    Y = np.loadtxt(os.path.join(REFERENCE, "nmt_mlpe_Y.tsv"))
+    X = np.loadtxt(os.path.join(REFERENCE, f"nmt_mlpe_X_{surface}.tsv"))
+    ref = pd.read_csv(os.path.join(REFERENCE, "nmt_mlpe_lme4.tsv"),
+                      sep="\t", index_col="surface").loc[surface]
+    res = mlpe.MLPE(Y, X, scale=True).iloc[0]
+    assert res["loglik"] == pytest.approx(ref["loglik"], abs=1e-6)
+    assert res["loglik_null"] == pytest.approx(ref["loglik_null"], abs=1e-6)
+    assert -res["aic"] == pytest.approx(ref["AIC"], abs=1e-5)
+    assert res["r2m"] == pytest.approx(ref["r2m_MuMIn"], abs=1e-6)

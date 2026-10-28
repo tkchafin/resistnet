@@ -488,3 +488,63 @@ def test_surface_parameters_flow(samc_net):
     assert samc_net.surface_parameters(ind + [50.0, -0.1]) == 9
     # Flow alone: only the rate (no maximum resistance without variables)
     assert samc_net.surface_parameters(model({}) + [50.0, 0.1]) == 1
+
+
+REFERENCE = os.path.join(os.path.dirname(__file__), "reference")
+# Models with references from samc::cond_passage (reference/README.md):
+# {variable: (weight, transformation, shape, directional)}, maximum
+# resistance and flow rate; None = equal movement weights
+R_SAMC_MODELS = {
+    "equal": None,
+    "sgr_sym": ({"sgr_dk_rav": (1.0, 0, 1.0, 0)}, 50.0, 0.0),
+    "ele_dir_flow": ({"ele_mt_cav": (1.0, 0, 1.0, 1)}, 20.0, 0.02),
+}
+
+
+@pytest.fixture(scope="module")
+def ref_net(tmp_path_factory):
+    # The variables of the R reference models
+    out = tmp_path_factory.mktemp("ref")
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    v = ["sgr_dk_rav", "ele_mt_cav"]
+    return ResistanceNetworkSAMC(
+        network=None, shapefile=os.path.join(data, "nmt.gpkg"),
+        sizes=os.path.join(data, "nmt.popSizes.txt"),
+        coords=os.path.join(data, "nmt.pointCoords.txt"), variables=v,
+        inmat=os.path.join(data, "nmt.popGenDistMat.txt"),
+        agg_opts={x: "ARITH" for x in v}, out=str(out / "ref"),
+        verbose=False)
+
+
+def _ref_transition_matrix(net, name):
+    from resistnet.CFPT import transition_matrix
+    if R_SAMC_MODELS[name] is None:
+        return transition_matrix(abs(net._adj).astype(float), net._R)
+    spec, K, rate = R_SAMC_MODELS[name]
+    ind = []
+    for v in net._predictors.columns:
+        ind += [1, *spec[v]] if v in spec else [0, 1.0, 0, 1.0, 0]
+    return net._transition_matrix(ind + [K, rate])
+
+
+@pytest.mark.parametrize("name", sorted(R_SAMC_MODELS))
+def test_cfpt_matches_r_samc_nmt(ref_net, name):
+    # Conditional passage times among the NMT sites, as samc::cond_passage
+    from resistnet.CFPT import CFPT
+    ref = np.loadtxt(os.path.join(REFERENCE, f"nmt_samc_{name}.tsv"))
+    Q = _ref_transition_matrix(ref_net, name)
+    T = CFPT(Q, ref_net._edge_site_indices, ref_net._R)
+    np.testing.assert_allclose(T, ref, rtol=1e-10, atol=1e-12)
+
+
+def test_mlpe_reference_inputs_nmt(ref_net):
+    # The genetic distances and the SAMC model distances behind the lme4
+    # references (test_MLPE.py) are what ResistNet computes for NMT
+    from resistnet.CFPT import CFPT
+    Y = np.loadtxt(os.path.join(REFERENCE, "nmt_mlpe_Y.tsv"))
+    np.testing.assert_array_equal(ref_net._gendist, Y)
+    X = np.loadtxt(os.path.join(REFERENCE,
+                                "nmt_mlpe_X_samc_ele_dir_flow.tsv"))
+    T = CFPT(_ref_transition_matrix(ref_net, "ele_dir_flow"),
+             ref_net._edge_site_indices, ref_net._R)
+    np.testing.assert_allclose((T + T.T) / 2, X, rtol=1e-12)
