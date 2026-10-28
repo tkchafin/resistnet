@@ -59,6 +59,26 @@ def test_variables_from_varfile(tmp_path):
         assert args.variables == ["var1", "var2", "var3"]
 
 
+def test_varfile_aggregators(tmp_path):
+    varfile = tmp_path / "vars.txt"
+    varfile.write_text("var1\tSUM\nvar2\nvar3\tMAX\n")
+    testargs = ["prog", "--varfile", str(varfile)]
+    with patch.object(sys, 'argv', testargs):
+        args = parseArgs()
+        assert args.variables == ["var1", "var2", "var3"]
+        assert args.agg_opts == {
+            "var1": "SUM", "var2": "ARITH", "var3": "MAX"
+        }
+
+
+def test_fitmetric_delta():
+    testargs = ["prog", "--vars", "var1", "-f", "delta"]
+    with patch.object(sys, 'argv', testargs):
+        args = parseArgs()
+        assert args.fitmetric == "delta_aic_null"
+        assert args.procs == 1
+
+
 def test_no_vars_or_varfile():
     testargs = ["prog"]
     with patch.object(sys, 'argv', testargs):

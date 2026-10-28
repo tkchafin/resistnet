@@ -136,7 +136,7 @@ def test_run_tpe(model_runner_fixture, tpe_parameters_fixture):
         tpe_parameters_fixture["verbose"] = False
         tpe_parameters_fixture["out"] = out_prefix
         tpe_parameters_fixture["threads"] = 1
-        tpe_parameters_fixture["max_evals"] = 1
+        tpe_parameters_fixture["max_evals"] = 5
 
         # Run the genetic algorithm with the modified parameters
         try:
@@ -152,3 +152,55 @@ def test_run_tpe(model_runner_fixture, tpe_parameters_fixture):
         # Assert that the best models are identified (bests is not None)
         assert model_runner_fixture.bests is not None, \
             "ModelRunner.bests missing"
+
+
+RUN_SCRIPT = """
+import os, sys
+from resistnet.resistance_network import ResistanceNetwork
+from resistnet.model_optimisation import ModelRunnerTPE
+
+if __name__ == "__main__":
+    data, out = sys.argv[1], sys.argv[2]
+    net = ResistanceNetwork(
+        network=os.path.join(data, "test.network"), shapefile=None,
+        coords=os.path.join(data, "test.pointCoords.txt"),
+        variables=["run_mm_cyr"],
+        inmat=os.path.join(data, "test.popGenDistMat.txt"),
+        agg_opts={"run_mm_cyr": "ARITH"}, reachid_col="EDGE_ID",
+        out=out, verbose=False)
+    if sys.argv[3] == "missing_network":
+        net.network = out + ".missing.net"
+    runner = ModelRunnerTPE(net, seed=1, verbose=False)
+    try:
+        runner.run_tpe(max_evals=4, threads=2, reps=2, max_shape=10,
+                       verbose=False, out=None)
+        print("FINISHED")
+    except ValueError as e:
+        print("ERROR", e)
+"""
+
+
+def _run_in_subprocess(tmp_path, mode):
+    import subprocess
+    import sys
+    script = tmp_path / "run.py"
+    script.write_text(RUN_SCRIPT)
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    # A timeout turns a hang into a failure
+    p = subprocess.run(
+        [sys.executable, str(script), data, str(tmp_path / "net"), mode],
+        cwd=cwd, capture_output=True, text=True, timeout=300)
+    return p.stdout, sorted(os.listdir(cwd))
+
+
+def test_worker_start_failure_does_not_hang(tmp_path):
+    stdout, _ = _run_in_subprocess(tmp_path, "missing_network")
+    assert "ERROR No valid models found" in stdout
+
+
+def test_run_without_output_writes_no_files(tmp_path):
+    stdout, files = _run_in_subprocess(tmp_path, "ok")
+    assert "FINISHED" in stdout
+    assert files == []

@@ -77,7 +77,7 @@ class ResistanceNetwork:
         self.shapefile = shapefile
         self.coords = coords
         self.inmat = inmat
-        self.pop_agg = "ARITH"
+        self.pop_agg = pop_agg
         self.reachid_col = reachid_col
         self.length_col = length_col
         self.output_prefix = out
@@ -310,11 +310,11 @@ class ResistanceNetwork:
                 node = utils.snap_to_node(graph, point)
                 if tuple(node) not in snapped:
                     snapped[tuple(node)] = list()
-                snapped[tuple(node)] = ptemp[point]
+                snapped[tuple(node)].extend(ptemp[point])
             else:
                 if tuple(point) not in snapped:
                     snapped[tuple(point)] = list()
-                snapped[tuple(point)] = ptemp[point]
+                snapped[tuple(point)].extend(ptemp[point])
         self._points_names = snapped
         index = 0
         self._points_snapped = snapped.copy()
@@ -772,12 +772,11 @@ class ResistanceNetwork:
                 list(self._points_snapped.keys())[ib],
                 weight=dijkstra_weight
             )
+            # NOTE: several reaches can share an ID (e.g., segments); an ID
+            # is on the path if any of its reaches are
             for p1, p2, edge in self._K.edges(data=True):
-                eid = edge[edge_id]
                 if utils.find_pair(path[1], p1, p2):
-                    inc[index, edge_to_index[eid]] = int(1)
-                else:
-                    inc[index, edge_to_index[eid]] = int(0)
+                    inc[index, edge_to_index[edge[edge_id]]] = 1
             index += 1
         inc = np.where(inc > 0, 1, 0)
         self._inc = inc
@@ -1064,10 +1063,41 @@ class ResistanceNetwork:
             self._points_snapped, self._inc, multi, self._gendist
         )
         if r is not None:
+            # Penalise AIC for the resistance surface parameters (aic is
+            # negated, so higher is better)
+            k = self.surface_parameters(individual)
+            res["aic"] -= 2 * k
+            res["delta_aic_null"] -= 2 * k
             fitness = res[self.fitmetric].iloc[0]
             res = list(res.iloc[0])
             return (fitness, res)
         return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
+
+    def surface_parameters(self, individual):
+        """
+        Counts the resistance surface parameters estimated for a model, to
+        be added to k in the AIC (as ResistanceGA's default k.value = 2).
+
+        Each selected variable has a transformation and shape (unless
+        fixShape). The composite surface is rescaled to 0-1, so only the
+        relative weights matter: m selected variables have m - 1 weights
+        (unless fixWeight).
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            int: The number of surface parameters.
+        """
+        n_sel = sum(
+            1 for s in individual[0::self.num_attributes] if s == 1
+        )
+        k = 0
+        if not getattr(self, "fixShape", False):
+            k += 2 * n_sel
+        if not getattr(self, "fixWeight", False):
+            k += max(n_sel - 1, 0)
+        return k
 
     def model_output(self, model):
         """
@@ -1206,6 +1236,9 @@ class SimResistanceNetwork(ResistanceNetwork):
         self.length_col = length_col
         self.verbose = verbose
         self.minimize = False
+        self.variables = None
+        self.agg_opts = None
+        self.num_attributes = 4
         self._inc = None
         self._G = None
         self._K = None
@@ -1270,44 +1303,36 @@ class SimResistanceNetwork(ResistanceNetwork):
         Simulates resistance based on various variables and their
         transformations.
 
-        This method reads attributes from the network graph, scales the
-        variables, and generates a composite resistance surface by combining
-        the transformed variables with their respective weights.
+        The composite surface is built exactly as when fitting models
+        (initialize_predictors and _build_composite_surface), so that
+        simulated models can be recovered by runResistnet.py.
 
         Args:
             vars (DataFrame): A DataFrame containing variables along with their
-                              transformation type, shape, and weight.
+                              transformation type, shape, and weight, and
+                              optionally the aggregation method for each
+                              variable (AGG; default ARITH).
 
         Returns:
-            numpy.ndarray: The resulting composite resistance surface.
+            pd.Series: The resulting composite resistance surface, in the
+                       order of self._edge_order.
         """
-        # Read attributes from the graph
-        df = utils.nx_to_df(self._K)
-        # id_col = "EDGE_ID" if self.minimize else self.reachid_col
-        # if not self.minimize:
-        #     df["EDGE_ID"] = df[id_col]
+        self.variables = list(vars['VAR'])
+        if 'AGG' in vars.columns:
+            self.agg_opts = dict(zip(vars['VAR'], vars['AGG']))
+        else:
+            self.agg_opts = {v: "ARITH" for v in self.variables}
+        self.initialize_predictors()
 
-        # Save the order of edges
-        self._edge_order = list(df[self.reachid_col])
-
-        # Rescale variables
-        predictors = trans.rescaleCols(df[vars['VAR']], 0, 1)
-
-        # Generate composite resistance
-        multi = None
-        first = True
-        for i, variable in enumerate(predictors.columns):
-            tr_type = vars[vars['VAR'] == variable]['TRANSFORM'].item()
-            tr_shape = vars[vars['VAR'] == variable]['SHAPE'].item()
-            wgt = vars[vars['VAR'] == variable]['WEIGHT'].item()
-            var = self.transform(predictors[variable], tr_type, tr_shape)
-            if first:
-                multi = var * wgt
-                first = False
-            else:
-                multi += var * wgt
-
-        return multi
+        # Specify the model as for optimised models
+        model = []
+        for variable in self._predictors.columns:
+            spec = vars[vars['VAR'] == variable]
+            model.extend([
+                1, spec['WEIGHT'].item(), spec['TRANSFORM'].item(),
+                spec['SHAPE'].item()
+            ])
+        return self._build_composite_surface(model)
 
     def write_points(self, oname, points):
         """
@@ -1372,9 +1397,9 @@ class SimResistanceNetwork(ResistanceNetwork):
             res = rd.effectiveResistanceMatrix(
                 self._points_snapped, self._inc, multi
             )
-            res_df = pd.DataFrame(res)
-            rescaled_res_df = trans.rescaleCols(res_df, 0, 1)
-            res[:] = rescaled_res_df.values
+            # Rescale to 0-1 over the whole matrix (the diagonal is 0), so it
+            # stays symmetric
+            res = res / res.max()
 
             # Write outputs
             out_mat = f"{base}.ResistanceMatrix.tsv"

@@ -5,7 +5,10 @@ import argparse
 class parseArgs:
     def __init__(self):
         parser = argparse.ArgumentParser(
-            description='Genetic algorithm to optimize resistance networks',
+            description=(
+                'Optimise resistance networks using Tree-structured Parzen '
+                'Estimators (TPE)'
+            ),
             formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
 
@@ -41,7 +44,7 @@ class parseArgs:
             help='Length attribute in geodatabase'
         )
         parser.add_argument(
-            '-t', '--procs', type=int,
+            '-t', '--procs', type=int, default=1,
             help='Number of parallel processors'
         )
         parser.add_argument(
@@ -78,11 +81,11 @@ class parseArgs:
         )
         parser.add_argument(
             '-F', '--nfail', type=int, default=50, required=False,
-            help='Number of failed gens to stop optimization'
+            help='Number of iterations without improvement to stop'
         )
         parser.add_argument(
             '-i', '--max_iter', type=int, default=500, required=False,
-            help='Maximum number of generations'
+            help='Maximum number of iterations (one model per chain each)'
         )
         parser.add_argument(
             '-r', '--reps', type=int, default=10, required=False,
@@ -90,25 +93,28 @@ class parseArgs:
         )
         parser.add_argument(
             '-P', '--pweight', type=float, default=0.7, required=False,
-            help='Prior weight'
+            help='TPE prior weight'
         )
         parser.add_argument(
             '-S', '--nstart', type=int, default=20, required=False,
-            help='Initial random evaluations'
+            help='Initial random evaluations per chain'
         )
         parser.add_argument(
             '-C', '--ncand', type=int, default=48, required=False,
-            help='EI candidate points'
+            help='TPE expected improvement candidate points'
         )
         parser.add_argument(
             '-G', '--gamma', type=float, default=0.15, required=False,
-            help='Exploration factor'
+            help='TPE gamma (0-1; fraction of trials treated as "good")'
         )
         parser.add_argument(
             '-f', '--fitmetric', type=str, choices=['aic', 'loglik', 'r2m',
                                                     'delta'],
             default='loglik', required=False,
-            help='Fitness metric used to evaluate models'
+            help=(
+                'Fitness metric used to evaluate models (delta = change in '
+                'AIC relative to the null model)'
+            )
         )
         parser.add_argument(
             '--max_hof_size', type=int, default=100, required=False,
@@ -116,11 +122,11 @@ class parseArgs:
         )
         parser.add_argument(
             '--fixWeight', action='store_true',
-            help='Fix the weight parameter during optimization'
+            help='Fix all variable weights at 1.0'
         )
         parser.add_argument(
             '--fixShape', action='store_true',
-            help='Fix the shape parameter during optimization'
+            help='Turn off variable transformations'
         )
         parser.add_argument(
             '--max_shape', type=int, default=100, required=False,
@@ -150,16 +156,28 @@ class parseArgs:
         for key, value in vars(args).items():
             setattr(self, key, value)
 
+        # 'delta' refers to the MLPE output column delta_aic_null
+        if self.fitmetric == 'delta':
+            self.fitmetric = 'delta_aic_null'
+
         # Set variables based on vars or varfile
         if self.vars:
             self.variables = self.vars.split(',')
         elif self.varfile:
             self.variables = []
+            self.agg_opts = {}
             with open(self.varfile, 'r') as file:
                 for line in file:
-                    var = line.strip().split('\t')[0]
-                    self.variables.append(var)
+                    fields = line.strip().split('\t')
+                    if not fields[0]:
+                        continue
+                    self.variables.append(fields[0])
+                    # Optional aggregator function (default ARITH)
+                    self.agg_opts[fields[0]] = (
+                        fields[1].strip() if len(fields) > 1 else "ARITH"
+                    )
         else:
             print("Error: Either --vars or --varfile must be specified.")
             sys.exit(1)
-        self.agg_opts = {var: "ARITH" for var in self.variables}
+        if self.vars:
+            self.agg_opts = {var: "ARITH" for var in self.variables}

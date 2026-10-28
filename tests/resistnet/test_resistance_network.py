@@ -1,3 +1,4 @@
+import itertools
 import os
 import pytest
 import tempfile
@@ -229,6 +230,124 @@ def test_resistance_network_worker_creation(resistance_network_fixture):
     assert worker.fixShape is False
     assert worker.min_weight == 0.0
     assert worker.max_shape == 100.0
+
+
+def test_surface_parameters(resistance_network_fixture):
+    net = resistance_network_fixture
+    # sel, weight, trans, shape for three variables
+    one = [1, 0.5, 1, 3, 0, 0.2, 0, 1, 0, 0.9, 5, 10]
+    three = [1, 0.5, 1, 3, 1, 0.2, 0, 1, 1, 0.9, 5, 10]
+    none = [0, 0.5, 1, 3, 0, 0.2, 0, 1, 0, 0.9, 5, 10]
+
+    # transform + shape per variable, plus m - 1 relative weights
+    assert net.surface_parameters(one) == 2
+    assert net.surface_parameters(three) == 8
+    assert net.surface_parameters(none) == 0
+
+    net.fixWeight = True
+    assert net.surface_parameters(three) == 6
+    net.fixShape = True
+    assert net.surface_parameters(three) == 0
+    net.fixWeight = False
+    assert net.surface_parameters(three) == 2
+
+
+def test_evaluate_penalises_aic(resistance_network_fixture):
+    fitness, res = resistance_network_fixture.evaluate([1, 1.0, 1, 3])
+    loglik, _, aic, delta_aic_null, _, aic_null = res
+    # negated AIC: MLPE's k = 4 (2 fixed effects, 2 variance parameters)
+    # plus 2 surface parameters
+    assert aic == pytest.approx(2 * loglik - 2 * (4 + 2))
+    assert delta_aic_null == pytest.approx(aic - aic_null)
+    assert fitness == aic
+
+
+def _random_coords(network_path, n, seed, path):
+    # Write random network nodes as a coordinates file
+    G = utils.read_pickle_network(network_path)
+    rng = np.random.default_rng(seed)
+    nodes = list(G.nodes())
+    pick = rng.choice(len(nodes), size=n, replace=False)
+    pd.DataFrame({
+        "sample": [f"s{i}" for i in range(n)],
+        "lat": [nodes[i][1] for i in pick],
+        "long": [nodes[i][0] for i in pick],
+    }).to_csv(path, sep="\t", index=False)
+
+
+def test_incidence_matches_paths(network_graph_path, tmp_path):
+    # Random sites split the (multi-reach) EDGE_ID segments, so an ID can
+    # be partly on a path; it must be counted if any of its reaches are
+    coords = tmp_path / "coords.txt"
+    _random_coords(network_graph_path, 12, 1, coords)
+    net = ResistanceNetwork(
+        network=network_graph_path, shapefile=None, coords=str(coords),
+        variables=["LENGTH_KM"], inmat=None,
+        agg_opts={"LENGTH_KM": "ARITH"}, reachid_col="EDGE_ID",
+        length_col="LENGTH_KM", out=str(tmp_path / "out"), verbose=False)
+    edge_to_index = {e: i for i, e in enumerate(net._edge_order)}
+    nodes = list(net._points_snapped.keys())
+    expected = np.zeros_like(net._inc)
+    for row, (i, j) in enumerate(itertools.combinations(range(len(nodes)), 2)):
+        path = nx.shortest_path(net._K, nodes[i], nodes[j])
+        for a, b in zip(path, path[1:]):
+            expected[row, edge_to_index[net._K[a][b]["EDGE_ID"]]] = 1
+    assert np.array_equal(net._inc, expected)
+
+
+def test_snap_points_merges_samples(
+        network_graph_path, coords_path, tmp_path):
+    # Two different coordinates snapping to the same node keep both samples
+    pts = pd.read_csv(coords_path, sep="\t")
+    first = pts.iloc[0]
+    extra = pd.DataFrame([{"sample": "extra", "lat": first.lat + 1e-6,
+                           "long": first.long + 1e-6}])
+    coords = tmp_path / "coords.txt"
+    pd.concat([pts, extra]).to_csv(coords, sep="\t", index=False)
+    net = ResistanceNetwork(
+        network=network_graph_path, shapefile=None, coords=str(coords),
+        variables=["LENGTH_KM"], inmat=None,
+        agg_opts={"LENGTH_KM": "ARITH"}, reachid_col="EDGE_ID",
+        length_col="LENGTH_KM", out=str(tmp_path / "out"), verbose=False)
+    names = [n for v in net._points_names.values() for n in v]
+    assert sorted(names) == sorted(list(pts["sample"]) + ["extra"])
+
+
+def test_simulate_matches_fitted_model(
+        sim_resistance_network_params, network_graph_path, tmp_path):
+    # Simulated resistances must equal those of the same model as fitted
+    spec = pd.DataFrame({
+        "VAR": ["LENGTH_KM", "UPLAND_SKM"],
+        "WEIGHT": [1.0, 0.4],
+        "TRANSFORM": [0, 5],
+        "SHAPE": [0, 20],
+        "AGG": ["SUM", "MAX"],
+    })
+    spec_file = tmp_path / "spec.tsv"
+    spec.to_csv(spec_file, sep="\t", index=False)
+    out = str(tmp_path / "sim")
+    sim_engine = SimResistanceNetwork(**sim_resistance_network_params,
+                                      seed=5)
+    sim_engine.simulate(str(spec_file), 1, 12, out)
+
+    sim = pd.read_csv(f"{out}_1.ResistanceMatrix.tsv", sep="\t", index_col=0)
+    sim.columns = sim.columns.astype(int)
+    assert np.array_equal(sim.to_numpy(), sim.to_numpy().T)
+
+    net = ResistanceNetwork(
+        network=network_graph_path, shapefile=None,
+        coords=f"{out}_1.coords", variables=list(spec["VAR"]), inmat=None,
+        agg_opts=dict(zip(spec["VAR"], spec["AGG"])),
+        reachid_col="EDGE_ID", length_col="LENGTH_KM",
+        out=str(tmp_path / "fit"), verbose=False)
+    model = []
+    for _, s in spec.set_index("VAR").loc[net._predictors.columns].iterrows():
+        model.extend([1, s["WEIGHT"], int(s["TRANSFORM"]), int(s["SHAPE"])])
+    fitted, _ = net.model_output(model)
+    labels = [int(x) for x in net._points_labels.values()]
+    np.testing.assert_allclose(
+        sim.loc[labels, labels].to_numpy(), fitted / fitted.max(),
+        rtol=0, atol=1e-12)
 
 
 def test_initialization(sim_resistance_network_params):

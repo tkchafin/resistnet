@@ -3,7 +3,7 @@ import random
 import pandas as pd
 import numpy as np
 from queue import Empty
-from hyperopt import tpe, Trials, hp
+from hyperopt import tpe, Trials, hp, space_eval
 from hyperopt.base import Domain
 from multiprocessing import Process, Queue
 import matplotlib.pyplot as plt
@@ -103,10 +103,6 @@ class ModelRunner:
             # Compute ensemble model
             self.run_output(out, verbose, plot=True)
 
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            traceback.print_exc()
-
         finally:
             # Terminate processes
             self.terminate_workers()
@@ -159,8 +155,9 @@ class ModelRunner:
                 f"{out}.FitnessLog.tsv", sep="\t", header=True, index=False
             )
 
-        # Get results for best models and model-averaged
-        self.model_average(out, plot)
+        # Get results for best models and model-averaged (only written out)
+        if out:
+            self.model_average(out, plot)
 
         # Evaluate the null model (if genetic distances present)
         if self.resistance_network._gendist is not None:
@@ -186,8 +183,13 @@ class ModelRunner:
         weights = {}
         hof = self.bests.getHOF(only_keep=self.only_keep)
         for _, row in hof.iterrows():
-            n = len(self.resistance_network._predictors.columns) * 5
-            model_string = row.iloc[1:n + 1].to_list()
+            # Build by name, in the order the workers expect
+            model_string = []
+            for var in self.resistance_network._predictors.columns:
+                model_string.extend([
+                    row[var], row[f"{var}_weight"], row[f"{var}_trans"],
+                    row[f"{var}_shape"]
+                ])
             models.append([mod_num, model_string])
             weights[mod_num] = row["akaike_weight"]
             mod_num += 1
@@ -216,6 +218,11 @@ class ModelRunner:
             model_num = m[0]
             matrix_r = m[1]
             edge_r = m[2]
+
+            if matrix_r is None or edge_r is None:
+                print(f"WARNING: Model {model_num} failed to evaluate; "
+                      "excluded from model-averaging")
+                continue
 
             # Get weighted contributions to average model
             weight = hof.iloc[model_num]["akaike_weight"]
@@ -250,11 +257,12 @@ class ModelRunner:
                 df = pd.read_csv(fixed_params, sep='\t')
                 # Check if the DataFrame has a fitness column
                 if 'fitness' in df.columns:
+                    # e.g. .univariateFitness.tsv (higher fitness is better)
                     best_params = dict()
                     for var in df["variable"].unique():
                         var_df = df[df['variable'] == var]
                         best = var_df.loc[
-                            var_df['fitness'] == var_df['fitness'].min()]
+                            var_df['fitness'] == var_df['fitness'].max()]
                         best = best.sort_values(
                             by=['shape', 'transform']).iloc[0]
                         best_params[var] = {
@@ -294,6 +302,7 @@ class ModelRunner:
         # Wait for all worker processes to complete
         for worker in self.workers:
             worker.join()
+        self.workers = []
 
         if self.verbose:
             print("\nAll worker processes have been terminated\n")
@@ -392,19 +401,29 @@ class ModelRunner:
 
         worker_type = worker_args.get('worker_type', 'base')
         del worker_args['worker_type']
-        if worker_type == "base":
-            worker = ResistanceNetworkWorker(**worker_args)
-        elif worker_type == "samc":
-            worker = ResistanceNetworkSAMCWorker(**worker_args)
-        else:
-            raise ValueError("Worker type not implemented")
+        try:
+            if worker_type == "base":
+                worker = ResistanceNetworkWorker(**worker_args)
+            elif worker_type == "samc":
+                worker = ResistanceNetworkSAMCWorker(**worker_args)
+            else:
+                raise ValueError("Worker type not implemented")
+        except Exception:
+            # Keep answering tasks (as failures) so the parent doesn't hang
+            traceback.print_exc()
+            worker = None
 
         while True:
             try:
                 task, id, data = task_queue.get()
-                if task == "END":
-                    break
-                elif task == "evaluate":
+            except Empty:
+                continue
+            if task == "END":
+                break
+            try:
+                if worker is None:
+                    raise RuntimeError("Worker failed to initialise")
+                if task == "evaluate":
                     fitness, res = worker.evaluate(data)
                     if res:
                         result_queue.put((id, fitness, res[0:4]))
@@ -413,8 +432,14 @@ class ModelRunner:
                 elif task == "output":
                     r, multi = worker.model_output(data)
                     result_queue.put((id, r, multi))
-            except Empty:
-                continue
+            except Exception:
+                # Always return a result, otherwise the parent process
+                # blocks forever waiting on result_queue
+                traceback.print_exc()
+                if task == "evaluate":
+                    result_queue.put((id, float('-inf'), None))
+                else:
+                    result_queue.put((id, None, None))
 
     def optimise_univariate(self, fitmetric="aic", threads=1,
                             min_weight=0.0, max_shape=None,
@@ -474,7 +499,7 @@ class ModelRunner:
                         model[
                             index_var * self.num_attributes:index_var *
                             self.num_attributes + self.num_attributes
-                        ] = [1, weight, t, s, 0]
+                        ] = [1, weight, t, s]
                         model_index = f"{var};{t};{s}"
                         self.task_queue.put(('evaluate', model_index, model))
 
@@ -546,10 +571,6 @@ class ModelRunner:
             self.fixed_params = best_params
             return best_params
 
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            traceback.print_exc()
-
         finally:
             # Terminate processes
             self.terminate_workers()
@@ -594,25 +615,21 @@ class ModelRunnerTPE(ModelRunner):
         """Define the search space for hyperparameters."""
         self.space = {}
         for var_name in self.resistance_network.variables:
+            # Fixed parameters (e.g., from the grid search) only constrain
+            # the features they provide; the rest are still optimised.
+            # NOTE: hp.uniform requires low < high, so fixed values use a
+            # single-option hp.choice
+            fixed = {}
             if self.fixed_params and var_name in self.fixed_params:
-                fixed_param = self.fixed_params[var_name]
+                fixed = {
+                    k: v for k, v in self.fixed_params[var_name].items()
+                    if pd.notna(v)
+                }
+
+            if 'sel' in fixed:
                 self.space[f"{var_name}_sel"] = hp.choice(
                     f"{var_name}_sel",
-                    [fixed_param.get('sel', 1)]
-                )
-                self.space[f"{var_name}_weight"] = hp.uniform(
-                    f"{var_name}_weight",
-                    fixed_param.get('weight', 1.0),
-                    fixed_param.get('weight', 1.0)
-                )
-                self.space[f"{var_name}_transform"] = hp.choice(
-                    f"{var_name}_transform",
-                    [fixed_param.get('transform', 0)]
-                )
-                self.space[f"{var_name}_shape"] = hp.uniform(
-                    f"{var_name}_shape",
-                    fixed_param.get('shape', 1.0),
-                    fixed_param.get('shape', 1.0)
+                    [fixed['sel']]
                 )
             else:
                 self.space[f"{var_name}_sel"] = hp.choice(
@@ -620,45 +637,62 @@ class ModelRunnerTPE(ModelRunner):
                     [0, 1]
                 )
 
-                if self.fixWeight:
-                    self.space[f"{var_name}_weight"] = hp.uniform(
-                        f"{var_name}_weight",
-                        1.0,
-                        1.0
-                    )
-                elif self.min_weight:
-                    self.space[f"{var_name}_weight"] = hp.uniform(
-                        f"{var_name}_weight",
-                        self.min_weight,
-                        1.0
-                    )
-                else:
-                    self.space[f"{var_name}_weight"] = hp.uniform(
-                        f"{var_name}_weight",
-                        0.0,
-                        1.0
-                    )
+            if 'weight' in fixed:
+                self.space[f"{var_name}_weight"] = hp.choice(
+                    f"{var_name}_weight",
+                    [fixed['weight']]
+                )
+            elif self.fixWeight:
+                self.space[f"{var_name}_weight"] = hp.choice(
+                    f"{var_name}_weight",
+                    [1.0]
+                )
+            elif self.min_weight:
+                self.space[f"{var_name}_weight"] = hp.uniform(
+                    f"{var_name}_weight",
+                    self.min_weight,
+                    1.0
+                )
+            else:
+                self.space[f"{var_name}_weight"] = hp.uniform(
+                    f"{var_name}_weight",
+                    0.0,
+                    1.0
+                )
 
-                if not self.fixShape:
-                    self.space[f"{var_name}_transform"] = hp.choice(
-                        f"{var_name}_transform",
-                        list(range(0, 9))
-                    )
-                    self.space[f"{var_name}_shape"] = hp.quniform(
-                        f"{var_name}_shape",
-                        1,
-                        self.max_shape,
-                        1.0
-                    )
-                else:
-                    self.space[f"{var_name}_transform"] = hp.choice(
-                        f"{var_name}_transform",
-                        [0]
-                    )
-                    self.space[f"{var_name}_shape"] = hp.choice(
-                        f"{var_name}_shape",
-                        [0]
-                    )
+            if 'transform' in fixed:
+                self.space[f"{var_name}_transform"] = hp.choice(
+                    f"{var_name}_transform",
+                    [fixed['transform']]
+                )
+            elif not self.fixShape:
+                self.space[f"{var_name}_transform"] = hp.choice(
+                    f"{var_name}_transform",
+                    list(range(0, 9))
+                )
+            else:
+                self.space[f"{var_name}_transform"] = hp.choice(
+                    f"{var_name}_transform",
+                    [0]
+                )
+
+            if 'shape' in fixed:
+                self.space[f"{var_name}_shape"] = hp.choice(
+                    f"{var_name}_shape",
+                    [fixed['shape']]
+                )
+            elif not self.fixShape:
+                self.space[f"{var_name}_shape"] = hp.quniform(
+                    f"{var_name}_shape",
+                    1,
+                    self.max_shape,
+                    1.0
+                )
+            else:
+                self.space[f"{var_name}_shape"] = hp.choice(
+                    f"{var_name}_shape",
+                    [0]
+                )
 
     def set_tpe_parameters(self, max_evals=100, num_workers=10,
                            fitmetric="likelihood", fixWeight=None,
@@ -700,7 +734,9 @@ class ModelRunnerTPE(ModelRunner):
         self.verbose = verbose
         self.report_all = report_all
         self.awsum = awsum
-        self.fixed_params = fixed_params
+        # Keep fixed params set earlier (e.g., by optimise_univariate)
+        if fixed_params is not None:
+            self.fixed_params = fixed_params
         self.out = out
 
     def run_tpe(self, max_evals=100, threads=4, fitmetric="loglik",
@@ -713,7 +749,8 @@ class ModelRunnerTPE(ModelRunner):
         Runs the TPE optimization for optimizing the ResistNet model.
 
         Args:
-            max_evals (int): Maximum number of evaluations.
+            max_evals (int): Maximum number of iterations; each iteration
+                             evaluates one model per chain.
             threads (int): Number of worker processes.
             fitmetric (str): Fitness metric to be used.
             fixWeight (bool): Constrain parameter weights to 1.0.
@@ -731,6 +768,8 @@ class ModelRunnerTPE(ModelRunner):
             awsum (float): Cumulative Akaike weight threshold to retain top N
                            models.
             fixed_params (dict): Fixed parameters to narrow the search space.
+            reps (int): Number of independent TPE chains; the best model from
+                        each is retained in the Hall of Fame.
         """
         try:
             # Set TPE parameters
@@ -753,8 +792,9 @@ class ModelRunnerTPE(ModelRunner):
             # Create the domain for hyperopt
             domain = Domain(dummy_objective, self.space)
 
-            # Initialize Trials objects
-            trials_list = [Trials() for _ in range(threads)]
+            # Initialize one Trials object per independent chain; the chains'
+            # evaluations are shared among the worker processes
+            trials_list = [Trials() for _ in range(reps)]
 
             # Start workers
             self.start_workers(threads)
@@ -843,17 +883,13 @@ class ModelRunnerTPE(ModelRunner):
             if verbose:
                 for i, trials in enumerate(trials_list):
                     i_best = trials.best_trial['result']['loss']
-                    print(f"Worker {i + 1}: Best = {i_best}")
+                    print(f"Chain {i + 1}: Best = {i_best}")
 
             # Process Hall of Fame to select the best model from each replicate
             self.process_hall_of_fame(trials_list)
 
             # Output results
             self.run_output(out, verbose, plot)
-
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            traceback.print_exc()
 
         finally:
             # Terminate worker processes
@@ -874,18 +910,20 @@ class ModelRunnerTPE(ModelRunner):
         num_vars = len(self.resistance_network.variables)
         individual = [0] * (num_vars * num_attributes)
 
-        # extract parameter settings
-        model = params["misc"]["vals"]
+        # extract parameter settings; misc.vals holds the option index for
+        # hp.choice, so map back to the actual values
+        vals = {k: v[0] for k, v in params["misc"]["vals"].items()}
+        model = space_eval(self.space, vals)
 
         for var_index, var_name in enumerate(
             self.resistance_network.variables
         ):
             idx_base = var_index * num_attributes
-            individual[idx_base] = int(model[f"{var_name}_sel"][0])
-            individual[idx_base + 1] = float(model[f"{var_name}_weight"][0])
-            individual[idx_base + 2] = int(model[f"{var_name}_transform"][0])
+            individual[idx_base] = int(model[f"{var_name}_sel"])
+            individual[idx_base + 1] = float(model[f"{var_name}_weight"])
+            individual[idx_base + 2] = int(model[f"{var_name}_transform"])
             individual[idx_base + 3] = int(
-                round(model[f"{var_name}_shape"][0])
+                round(model[f"{var_name}_shape"])
                 )
         return individual
 
@@ -907,9 +945,19 @@ class ModelRunnerTPE(ModelRunner):
                     )
                     individual = self.convert_params_to_individual(best_trial)
                     fitness = -best_trial['result']['loss']
-                    res = best_trial['result'].get('res', [])
+                    # -inf: no variables selected, or evaluation failed
+                    if fitness == float('-inf'):
+                        continue
+                    # res is None if the evaluation failed
+                    res = best_trial['result'].get('res') or [np.nan] * 4
                     best_model = [fitness] + individual + res
                     best_models.append(best_model)
+
+            if not best_models:
+                raise ValueError(
+                    "No valid models found (all had fitness -inf); try "
+                    "increasing the number of iterations"
+                )
 
             # Define the column names based on the provided example structure
             num_vars = len(self.resistance_network.variables)
@@ -935,7 +983,7 @@ class ModelRunnerTPE(ModelRunner):
 
         except Exception as e:
             print(f"An error occurred while processing the Hall of Fame: {e}")
-            traceback.print_exc()
+            raise
 
 
 def weight_generator(min_weight):

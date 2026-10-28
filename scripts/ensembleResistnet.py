@@ -7,7 +7,7 @@ import getopt
 import glob
 import pandas as pd
 from resistnet.resistance_network import ResistanceNetwork
-from resistnet.model_optimisation import ModelRunnerGA
+from resistnet.model_optimisation import ModelRunner
 from resistnet.hall_of_fame import HallOfFame
 
 # Set environment variable
@@ -20,7 +20,7 @@ def main():
 
     # Seed random number generator
     if not params.seed:
-        params.seed = datetime.now().timestamp()
+        params.seed = int(datetime.now().timestamp())
     random.seed(params.seed)
 
     # Check if paths provided as list or directory
@@ -95,7 +95,7 @@ def main():
     )
 
     # Step 3: Set up ModelRunner
-    runner = ModelRunnerGA(
+    runner = ModelRunner(
         resistance_network=network,
         seed=params.seed,
         verbose=True
@@ -232,7 +232,7 @@ class ParseArgs:
         """ Sets the default values for all the parameters. """
         self.input = None
         self.input_list = None
-        self.out = "sim"
+        self.out = "ensemble"
         self.variables = None
         self.edge_agg = "ARITH"
         self.agg_opts = dict()
@@ -368,7 +368,7 @@ class ParseArgs:
             "-X, --noPlot: Turn off plotting\n"
             "-m, --max_keep: Maximum models to keep (default = all models)\n"
             "-l, --len_col: Edge length attribute (def=LENGTH_KM)\n"
-            "-c, --id_col: Reach ID attribute (def=EDGE_ID)\n"
+            "-c, --id_col: Reach ID attribute (def=HYRIV_ID)\n"
             "-o, --out: Output file prefix (default=ensemble)\n"
             "--report_all: Plot full outputs for all retained models\n"
             "-V, --varfile: Optional file with variables provided like so:\n"

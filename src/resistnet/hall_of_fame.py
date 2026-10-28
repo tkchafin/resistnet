@@ -731,12 +731,13 @@ class HallOfFame:
                         the DataFrame.
         """
         # Extract variable names from the DataFrame column names
+        # NOTE: keep column order (a set would give arbitrary order)
         variable_prefixes = ["_weight", "_trans", "_shape"]
-        variables = set()
+        variables = dict()
         for col in df.columns:
             for prefix in variable_prefixes:
                 if col.endswith(prefix):
-                    variables.add(col.replace(prefix, ""))
+                    variables[col.replace(prefix, "")] = None
         variables = list(variables)
         if "acc_akaike" in variables:
             variables.remove("acc_akaike")
