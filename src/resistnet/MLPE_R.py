@@ -4,7 +4,7 @@
 
 # def MLPE_R(Y, X, scale=True):
 #     """
-#     Perform Mixed Linear Model Pedigree Estimate (MLPE) using R libraries.
+#     Fit the maximum-likelihood population effects (MLPE) model using R.
 
 #     Args:
 #         X: The first matrix for MLPE analysis.

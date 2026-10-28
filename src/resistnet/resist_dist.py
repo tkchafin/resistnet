@@ -1,5 +1,3 @@
-import itertools
-import pandas as pd
 import numpy as np
 import resistnet.MLPE as mlpe
 
@@ -43,21 +41,13 @@ def effectiveResistanceMatrix(points, inc_matrix, edge_resistance):
             "Incorrect dimensions of inc_matrix for the given number of points"
         )
 
-    r = pd.DataFrame(
-        columns=list(points.values()), index=list(points.values())
-    )
-    inc_row = 0
-    edge_resistance = np.array(edge_resistance)
-
-    for ia, ib in itertools.combinations(range(0, len(points)), 2):
-        inc = np.array(inc_matrix[inc_row, :])
-        d = np.sum(np.multiply(edge_resistance, inc))
-        inc_row += 1
-        r.loc[list(points.values())[ia], list(points.values())[ib]] = d
-        r.loc[list(points.values())[ib], list(points.values())[ia]] = d
-
-    r = r.astype('float64').to_numpy()
-    np.fill_diagonal(r, 0.0)
+    # Rows of inc_matrix follow itertools.combinations order, which is the
+    # same as the upper-triangle (row-major) order
+    d = np.asarray(inc_matrix) @ np.asarray(edge_resistance, dtype='float64')
+    r = np.zeros((num_points, num_points))
+    ia, ib = np.triu_indices(num_points, 1)
+    r[ia, ib] = d
+    r[ib, ia] = d
 
     return r
 

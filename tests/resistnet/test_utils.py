@@ -67,6 +67,11 @@ def test_get_lower_tri():
     expected = np.array([4, 7, 8])
     assert np.array_equal(utils.get_lower_tri(mat), expected)
 
+    # column-major order (as R's lower.tri)
+    mat = np.arange(16).reshape(4, 4)
+    expected = np.array([4, 8, 12, 9, 13, 14])
+    assert np.array_equal(utils.get_lower_tri(mat), expected)
+
 
 # Test for to_from_
 def test_to_from_():

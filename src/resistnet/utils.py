@@ -610,6 +610,9 @@ def get_lower_tri(mat):
     """
     Extract the lower triangular part of a matrix.
 
+    Elements are returned in column-major order (as R's lower.tri), so that
+    they line up with the population pairs given by to_from_().
+
     Args:
         mat: A NumPy matrix.
 
@@ -618,8 +621,8 @@ def get_lower_tri(mat):
                  of the matrix.
     """
     n = mat.shape[0]
-    i = np.tril_indices(n, -1)
-    return mat[i]
+    col, row = np.triu_indices(n, 1)
+    return mat[row, col]
 
 
 def to_from_(pops):
