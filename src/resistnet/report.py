@@ -160,10 +160,13 @@ class RunOutputs:
     def _unique_models(self):
         """
         The Hall of Fame with each model once: the best model of several
-        chains can be the same, splitting its Akaike weight.
+        chains can be the same (per km, with maximum resistances differing
+        only by search noise), splitting its Akaike weight.
         """
+        from resistnet.compare import duplicate_key
         hof = self.hof.copy()
-        hof["key"] = list(zip(hof["model"], hof["aic"].round(6)))
+        hof["key"] = [duplicate_key(m, a)
+                      for m, a in zip(hof["model"], hof["aic"])]
         hof["kept"] = hof["keep"].astype(str).str.lower() == "true"
         models = hof.groupby("key", sort=False).agg(
             model=("model", "first"), aic=("aic", "first"),

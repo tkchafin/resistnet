@@ -82,3 +82,23 @@ def test_contributions_figure():
     assert abs(sum(bar.x) - 1) < 1e-9
     assert bar.marker.color[list(bar.y).index("distance")] == \
         COLOURS["reference"]
+
+
+def test_duplicates_per_km_merged(tmp_path):
+    # Chains converging on the same model per km find slightly different
+    # maximum resistances: listed once, with the chains counted and their
+    # Akaike weights summed; a different model stays separate
+    prefix = str(tmp_path / "x")
+    pd.DataFrame({
+        "fitness": [-503.57177, -503.57172, -495.6],
+        "a": [1, 1, 1], "a_weight": [1.0, 1.0, 1.0], "a_trans": [7, 7, 7],
+        "a_shape": [1.0, 1.0, 2.0],
+        "max_resistance": [122.4, 123.6, 35.7],
+        "loglik": [258.79, 258.79, 254.8],
+        "aic": [-503.57177, -503.57172, -495.6], "r2m": [0.77] * 3,
+        "akaike_weight": [0.49, 0.49, 0.02], "keep": [True] * 3}
+    ).to_csv(f"{prefix}.HallOfFame.tsv", sep="\t", index=False)
+    models = RunOutputs(prefix, "resistance").models
+    assert len(models) == 2
+    assert models.iloc[0]["chains"] == 2
+    assert abs(models.iloc[0]["akaike_weight"] - 0.98) < 1e-12

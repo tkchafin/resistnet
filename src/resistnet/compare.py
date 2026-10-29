@@ -91,6 +91,15 @@ def describe(row, variables, network, runner):
     return text
 
 
+def duplicate_key(model, aic):
+    """
+    Models that are the same: the same description apart from the maximum
+    resistance per km (which chains converging on the same optimum find
+    with small differences), and the same AIC to 0.01.
+    """
+    return model.split("; resistance 1-")[0], round(float(aic), 2)
+
+
 def comparison_tables(runs, tol=1e-6):
     """
     Ranks the models of several fitted model families together.
@@ -120,8 +129,10 @@ def comparison_tables(runs, tol=1e-6):
             model = describe(row, variables, network, runner)
             # Each chain's best model is kept, so a model can appear more
             # than once (for SAMC without variables, with different
-            # maximum resistances that have no effect): list it once
-            key = (model, round(float(row["aic"]), 6))
+            # maximum resistances that have no effect; per km, with
+            # maximum resistances differing only by search noise): list it
+            # once
+            key = duplicate_key(model, row["aic"])
             if key in seen:
                 continue
             seen.add(key)
