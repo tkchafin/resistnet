@@ -17,3 +17,12 @@ against them rather than against its own earlier output.
 - `nmt_mlpe_lme4.tsv`: ResistanceGA's `MLPE.lmm` fitted to Y and each X
   (lme4, ML; AIC counts the four MLPE parameters only) and the marginal
   R2 from `MuMIn::r.squaredGLMM`.
+- `resistancega_transformations.tsv`: ResistanceGA's eight transformation
+  functions (`Ricker`, `Rev.Ricker`, `Inv.Ricker`, `Inv.Rev.Ricker`,
+  `Monomolecular`, `Rev.Monomolecular`, `Inv.Monomolecular`,
+  `Inv.Rev.Monomolecular`, vector versions from its
+  `R/internal_helper_functions.R`) applied in R to a test covariate
+  rescaled to 0-10 with its `SCALE.vector`, for shapes 0.5-50, then
+  rescaled to 0-1 (`resistancega_transformations.R` made it). Note that
+  ResistanceGA itself turns any Ricker-family transformation with shape
+  > 5 into plain distance; ResistNet does not.

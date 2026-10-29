@@ -88,3 +88,22 @@ def test_numpy_shape_accepted():
     for shape in [np.int64(3), np.float64(3.0)]:
         np.testing.assert_allclose(tr.monomolecular(x, shape, 1),
                                    tr.monomolecular(x, 3, 1))
+
+
+def test_transformations_match_resistancega():
+    # ResistanceGA's own transformation functions, run in R (see
+    # reference/README.md): the same curves to rounding error
+    import os
+    ref = pd.read_csv(os.path.join(os.path.dirname(__file__), "reference",
+                                   "resistancega_transformations.tsv"),
+                      sep="\t")
+    code = {"Ricker": 1, "Rev.Ricker": 2, "Inv.Ricker": 3,
+            "Inv.Rev.Ricker": 4, "Monomolecular": 5, "Rev.Monomolecular": 6,
+            "Inv.Monomolecular": 7, "Inv.Rev.Monomolecular": 8}
+    assert set(ref["transformation"]) == set(code)
+    for (name, shape), g in ref.groupby(["transformation", "shape"]):
+        x = tr.rescaleCols(pd.Series(g["raw"].to_numpy()), 0, 10)
+        y = tr.rescaleCols(tr.apply_transformation(x, code[name], shape), 0,
+                           1)
+        np.testing.assert_allclose(np.asarray(y), g["value"], atol=1e-12,
+                                   err_msg=f"{name}, shape {shape}")
