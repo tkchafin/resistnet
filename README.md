@@ -438,13 +438,16 @@ In this short run, the best SAMC model is stream gradient (`sgr_dk_rav`, symmetr
 
 ### Comparing the two models <a name="compare"></a>
 
-With `--model both`, `ResistNet` fits the standard model and then the SAMC model, each with its own search, Hall of Fame, model averaging and outputs (in `DIR/NAME/resistance/` and `DIR/NAME/samc/`), and then ranks the models of both, with the reference models, by AIC. Both are fitted with the same MLPE to the same genetic distances, so their AICs are comparable; this is checked (the null and distance-only models of both must be identical). Three tables are written to `DIR/NAME/`:
+With `--model both`, `ResistNet` fits the standard model and then the SAMC model, each with its own search, Hall of Fame, model averaging and outputs (in `DIR/NAME/resistance/` and `DIR/NAME/samc/`), and then ranks the models of both, with the reference models, by AIC. Both are fitted with the same MLPE to the same genetic distances, so their AICs are comparable; this is checked (the null and distance-only models of both must be identical). These outputs are written to `DIR/NAME/`:
 
 | File Name                    | Description                                                                                                                                                                                              |
 |------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | NAME.modelComparison.tsv     | Every Hall of Fame model of both (each once) and the reference models, ranked by AIC: family, model, number of parameters (k), log-likelihood, AIC, difference from the best, and Akaike weight over all of them |
 | NAME.familySummary.tsv       | For each family (resistance, samc, reference): its best model, that model's AIC and difference from the best, and the family's summed Akaike weight                                                     |
-| NAME.jointImportance.tsv     | Relative importance of each variable over both families (the summed Akaike weight of the models that include it)                                                                                       |
+| NAME.jointImportance.tsv     | Relative importance of each variable over both families (the summed Akaike weight of the models that include it), and the part of it from each family's models                                         |
+| NAME.modelComparison.pdf     | The ranking as AIC differences from the best model, coloured by family, with each family's summed Akaike weight                                                                                        |
+| NAME.jointImportance.pdf     | The joint importance of each variable, split by family                                                                                                                                                  |
+| NAME.bestFits.pdf            | The genetic distances against each family's best model, side by side                                                                                                                                    |
 
 For example, adding `--model both` to the command in the [Example Dataset](#example) section gives `nmt/resistance/`, `nmt/samc/` and:
 

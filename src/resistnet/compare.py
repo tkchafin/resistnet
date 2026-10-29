@@ -7,8 +7,13 @@ Both models are fitted with the same MLPE to the same genetic distances, so
 their AICs are comparable; the reference models computed by both (null and
 distance_only) must therefore be the same, which is checked.
 """
+import os
+import textwrap
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.lines import Line2D
 
 from resistnet.samc_network import ResistanceNetworkSAMC
 
@@ -18,6 +23,14 @@ TRANSFORMATIONS = {
     6: "reverse monomolecular", 7: "inverse monomolecular",
     8: "reverse-inverse monomolecular"
 }
+
+# Plot colours: one per family (validated as a categorical pair), and
+# neutral grey for the reference models; text and grid
+COLOURS = {"resistance": "#2a78d6", "samc": "#eb6834",
+           "reference": "#8a8986"}
+FAMILY_NAMES = {"resistance": "Standard (resistance)", "samc": "SAMC",
+                "reference": "Reference model"}
+TEXT, TEXT2, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 
 # Reference models: (family, description, number of parameters)
 REFERENCES = {
@@ -99,7 +112,7 @@ def comparison_tables(runs, tol=1e-6):
         ValueError: If the families were not fitted to the same genetic
                     distances (their shared reference models differ).
     """
-    rows, nulls, selected = [], {}, []
+    rows, nulls, selected, owners = [], {}, [], []
     for family, (network, runner, prefix) in runs.items():
         hof = pd.read_csv(f"{prefix}.HallOfFame.tsv", sep="\t",
                           na_values="-")
@@ -120,6 +133,7 @@ def comparison_tables(runs, tol=1e-6):
                                / 2)),
                 "loglik": float(row["loglik"]), "aic": float(row["aic"])})
             selected.append({v for v in variables if row[v] == 1})
+            owners.append(family)
         nulls[family] = read_null_table(prefix)
 
     # The families share the null and distance-only models
@@ -145,6 +159,7 @@ def comparison_tables(runs, tol=1e-6):
         rows.append({"family": family, "model": model, "k": k,
                      "loglik": float(r["loglik"]), "aic": float(r["aic"])})
         selected.append(set())
+        owners.append(family)
 
     table = pd.DataFrame(rows)
     table["delta_aic"] = table["aic"] - table["aic"].min()
@@ -153,6 +168,7 @@ def comparison_tables(runs, tol=1e-6):
     order = np.argsort(table["aic"].to_numpy(), kind="stable")
     table = table.iloc[order].reset_index(drop=True)
     selected = [selected[i] for i in order]
+    owners = [owners[i] for i in order]
     table.insert(0, "rank", np.arange(1, len(table) + 1))
 
     summary = []
@@ -167,26 +183,37 @@ def comparison_tables(runs, tol=1e-6):
             "akaike_weight": part["akaike_weight"].sum()})
     summary = pd.DataFrame(summary)
 
+    # Relative importance over both families, and the part of it from
+    # each family's models
     variables = sorted(set().union(*selected))
-    importance = pd.DataFrame({
-        "variable": variables,
-        "RVI": [sum(w for w, s in zip(table["akaike_weight"], selected)
-                    if v in s) for v in variables]
-    }).sort_values("RVI", ascending=False, kind="stable")
+    importance = pd.DataFrame({"variable": variables})
+    weights = table["akaike_weight"].to_numpy()
+    importance["RVI"] = [sum(w for w, s in zip(weights, selected) if v in s)
+                         for v in variables]
+    for family in runs:
+        importance[f"RVI_{family}"] = [
+            sum(w for w, s, f in zip(weights, selected, owners)
+                if v in s and f == family) for v in variables]
+    importance = importance.sort_values("RVI", ascending=False,
+                                        kind="stable")
     return table, summary, importance
 
 
-def write_comparison(runs, prefix, verbose=True):
+def write_comparison(runs, prefix, verbose=True, plot=True):
     """
     Writes the joint ranking of the fitted model families (see
     comparison_tables()) to {prefix}.modelComparison.tsv, the summary per
     family to {prefix}.familySummary.tsv, and the joint relative variable
-    importance to {prefix}.jointImportance.tsv.
+    importance to {prefix}.jointImportance.tsv; and plots them
+    ({prefix}.modelComparison.pdf, {prefix}.jointImportance.pdf), with each
+    family's best model against the genetic distances
+    ({prefix}.bestFits.pdf).
 
     Args:
         runs (dict): As for comparison_tables().
         prefix (str): Output prefix.
         verbose (bool): Print the summary.
+        plot (bool): Write the plots.
 
     Returns:
         tuple: The three tables.
@@ -196,6 +223,11 @@ def write_comparison(runs, prefix, verbose=True):
     summary.to_csv(f"{prefix}.familySummary.tsv", sep="\t", index=False)
     importance.to_csv(f"{prefix}.jointImportance.tsv", sep="\t",
                       index=False)
+    if plot:
+        plot_ranking(table, summary, f"{prefix}.modelComparison.pdf")
+        plot_importance(importance, list(runs),
+                        f"{prefix}.jointImportance.pdf")
+        plot_best_fits(runs, summary, f"{prefix}.bestFits.pdf")
     if verbose:
         print("\nModels of both families and the reference models, ranked "
               "together by AIC:")
@@ -206,3 +238,173 @@ def write_comparison(runs, prefix, verbose=True):
             print("\nBy family:")
             print(summary.to_string(index=False))
     return table, summary, importance
+
+
+def _style(ax, grid="x"):
+    """Quiet axes: no box, light grid, secondary-ink ticks."""
+    for side in ("top", "right", "left"):
+        ax.spines[side].set_visible(False)
+    ax.spines["bottom"].set_color(GRID)
+    ax.tick_params(colors=TEXT2, labelsize=8, length=0)
+    if grid:
+        ax.grid(axis=grid, color=GRID, linewidth=0.8)
+        ax.set_axisbelow(True)
+
+
+def _legend(ax, families, **kw):
+    handles = [Line2D([], [], marker="o", linestyle="", markersize=7,
+                      markerfacecolor=COLOURS[f], markeredgecolor="white",
+                      label=FAMILY_NAMES[f]) for f in families]
+    leg = ax.legend(handles=handles, frameon=False, fontsize=8, **kw)
+    for text in leg.get_texts():
+        text.set_color(TEXT2)
+    return leg
+
+
+def plot_ranking(table, summary, path, top=15):
+    """
+    Plots the best models of the joint ranking as their AIC difference
+    from the best (symmetric log scale), coloured by family, with each
+    family's summed Akaike weight alongside.
+    """
+    rows = table.head(top).iloc[::-1].reset_index(drop=True)
+    labels = [textwrap.fill(m, 62) for m in rows["model"]]
+    lines = np.array([lab.count("\n") + 1 for lab in labels])
+    gaps = 0.55 + 0.32 * lines
+    y = np.cumsum(gaps) - gaps / 2
+    height = max(2.6, 0.28 * gaps.sum() + 1.4)
+    fig, (ax, axw) = plt.subplots(
+        1, 2, figsize=(11.5, height),
+        gridspec_kw={"width_ratios": [4.2, 1.1], "wspace": 0.55})
+
+    delta = rows["delta_aic"].to_numpy()
+    colours = [COLOURS[f] for f in rows["family"]]
+    ax.hlines(y, 0, delta, color=GRID, linewidth=1.2, zorder=1)
+    ax.scatter(delta, y, s=48, c=colours, edgecolors="white",
+               linewidths=1.5, zorder=3)
+    ax.set_xscale("symlog", linthresh=2, linscale=0.6)
+    top_x = max(10.0, delta.max() * 1.6)
+    ticks = [t for t in (0, 2, 5, 10, 20, 50, 100, 200, 500, 1000)
+             if t <= top_x]
+    ax.set_xticks(ticks, [str(t) for t in ticks])
+    ax.set_xlim(-0.3, top_x)
+    ax.axvline(2, color=TEXT2, linewidth=0.8, linestyle=(0, (3, 3)),
+               zorder=2)
+    ax.text(2, 0.05, " ΔAIC = 2", color=TEXT2, fontsize=7, va="bottom")
+    for yi, d, w in zip(y, delta, rows["akaike_weight"]):
+        if w >= 0.005:
+            ax.text(d, yi, f"   w = {w:.2f}", color=TEXT2, fontsize=7,
+                    va="center")
+    ax.set_yticks(y, labels, fontsize=7.5, color=TEXT)
+    ax.set_ylim(0, gaps.sum())
+    ax.set_xlabel("AIC difference from the best model (symmetric log "
+                  "scale)", color=TEXT2, fontsize=8)
+    ax.set_title("Models of both families and the reference models, "
+                 "by AIC", loc="left", fontsize=10, color=TEXT, pad=20)
+    _style(ax)
+    _legend(ax, [f for f in COLOURS if f in set(table["family"])],
+            loc="lower right", bbox_to_anchor=(1.0, 1.0), ncol=3,
+            borderaxespad=0.2)
+
+    fam = summary.iloc[::-1].reset_index(drop=True)
+    yb = np.arange(len(fam))
+    axw.barh(yb, fam["akaike_weight"], height=0.55,
+             color=[COLOURS[f] for f in fam["family"]], edgecolor="white",
+             linewidth=1.5)
+    for yi, w in zip(yb, fam["akaike_weight"]):
+        axw.text(min(w, 1.0) + 0.03, yi, f"{w:.2f}" if w >= 0.005
+                 else "<0.01", va="center", color=TEXT2, fontsize=8)
+    axw.set_yticks(yb, [FAMILY_NAMES[f] for f in fam["family"]],
+                   fontsize=8, color=TEXT)
+    axw.set_xlim(0, 1.25)
+    axw.set_xticks([0, 0.5, 1])
+    axw.set_ylim(-0.8, len(fam) - 0.2)
+    axw.set_title("Summed Akaike weight", loc="left", fontsize=9,
+                  color=TEXT, pad=20)
+    _style(axw)
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_importance(importance, families, path):
+    """
+    Plots each variable's relative importance over both families, split
+    into the parts from each family's models.
+    """
+    imp = importance.iloc[::-1].reset_index(drop=True)
+    y = np.arange(len(imp))
+    fig, ax = plt.subplots(figsize=(7, max(2.0, 0.42 * len(imp) + 1.2)))
+    left = np.zeros(len(imp))
+    for family in families:
+        part = imp[f"RVI_{family}"].to_numpy()
+        ax.barh(y, part, left=left, height=0.55, color=COLOURS[family],
+                edgecolor="white", linewidth=1.5)
+        left += part
+    for yi, total in zip(y, imp["RVI"]):
+        ax.text(total + 0.02, yi, f"{total:.2f}" if total >= 0.005
+                else "<0.01", va="center", color=TEXT2, fontsize=8)
+    ax.set_yticks(y, imp["variable"], fontsize=8, color=TEXT)
+    ax.set_xlim(0, 1.12)
+    ax.set_xlabel("Relative importance (summed Akaike weight of the models "
+                  "with the variable)", color=TEXT2, fontsize=8)
+    ax.set_title("Variable importance over both families", loc="left",
+                 fontsize=10, color=TEXT, pad=20)
+    _style(ax)
+    _legend(ax, families, loc="lower right", bbox_to_anchor=(1.0, 1.0),
+            ncol=2, borderaxespad=0.2)
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_best_fits(runs, summary, path):
+    """
+    Plots the genetic distances against each family's best model distance
+    (standardised, as fitted by MLPE), side by side.
+    """
+    families = [f for f in runs if os.path.exists(_best_matrix(runs[f]))]
+    if not families:
+        return
+    fig, axes = plt.subplots(1, len(families),
+                             figsize=(5.0 * len(families), 4.3),
+                             sharey=True, squeeze=False)
+    best = summary.set_index("family")
+    for ax, family in zip(axes[0], families):
+        network, _, prefix = runs[family]
+        X = pd.read_csv(_best_matrix(runs[family]), sep="\t",
+                        index_col=0).to_numpy(dtype=float)
+        X = (X + X.T) / 2.0
+        Y = network._gendist
+        iu = np.triu_indices(len(Y), 1)
+        x, y = X[iu], Y[iu]
+        x = (x - x.mean()) / x.std()
+        ax.scatter(x, y, s=16, color=COLOURS[family], alpha=0.8,
+                   edgecolors="white", linewidths=0.5)
+        slope, intercept = np.polyfit(x, y, 1)
+        xs = np.array([x.min(), x.max()])
+        ax.plot(xs, intercept + slope * xs, color=TEXT2, linewidth=1.2)
+        r2m = pd.read_csv(f"{prefix}.HallOfFame.tsv", sep="\t",
+                          na_values="-")["r2m"].iloc[0]
+        ax.set_title(
+            f"{FAMILY_NAMES[family]}: AIC {best.loc[family, 'best_aic']:.1f}"
+            f", marginal R² {r2m:.2f}\n"
+            + textwrap.fill(best.loc[family, "best_model"], 58),
+            loc="left", fontsize=8, color=TEXT)
+        ax.set_xlabel("Best model's distance (standardised)", color=TEXT2,
+                      fontsize=8)
+        _style(ax, grid="both")
+    axes[0][0].set_ylabel("Genetic distance", color=TEXT2, fontsize=8)
+    fig.suptitle("Genetic distance against each family's best model",
+                 x=0.01, ha="left", fontsize=10, color=TEXT, y=1.1)
+    fig.text(0.01, -0.04, "Each point is a pair of sites. Lines are "
+             "least-squares fits, for display: the models are fitted with "
+             "MLPE (population effects).", color=TEXT2, fontsize=7)
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _best_matrix(run):
+    """Path of the best model's pairwise distances of a run."""
+    network, _, prefix = run
+    if isinstance(network, ResistanceNetworkSAMC):
+        return f"{prefix}.Model-Best.CFPTMatrix.tsv"
+    return f"{prefix}.Model-Best.ResistanceMatrix.tsv"

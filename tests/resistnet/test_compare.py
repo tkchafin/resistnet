@@ -93,6 +93,12 @@ def test_write_comparison(runs, tmp_path):
     write_comparison(runs, prefix, verbose=False)
     for ext in ("modelComparison", "familySummary", "jointImportance"):
         assert os.path.exists(f"{prefix}.{ext}.tsv")
+    for ext in ("modelComparison", "jointImportance", "bestFits"):
+        assert os.path.getsize(f"{prefix}.{ext}.pdf") > 0
+    # Each variable's importance is the sum of its parts from each family
+    imp = pd.read_csv(f"{prefix}.jointImportance.tsv", sep="\t")
+    np.testing.assert_allclose(imp["RVI"], imp["RVI_resistance"]
+                               + imp["RVI_samc"])
 
 
 def test_run_both_models_layout(tmp_path):
