@@ -1,5 +1,6 @@
+import contextlib
+import io
 import itertools
-import pickle
 import random
 from math import radians, cos, sin, asin, sqrt
 import networkx as nx
@@ -67,37 +68,6 @@ def graph_to_dag_converging(K, origin):
     return D
 
 
-def minmax_lil(lil_matrix):
-    """
-    Perform min-max scaling on the non-zero values of a lil_matrix, scaling
-    all values to be between 0 and 1. This function modifies the matrix in
-    place.
-
-    Args:
-        lil_matrix (scipy.sparse.lil_matrix): The input sparse matrix
-
-    Returns:
-        None: The matrix is modified in place.
-    """
-    # Flatten all data to find global min and max
-    all_data = np.hstack(lil_matrix.data)
-
-    if all_data.size == 0:
-        return  # No data to scale, exit the function
-
-    X_min = all_data.min()
-    X_max = all_data.max()
-
-    # Avoid division by zero if all values are the same
-    if X_min == X_max:
-        return
-
-    # Scale each non-zero value in lil_matrix.data
-    for row_data in lil_matrix.data:
-        for i in range(len(row_data)):
-            row_data[i] = (row_data[i] - X_min) / (X_max - X_min)
-
-
 def minmax(X):
     """
     Perform min-max scaling on a NumPy array, scaling all values to be between
@@ -132,34 +102,6 @@ def minmax_nonzero(X):
     X_scaled = (X - X_min) / (X_max - X_min)
     smallest_nonzero = np.min(X_scaled[X_scaled > 0])
     X_scaled[X_scaled == 0] = smallest_nonzero
-    return X_scaled
-
-
-def masked_minmax(X, mask):
-    """
-    Perform min-max scaling on selected elements of a NumPy array. Selection
-    is determined by a boolean mask, and only elements where the mask is True
-    are scaled. Elements where the mask is False remain unchanged.
-
-    Args:
-        X (numpy.ndarray): The input array containing elements to be scaled.
-        mask (numpy.ndarray): A boolean array with the same shape as X. True
-            values indicate the positions in X that should be scaled.
-
-    Returns:
-        numpy.ndarray: An array with the same shape as X, where selected
-                       elements have been scaled to be between 0 and 1, and
-                       other elements are unchanged.
-    """
-    masked_values = X[mask]
-    min_val = masked_values.min()
-    max_val = masked_values.max()
-    scaled_values = (
-        (masked_values - min_val) / (max_val - min_val)
-        if max_val != min_val else masked_values
-    )
-    X_scaled = np.copy(X)
-    X_scaled[mask] = scaled_values
     return X_scaled
 
 
@@ -331,33 +273,23 @@ def scrub_bad_columns(df, variables, verbose=False):
 
 def read_pickle_network(pik):
     """
-    Read a network graph from a pickle file and convert it to an undirected
-    graph.
+    Read a saved network graph (pickle) as an undirected graph, with
+    autoStreamTree's reader.
 
     Args:
         pik: The path to the pickle file containing the network graph.
 
     Returns:
         A networkx.Graph object representing the undirected graph.
-
-    Raises:
-        FileNotFoundError: If the pickle file is not found.
-        IOError: If there's an error reading from the file.
     """
-    try:
-        with open(pik, 'rb') as f:
-            with warnings.catch_warnings():
-                warnings.filterwarnings(
-                    "ignore",
-                    message=r"Unpickling a shapely <2\.0 geometry object.*",
-                    category=UserWarning
-                )
-                _G = nx.Graph(pickle.load(f)).to_undirected()
-        return _G
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Pickle file {pik} not found.")
-    except IOError:
-        raise IOError("Error occurred while reading from the file.")
+    with warnings.catch_warnings(), \
+            contextlib.redirect_stdout(io.StringIO()):
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Unpickling a shapely <2\.0 geometry object.*",
+            category=UserWarning
+        )
+        return astnet.read_network(pik, None)
 
 
 def nx_to_df(G):
@@ -487,26 +419,6 @@ def write_numpy_matrix(mat, ofh):
             np.savetxt(ofh, mat, delimiter="\t")
     except IOError:
         raise IOError("Error occurred while writing the matrix to the file.")
-
-
-def path_edge_attributes(graph, path, attribute):
-    """
-    Extract the values of a specified attribute for each edge in a path on a
-    graph.
-
-    This function takes a path within a graph and returns the values of a
-    specified attribute for each edge along the path.
-
-    Args:
-        graph: A networkx Graph object.
-        path: A list of nodes representing a path in the graph.
-        attribute: The edge attribute whose values are to be returned.
-
-    Returns:
-        list: A list containing the values of the specified attribute for each
-              edge in the path.
-    """
-    return [graph[u][v][attribute] for (u, v) in zip(path, path[1:])]
 
 
 def write_edges(out, edge, ids):

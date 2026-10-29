@@ -32,4 +32,4 @@ dependencies:
   # from GitHub (then: - autostreamtree, from the ecoevoinfo channel);
   # pip also updates mantel (>= 2.2.1, for numpy 2) from PyPI
   - pip:
-    - git+https://github.com/tkchafin/autostreamtree@network-fixes
+    - git+https://github.com/tkchafin/autostreamtree
