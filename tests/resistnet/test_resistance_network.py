@@ -469,7 +469,8 @@ def test_mlpe_reference_inputs_nmt(tmp_path):
         agg_opts={"dor_pc_pva": "ARITH"}, out=str(tmp_path / "net"),
         verbose=False)
     Y = np.loadtxt(os.path.join(ref, "nmt_mlpe_Y.tsv"))
-    np.testing.assert_array_equal(net._gendist, Y)
+    # (input parsing can differ in the last digit between pandas versions)
+    np.testing.assert_allclose(net._gendist, Y, rtol=1e-12, atol=0)
     length = {d[net.reachid_col]: d[net.length_col]
               for _, _, d in net._K.edges(data=True)}
     km = np.array([float(length[e]) for e in net._edge_order])

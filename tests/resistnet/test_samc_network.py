@@ -542,7 +542,8 @@ def test_mlpe_reference_inputs_nmt(ref_net):
     # references (test_MLPE.py) are what ResistNet computes for NMT
     from resistnet.CFPT import CFPT
     Y = np.loadtxt(os.path.join(REFERENCE, "nmt_mlpe_Y.tsv"))
-    np.testing.assert_array_equal(ref_net._gendist, Y)
+    # (input parsing can differ in the last digit between pandas versions)
+    np.testing.assert_allclose(ref_net._gendist, Y, rtol=1e-12, atol=0)
     X = np.loadtxt(os.path.join(REFERENCE,
                                 "nmt_mlpe_X_samc_ele_dir_flow.tsv"))
     T = CFPT(_ref_transition_matrix(ref_net, "ele_dir_flow"),
