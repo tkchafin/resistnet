@@ -9,6 +9,7 @@ from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.model_optimisation import ModelRunnerTPE
 from resistnet.compare import write_comparison
 from resistnet.report import build_report
+from resistnet.utils import vcf_distances
 
 
 def main():
@@ -26,6 +27,18 @@ def main():
     # Each model's outputs go to {out}/{model}/{name}.*, where name is the
     # last part of --out
     name = os.path.basename(os.path.normpath(params.out))
+
+    # Genetic distances from a VCF, with autoStreamTree
+    if params.vcf:
+        os.makedirs(params.out, exist_ok=True)
+        print(f"Computing genetic distances ({params.gendist}) among the "
+              f"sites from {params.vcf} with autoStreamTree")
+        params.inmat = vcf_distances(
+            params.vcf, params.popmap, params.coords,
+            os.path.join(params.out, name), dist=params.gendist,
+            concat=params.concat)
+        print(f"Genetic distances written to {params.inmat}\n")
+
     runs = {}
     for model in params.models:
         prefix = os.path.join(params.out, model, name)

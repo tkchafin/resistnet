@@ -30,6 +30,43 @@ class parseArgs:
             help='Pre-formatted pickled network file'
         )
 
+        # Genetic distances from a VCF (with autoStreamTree), instead of -g
+        parser.add_argument(
+            '--vcf', type=str,
+            help=(
+                'VCF of the individuals, to compute the genetic distances '
+                'among sites with autoStreamTree (instead of -g; needs '
+                '--popmap)'
+            )
+        )
+        parser.add_argument(
+            '--popmap', type=str,
+            help=(
+                'With --vcf: tsv of individual and site (the site labels '
+                'of -c) on each line'
+            )
+        )
+        parser.add_argument(
+            '--gendist', type=str, default='LINFST',
+            choices=['LINFST', 'FST', 'JOST', 'HARMD', 'CHORD', 'PDIST'],
+            help=(
+                "With --vcf: genetic distance (autoStreamTree's -d/--dist): "
+                "LINFST = FST / (1 - FST), FST (Weir & Cockerham's theta), "
+                "JOST (Jost's D), HARMD (harmonic mean of Jost's D over "
+                "loci), CHORD (Cavalli-Sforza & Edwards), PDIST (mean "
+                "p-distance between individuals)"
+            )
+        )
+        parser.add_argument(
+            '--concat', type=str, default='none',
+            choices=['none', 'loc', 'all'],
+            help=(
+                "With --vcf: combine SNPs (autoStreamTree's -C/--concat): "
+                "none (each SNP a locus), loc (the SNPs of each CHROM joined "
+                "into one locus, e.g. RAD loci), or all"
+            )
+        )
+
         # General options
         parser.add_argument(
             '--seed', type=int,
@@ -234,6 +271,10 @@ class parseArgs:
             parser.error(f"--samc conflicts with --model {self.model}")
         self.models = (["resistance", "samc"] if self.model == "both"
                        else [self.model])
+        if self.vcf and self.inmat:
+            parser.error("--vcf and -g/--inmat can't both be used")
+        if self.vcf and not self.popmap:
+            parser.error("--vcf needs --popmap")
         if self.max_resist is not None and self.max_resist <= 1:
             parser.error("--max_resist must be greater than 1")
         if self.fix_resist is not None and self.fix_resist < 1:

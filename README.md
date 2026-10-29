@@ -75,9 +75,11 @@ This will show the currently available options:
 
 ```
 usage: runResistnet.py [-h] [-g INMAT] [-s SHAPEFILE] [-c COORDS] [-n NETWORK]
-                       [--seed SEED] [--reachid_col REACHID_COL]
-                       [--length_col LENGTH_COL] [-t PROCS] [-o OUT]
-                       [-O {SHP,GPKG,GDB}] [--gridSearch]
+                       [--vcf VCF] [--popmap POPMAP]
+                       [--gendist {LINFST,FST,JOST,HARMD,CHORD,PDIST}]
+                       [--concat {none,loc,all}] [--seed SEED]
+                       [--reachid_col REACHID_COL] [--length_col LENGTH_COL]
+                       [-t PROCS] [-o OUT] [-O {SHP,GPKG,GDB}] [--gridSearch]
                        [--transFile TRANSFILE] [-v VARS] [-V VARFILE]
                        [-F NFAIL] [-i MAX_ITER] [-r REPS] [-P PWEIGHT]
                        [-S NSTART] [-C NCAND] [-G GAMMA]
@@ -102,6 +104,23 @@ options:
                         None)
   -n, --network NETWORK
                         Pre-formatted pickled network file (default: None)
+  --vcf VCF             VCF of the individuals, to compute the genetic
+                        distances among sites with autoStreamTree (instead of
+                        -g; needs --popmap) (default: None)
+  --popmap POPMAP       With --vcf: tsv of individual and site (the site
+                        labels of -c) on each line (default: None)
+  --gendist {LINFST,FST,JOST,HARMD,CHORD,PDIST}
+                        With --vcf: genetic distance (autoStreamTree's
+                        -d/--dist): LINFST = FST / (1 - FST), FST (Weir &
+                        Cockerham's theta), JOST (Jost's D), HARMD (harmonic
+                        mean of Jost's D over loci), CHORD (Cavalli-Sforza &
+                        Edwards), PDIST (mean p-distance between individuals)
+                        (default: LINFST)
+  --concat {none,loc,all}
+                        With --vcf: combine SNPs (autoStreamTree's
+                        -C/--concat): none (each SNP a locus), loc (the SNPs
+                        of each CHROM joined into one locus, e.g. RAD loci),
+                        or all (default: none)
   --seed SEED           Random number seed (default: None)
   --reachid_col REACHID_COL
                         Reach ID in geodatabase (default: HYRIV_ID)
@@ -224,6 +243,8 @@ CCOT    0.0059491931752027214   0.0     0.021867693862724382    0.12906225198460
 ```
 
 There are a number of packages available to generate this pairwise distance matrix; the example's was produced with [`autoStreamTree`](https://github.com/tkchafin/autostreamtree) (`-d LINFST -C loc`, Weir & Cockerham's F<sub>ST</sub> with the SNPs of each locus joined).
+
+Alternatively, `ResistNet` can compute the matrix itself from a VCF of the individuals, with `autoStreamTree`'s genetic distances (the same as its `--run GENDIST` with a population map): give `--vcf` and `--popmap` (a tab-delimited file with an individual and its site on each line, using the site labels of `-c`) instead of `-g`. `--gendist` chooses the distance (`autoStreamTree`'s `-d`, default LINFST) and `--concat` how SNPs are combined (`autoStreamTree`'s `-C`: `none`, each SNP a locus; `loc`, the SNPs of each VCF CHROM joined into one locus, e.g. RAD loci; or `all`). Individuals of other sites, or missing from the VCF, are left out, and every site needs individuals in the VCF. The matrix is written to `DIR/NAME/NAME.popGenDistMat.txt` (for `-o DIR/NAME`), so later runs can use it with `-g`. The example's matrix is the same as `--vcf ... --popmap ... --concat loc` with the study's SNPs (not bundled).
 
 #### Geodatabase
 

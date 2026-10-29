@@ -369,6 +369,43 @@ def read_points_table(pfile):
     return points
 
 
+def vcf_distances(vcf, popmap, coords, out, dist="LINFST", concat="none"):
+    """
+    Computes the genetic distances among the sites from a VCF with
+    autoStreamTree (as its --run GENDIST with -p/--pop), and writes them to
+    {out}.popGenDistMat.txt, in the order of the sites in coords.
+
+    Args:
+        vcf: Path to the VCF file.
+        popmap: Path to a file with an individual and its site on each line
+            (whitespace-separated; a header line is ignored). Individuals of
+            other sites, or not in the VCF, are left out.
+        coords: Path to the sites' coordinates table (as -c).
+        out: Output prefix.
+        dist: Genetic distance (autoStreamTree's -d/--dist).
+        concat: How SNPs are combined (autoStreamTree's -C/--concat).
+
+    Returns:
+        str: The path of the matrix written.
+
+    Raises:
+        ValueError: If a site has no individuals in the VCF.
+    """
+    # Imported here: autoStreamTree's genetic distances need pysam
+    from autostreamtree.functions import population_distances, read_popmap
+    sites = list(read_points_table(coords)["sample"])
+    inds = {i: s for i, s in read_popmap(popmap).items() if s in sites}
+    mat = population_distances(vcf, inds, dist=dist, concat=concat)
+    missing = [s for s in sites if s not in mat.index]
+    if missing:
+        raise ValueError("No individuals in the VCF for sites: "
+                         + ", ".join(missing))
+    mat = mat.loc[sites, sites]
+    fname = f"{out}.popGenDistMat.txt"
+    mat.to_csv(fname, sep="\t")
+    return fname
+
+
 def read_points_flatten(pfile):
     """
     Read a points file, flatten the data, and store it in a SortedDict.
