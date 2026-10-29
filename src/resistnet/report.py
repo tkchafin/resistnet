@@ -284,6 +284,41 @@ def fig_importance(run):
     return fig
 
 
+def fig_contributions(run):
+    """
+    Standard model per km: the share of the best model's resistance per km
+    due to distance (the baseline of 1) and to each of its variables,
+    averaged over the network's km (bestModel.tsv, Contribution), so that
+    distance can be compared with the variables.
+    """
+    b = run.best
+    if not run.per_km or b is None or "Contribution" not in b:
+        return None
+    t = b.dropna(subset=["Contribution"])
+    if t.empty:
+        return None
+    t = t.sort_values("Contribution")
+    go = _go()
+    colours = [COLOURS["reference"] if v == "distance" else COLOURS[run.model]
+               for v in t["Variable"]]
+    fig = go.Figure(go.Bar(
+        x=t["Contribution"], y=t["Variable"], orientation="h",
+        marker=dict(color=colours), text=[f"{v:.0%}" for v in
+                                          t["Contribution"]],
+        textposition="outside", textfont=dict(color=TEXT2),
+        hovertemplate="%{y}: %{x:.1%} of the resistance per km"
+                      "<extra></extra>", showlegend=False))
+    fig.update_layout(**plotly_layout(
+        height=max(200, 46 * len(t) + 110),
+        title=dict(text="Share of the best model's resistance per km",
+                   font=dict(size=14, color=TEXT), x=0, xanchor="left")))
+    fig.update_xaxes(range=[0, 1.15], tickformat=".0%", gridcolor=GRID,
+                     linecolor=AXIS)
+    fig.update_yaxes(gridcolor="rgba(0,0,0,0)", linecolor=AXIS,
+                     tickfont=dict(color=TEXT))
+    return fig
+
+
 def fig_pairwise(run):
     """Genetic distance against the model distances of each pair."""
     go = _go()
@@ -915,6 +950,15 @@ def _model_section(run):
                      "model-averaged weights are averaged over those models."
                      "</p>")
         parts.append(_panel(fig_importance(run)))
+    shares = fig_contributions(run)
+    if shares is not None:
+        parts.append("<p>Distance is part of every model per km, so it "
+                     "has no relative importance of its own. Instead, this "
+                     "is how much of the best model's resistance per km "
+                     "comes from distance (the baseline of 1) and from "
+                     "each variable, averaged over the river's km, as "
+                     "ResistanceGA's p.contribution.</p>")
+        parts.append(_panel(shares))
     response = fig_response(run)
     if response is not None:
         parts.append(

@@ -564,10 +564,20 @@ class ResistanceNetwork:
         edgeDF['EDGE_ID'] = edgeDF[self.reachid_col].astype(int)
         geoDF = edgeDF.merge(resistance_values, on="EDGE_ID")
 
-        # Plotting the resistance network
+        # Plotting the resistance network; resistances per km are skewed
+        # (from 1 up to the maximum), so they are coloured on a log scale
         sns.set(style="ticks")
-        geoDF.plot(column="Resistance", cmap="RdYlGn_r", legend=True)
-        plt.title("Stream network colored by resistance")
+        per_km = getattr(self, "units", "reach") == "km"
+        values = geoDF["Resistance"]
+        norm = None
+        if per_km and (values > 0).all() and values.max() > values.min():
+            from matplotlib.colors import LogNorm
+            norm = LogNorm(vmin=values.min(), vmax=values.max())
+        geoDF.plot(column="Resistance", cmap="RdYlGn_r", legend=True,
+                   norm=norm)
+        plt.title("Stream network coloured by resistance per km (log scale)"
+                  if norm is not None else
+                  "Stream network colored by resistance")
         plt.savefig(f"{oname}.streamsByResistance.pdf")
         plt.clf()
         plt.close()

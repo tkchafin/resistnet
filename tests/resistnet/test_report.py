@@ -66,3 +66,19 @@ def test_log_ticks():
     from resistnet.report import _log_ticks
     assert _log_ticks(1.0, 145.0) == [1, 2, 5, 10, 20, 50, 100]
     assert len(_log_ticks(74.0, 78.0)) >= 2
+
+
+def test_contributions_figure():
+    # Per km: distance's and each variable's share of the best model's
+    # resistance per km (bestModel.tsv), which add up to 1
+    import resistnet
+    from resistnet.plotting import COLOURS
+    from resistnet.report import fig_contributions
+    prefix = os.path.join(os.path.dirname(resistnet.__file__), "data",
+                          "example_output", "resistance", "nmt")
+    fig = fig_contributions(RunOutputs(prefix, "resistance"))
+    bar = fig.data[0]
+    assert "distance" in bar.y
+    assert abs(sum(bar.x) - 1) < 1e-9
+    assert bar.marker.color[list(bar.y).index("distance")] == \
+        COLOURS["reference"]
