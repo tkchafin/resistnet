@@ -287,11 +287,11 @@ The best model from each chain is retained in the Hall of Fame, which is used fo
 | output.modavgWeights.tsv                     | Table giving the model-averaged weights for each covariate                                                                      |
 | output.Model-Average.PairwiseRegplot.pdf     | Regression of pairwise resistance X genetic distances                                                                           |
 | output.pairPlot.pdf                          | Plots of pairwise correlation between fitness metrics across sampled models                                                     |
-| output.Model-Average.ResistanceEdges.tsv     | Effective resistance values for each segment by reach ID                                                                        |
+| output.Model-Average.ResistanceEdges.tsv     | Resistance of each reach by reach ID: per km (or, with `--per_reach`, 0-1), not multiplied by the reach's length                |
 | output.pointsTable.txt                       | Table of points                                                                                                                 |
 | output.Model-Average.ResistanceMatrix.tsv    | Pairwise effective resistance distances                                                                                         |
 | output.snapDistances.txt                     | Table giving the distance (in km) between input sampling points and nearest graph nodes (useful to diagnose mis-snapped points) |
-| output.Model-Average.streamsByResistance.pdf | Plot of model-averaged effective resistance values for each segment in the network                                              |
+| output.Model-Average.streamsByResistance.pdf | Map of the model-averaged resistance per km of each reach in the network                                                        |
 | output.Model-Best.*                          | As for the output.Model-Average.* files, for the best model                                                                     |
 | output.subgraph.net                          | Compressed representation of the subgraph                                                                                       |
 | output.Null-Model.tsv                        | Table giving fitness metrics for the distance-only and null (population effect only) models                                     |
@@ -351,16 +351,16 @@ Distance is part of every model (see [The standard model](#standard)); in `$out.
 
 #### Effective resistance values 
 
-The model-averaged resistances are computed for each segment in the subgraph (per km: from 1, distance alone, up to the models' maximum resistance; with `--per_reach`, from 0 to 1), and also output for each individual model if using `--report_all`. 
+The model-averaged resistances are computed for each reach in the subgraph (per km: from 1, distance alone, up to the models' maximum resistance; with `--per_reach`, from 0 to 1), and also output for each individual model if using `--report_all`. A reach's contribution to the path sums is its resistance per km times its length (`--length_col`). 
 
 If you would like to import these into other GIS plotting tools, you can simply perform a left join of the `.ResistanceEdges.tsv` table, using the reach IDs from `--reachid_col` (HYRIV_ID in this example; the column is named EDGE_ID):
 
 ```
 EDGE_ID Resistance
-70605797        74.88762168211983
-70606280        76.1295084372108
-70606496        77.39226674264876
-70606497        77.39226674264876
+70605797        88.5442340913543
+70606280        90.01565746601429
+70606496        91.51181008601205
+70606497        91.51181008601205
 ...
 ...
 ```
