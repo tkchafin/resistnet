@@ -213,17 +213,17 @@ The columns required are "sample", "lat", and "long", any other present columns 
 
 The input genetic distance matrix, supplied via the `-g/ --inmat` argument, should be a tab-delimited file with both column and row names, matching the samples provided in the coordinates file. 
 
-The example dataset comes with an input genetic distance matrix (pairwise F<sub>ST</sub>) for reference, at `src/resistnet/data/nmt.popGenDistMat.txt`:
+The example dataset comes with an input genetic distance matrix (pairwise linearised F<sub>ST</sub>, F<sub>ST</sub>/(1 - F<sub>ST</sub>)) for reference, at `src/resistnet/data/nmt.popGenDistMat.txt`:
 
 ```
         CCFE    CCOT    CESG    NAME    ...
-CCFE    0.0     0.0014810310908608246   0.003732503096185423    0.08594431960837771     ...
-CCOT    0.0014810310908608246   0.0     0.01246638067858499     0.07910155319806403     ...
+CCFE    0.0     0.0059491931752027214   0.0038011061193934034   0.08831964633972295     ...
+CCOT    0.0059491931752027214   0.0     0.021867693862724382    0.1290622519846013      ...
 ...
 ...
 ```
 
-There are a number of packages available to generate this pairwise distance matrix; the example's was produced with [`autoStreamTree`](https://github.com/tkchafin/autostreamtree). 
+There are a number of packages available to generate this pairwise distance matrix; the example's was produced with [`autoStreamTree`](https://github.com/tkchafin/autostreamtree) (`-d LINFST -C loc`, Weir & Cockerham's F<sub>ST</sub> with the SNPs of each locus joined).
 
 #### Geodatabase
 
@@ -254,10 +254,10 @@ Starting worker 1 with seed 1235
 Starting worker 2 with seed 1236
 Starting worker 3 with seed 1237
 
-Iteration 1, Current Best: -406.4643424381369
-Iteration 2, Current Best: -411.5196483418256
-Iteration 3, Current Best: -411.5196483418256
-Iteration 4, Current Best: -411.5196483418256
+Iteration 1, Current Best: -373.28673696921066
+Iteration 2, Current Best: -378.79724054203325
+Iteration 3, Current Best: -378.79724054203325
+Iteration 4, Current Best: -378.79724054203325
 ...
 ...
 ```
@@ -265,11 +265,11 @@ The optimisation stops after `-i,--max_iter` iterations, or earlier if the best 
 ```
 ...
 ...
-Iteration 50, Current Best: -503.52458232415916
-Chain 1: Best = -495.62968175503244
-Chain 2: Best = -446.6188218538777
-Chain 3: Best = -503.52458232415916
-Chain 4: Best = -478.34350391040977
+Iteration 50, Current Best: -451.4939698069141
+Chain 1: Best = -451.43103963132376
+Chain 2: Best = -411.3533917455675
+Chain 3: Best = -451.4939698069141
+Chain 4: Best = -427.39680589186753
 ...
 ...
 ```
@@ -312,7 +312,7 @@ The output table `$out.HallOfFame.tsv` contains textual representations of the r
 
 ```
 fitness run_mm_cyr      run_mm_cyr_weight       ... dor_pc_pva      dor_pc_pva_weight       dor_pc_pva_trans        dor_pc_pva_shape        max_resistance ... akaike_weight   acc_akaike_weight       keep
--503.52458232415916     0       -       ... 1       0.7540635366427507      7.0     1.0     144.60309855972295      ... 0.9810584470392564      0.9810584470392564      True
+-451.4939698069141      0       -       ... 1       0.7540635366427507      7.0     1.0     144.60309855972295      ... 0.5078641129098956      0.5078641129098956      True
 ```
 
 The table contains the best model from each of the `-r,--reps` TPE chains. Some of these columns are self-explanatory (i.e., "fitness" is the model fitness, which with the default `-f aic` is the AIC). Other summary metrics included are the Akaike weights, change in AIC relative to the null and "best" models, as well as the other fitness metrics (marginal R^2, log-likelihoods). As in ResistanceGA, the AIC counts both the parameters of the MLPE model (intercept, slope, and two variance components) and the resistance surface parameters: a transformation and shape for each included variable, their weights, and the maximum resistance per km (`max_resistance`; see [The standard model](#standard)). Only relative weights matter (the composite is a weighted mean), so a model with m included variables has m - 1 weight parameters, and 3m surface parameters in all, as ResistanceGA's equation, shape and maximum for each surface. Parameters fixed with `--fixWeight`, `--fixShape` or `--fix_resist` are not counted (nor the maximum resistance with `--per_reach`). The marginal R^2 is computed as in `MuMIn::r.squaredGLMM` (as used by ResistanceGA). Other values in the table include whether or not a variable is included in a model ($var, where $var is the variable name), specified as either "1" (=included) or "0" (=excluded), and the transformation type (=$var_trans), transformation shape parameter (=$var_shape), and weight of the parameter when calculating the composite resistance edges (=$var_weight). For the transformation column, the types of transformations are as follows: 0=Not transformed; 1=Ricker; 2=Reverse Ricker; 3=Inverse Ricker; 4=Reverse-Inverse Ricker (the inverse Ricker of the reversed values, as in ResistanceGA; previously this duplicated the Ricker); 5=Monomolecular; 6=Reverse Monomolecular; 7=Inverse Monomolecular; 8=Reverse-Inverse Monomolecular. In all cases, the larger the shape value, the closer each transformation gets to being linear (=essentially no transformation).
@@ -324,27 +324,27 @@ Other outputs that will typically be of interest are the `modAvgWeights.tsv` and
 ```
 # RVI
 variable        RVI
-dor_pc_pva      0.9999999999995687
-tmp_dc_cyr      4.3128663593044185e-13
+dor_pc_pva      0.9999999990242653
+tmp_dc_cyr      2.9734278463245265e-06
 run_mm_cyr      0.0
 sgr_dk_rav      0.0
 ele_mt_cav      0.0
 
 # MAW
 variable        MAW
-dor_pc_pva      0.7515395769147984
-tmp_dc_cyr      0.5262787001296675
+dor_pc_pva      0.8740561031325752
+tmp_dc_cyr      0.05346755565785958
 run_mm_cyr      -
 sgr_dk_rav      -
 ele_mt_cav      -
 ```
 
-Note that relative importances only compare the retained resistance models with each other, so some variable will always appear important. To judge whether the landscape variables explain genetic distances at all, compare the AIC of the best model with that of the distance-only model in `$out.Null-Model.tsv`; the Hall of Fame gives this difference for each model as `delta_aic_distance` (positive = the model fits better than distance alone). In this example the best model (degree of regulation, `dor_pc_pva`, i.e. the effect of dams on flow, with a resistance per km from 1 to 145; AIC -503.52) fits much better than distance alone (AIC -418.98), a difference of 84.5:
+Note that relative importances only compare the retained resistance models with each other, so some variable will always appear important. To judge whether the landscape variables explain genetic distances at all, compare the AIC of the best model with that of the distance-only model in `$out.Null-Model.tsv`; the Hall of Fame gives this difference for each model as `delta_aic_distance` (positive = the model fits better than distance alone). In this example the best model (degree of regulation, `dor_pc_pva`, i.e. the effect of dams on flow, with a resistance per km from 1 to 145; AIC -451.49) fits much better than distance alone (AIC -386.51), a difference of 65.0:
 
 ```
                 loglik                  aic                     r2m                     delta_aic_null
-distance_only   213.48774552493063      -418.97549104986126     0.2240290803664399      32.93942935769314
-null            196.01803084608406      -386.0360616921681
+distance_only   197.25314955094646      -386.5062991018929      0.21330431591693536     28.126047275811516
+null            182.1901259130407       -358.3802518260814
 ```
 
 Distance is part of every model (see [The standard model](#standard)); in `$out.bestModel.tsv`, the `Contribution` column gives how much of the best model's resistance per km is due to distance (here 0.43) and to each variable (0.57 for `dor_pc_pva`). This short example run is not exhaustive, though here it finds the best single-variable model of longer runs: in three runs of 600 iterations x 8 chains, the best model was degree of regulation (inverse monomolecular, shape 1; resistance 1-123 per km; AIC -503.6) in two, and degree of regulation with runoff (`run_mm_cyr`; AIC -505.8) in the third.
@@ -462,7 +462,7 @@ runResistnet.py \
     -i 50 -r 4 -t 4 --seed 1234 -o nmt_samc
 ```
 
-In this short run, the best SAMC model is stream gradient (`sgr_dk_rav`, symmetric) with a flow term of -0.22 per km (moving upstream easier; AIC -474.6), which fits better than SAMC distance alone (-416.1) and flow alone (-437.8), but less well than the standard model with degree of regulation (-502.0 with a longer run). The two models fit the same genetic distances with the same MLPE, so their AICs can be compared directly (see below).
+In this short run, the best SAMC model is a flow term alone (-0.18 per km, i.e. moving upstream easier; AIC -408.7), about the same as the reference model of flow alone (-409.0, with its rate fitted) and better than SAMC distance alone (-383.7). A longer run (600 iterations x 8 chains) finds stream gradient (`sgr_dk_rav`, symmetric) with flow (-0.24 per km; AIC -443.5), still less good than the standard model with degree of regulation (-451.5). The two models fit the same genetic distances with the same MLPE, so their AICs can be compared directly (see below).
 
 ### Interactive report <a name="html_report"></a>
 
@@ -491,12 +491,12 @@ For example, adding `--model both` to the command in the [Example Dataset](#exam
 
 ```
 family      best_model                                                           best_aic   delta_aic  akaike_weight
-resistance  dor_pc_pva (inverse monomolecular, shape 1); resistance 1-145 per km     -503.52    0.00       1.00
-samc        flow -0.141/km (upstream easier)                                     -437.65    65.88      5.0e-15
-reference   SAMC flow alone (-0.151/km)                                          -437.77    65.75      5.2e-15
+resistance  dor_pc_pva (inverse monomolecular, shape 1); resistance 1-145 per km     -451.49    0.00       1.00
+samc        flow -0.176/km (upstream easier)                                     -408.72    42.77      2.7e-10
+reference   SAMC flow alone (-0.157/km)                                          -408.96    42.53      3.0e-10
 ```
 
-This short run ranks the standard model first; the SAMC search found only the flow term in 50 iterations (about the same as flow alone). With 600 iterations x 8 chains (seed 1234), the standard model's best is degree of regulation with runoff (resistance 1-245 per km; AIC -505.5; degree of regulation alone is 2.0 behind), and SAMC's best is air temperature (directional) with stream gradient and flow (-0.136/km; -480.1), 25.4 AIC worse. Compare the two models only after runs long enough for both searches to settle. AIC ranks fits, not mechanisms (path resistance vs a walker's passage time), and near-ties of a few AIC units should not be over-read, since the parameter counts for the maximum resistance, direction settings and flow are conventions.
+This short run ranks the standard model first; the SAMC search found only the flow term in 50 iterations (about the same as flow alone). With 600 iterations x 8 chains (seed 1234), the standard model's best is elevation with degree of regulation (resistance 1-995 per km; AIC -452.3; degree of regulation alone is 0.8 behind), and SAMC's best is stream gradient (symmetric) with flow (-0.239/km; -443.5), 8.8 AIC worse. Compare the two models only after runs long enough for both searches to settle. AIC ranks fits, not mechanisms (path resistance vs a walker's passage time), and near-ties of a few AIC units should not be over-read, since the parameter counts for the maximum resistance, direction settings and flow are conventions.
 
 
 ## Tutorials <a name="tutorials"></a>
@@ -507,11 +507,11 @@ The bundled example dataset (`src/resistnet/data/nmt.*`) is from the Neosho madt
 
 * `nmt.gpkg`: 176 [HydroRIVERS](https://www.hydrosheds.org/products/hydrorivers) reaches with all [HydroATLAS](https://www.hydrosheds.org/hydroatlas) covariates (Lehner & Grill 2013; Linke et al. 2019). HydroATLAS is licensed under CC-BY 4.0, and HydroRIVERS under the [HydroSHEDS license agreement](https://www.hydrosheds.org/products/hydrorivers); both require attribution. `nmt.network` is the same network, pre-built for `-n`.
 * `nmt.pointCoords.txt`: the 14 sampling sites.
-* `nmt.popGenDistMat.txt`: pairwise F<sub>ST</sub> among the sites.
+* `nmt.popGenDistMat.txt`: pairwise linearised F<sub>ST</sub> among the sites (from the study's SNPs, with `autoStreamTree`; see [Genetic distance matrix](#gen)).
 * `nmt.popSizes.txt`: a placeholder table of effective population sizes for `--sizes` (100 for every site, as the default `--ne`).
 * `selected_vars.txt`: five covariates: runoff (`run_mm_cyr`), air temperature (`tmp_dc_cyr`), stream gradient (`sgr_dk_rav`), elevation (`ele_mt_cav`) and degree of regulation (`dor_pc_pva`, the effect of dams on flow).
 
-Zbinden et al. (2025) found that dams constrain dispersal among Neosho madtom populations, and `ResistNet` recovers this: the best model is degree of regulation, which fits far better than distance alone. You can very quickly test out if your installation is running, and explore what the outputs look like or profile runtimes, with a short run:
+Zbinden et al. (2025) found that dams constrain dispersal among Neosho madtom populations, and `ResistNet` recovers this: the best model is degree of regulation (the effect of dams on flow), which fits far better than distance alone. You can very quickly test out if your installation is running, and explore what the outputs look like or profile runtimes, with a short run:
 
 ```
 runResistnet.py \
