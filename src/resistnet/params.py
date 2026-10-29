@@ -132,8 +132,9 @@ class parseArgs:
             help='Turn off variable transformations'
         )
         parser.add_argument(
-            '--max_shape', type=int, default=100, required=False,
-            help='Maximum shape parameter'
+            '--max_shape', type=int, default=15, required=False,
+            help=('Maximum shape parameter (shapes from 1 are searched '
+                  'log-uniformly)')
         )
         parser.add_argument(
             '--min_weight', type=float, default=0.0, required=False,

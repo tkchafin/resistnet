@@ -765,10 +765,13 @@ class ModelRunnerTPE(ModelRunner):
                     [fixed['shape']]
                 )
             elif not self.fixShape:
-                self.space[f"{var_name}_shape"] = hp.quniform(
+                # Log-uniform: on the 0-10 scale, small shapes give the
+                # most different curves (large ones are all close to
+                # linear), so they are drawn more often
+                self.space[f"{var_name}_shape"] = hp.qloguniform(
                     f"{var_name}_shape",
-                    1,
-                    self.max_shape,
+                    0.0,
+                    np.log(max(float(self.max_shape), 1.0)),
                     1.0
                 )
             else:

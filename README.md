@@ -141,7 +141,8 @@ options:
   --fixWeight           Fix all variable weights at 1.0 (default: False)
   --fixShape            Turn off variable transformations (default: False)
   --max_shape MAX_SHAPE
-                        Maximum shape parameter (default: 100)
+                        Maximum shape parameter (shapes from 1 are searched
+                        log-uniformly) (default: 15)
   --min_weight MIN_WEIGHT
                         Minimum weight parameter (default: 0.0)
   --model {resistance,samc,both}
@@ -378,7 +379,8 @@ These are also plotted for simple visualisation on the input spatial network, in
   --fixWeight           Fix all variable weights at 1.0 (default: False)
   --fixShape            Turn off variable transformations (default: False)
   --max_shape MAX_SHAPE
-                        Maximum shape parameter (default: 100)
+                        Maximum shape parameter (shapes from 1 are searched
+                        log-uniformly) (default: 15)
   --min_weight MIN_WEIGHT
                         Minimum weight parameter (default: 0.0)
   --gridSearch          Run grid-search to find fixed transformations
@@ -387,7 +389,7 @@ These are also plotted for simple visualisation on the input spatial network, in
                         Read fixed transformations from file (default: None)
 ```
 
-For each variable, the search space includes whether it is included in the model, its weight (between `--min_weight` and 1.0), one of the nine transformations listed above, and the transformation shape (between 1 and `--max_shape`). `--fixWeight` fixes all weights at 1.0, and `--fixShape` turns off the transformations.
+For each variable, the search space includes whether it is included in the model, its weight (between `--min_weight` and 1.0), one of the nine transformations listed above, and the transformation shape (a whole number between 1 and `--max_shape`, default 15). Shapes are drawn log-uniformly: on the 0-10 scale, small shapes give the most different curves, while large shapes all give nearly linear ones, so small shapes are tried more often. In simulations, this found a narrow optimum at a small shape (a Ricker with shape 3 on a skewed covariate) in 3 of 4 runs, against 0 of 4 when shapes were drawn uniformly from 1 to 100, and cost nothing when the truth was nearly linear (shape 50). As in ResistanceGA (shapes 0.5-14.5), the default maximum is about 15. `--fixWeight` fixes all weights at 1.0, and `--fixShape` turns off the transformations.
 
 Each of the `-r,--reps` chains is independent, and up to `-i,--max_iter` x `-r,--reps` models will be evaluated in total. Because the best model from each chain is retained in the Hall of Fame, `-r,--reps` also sets the number of models available for model-averaging. `-t,--procs` only sets how many models are evaluated in parallel.
 

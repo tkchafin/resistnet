@@ -1,4 +1,6 @@
 import os
+
+import numpy as np
 import pytest
 import tempfile
 import resistnet
@@ -223,3 +225,19 @@ def test_run_without_output_writes_no_files(tmp_path):
     stdout, files = _run_in_subprocess(tmp_path, "ok")
     assert "FINISHED" in stdout
     assert files == []
+
+
+def test_shape_search_space(model_runner_fixture):
+    # Shapes are integers from 1 to max_shape, drawn log-uniformly (most
+    # often small, where the transformations differ most)
+    import hyperopt.pyll.stochastic as stoch
+    runner = model_runner_fixture
+    runner.set_tpe_parameters(max_shape=15)
+    runner.initialize_space()
+    name = [k for k in runner.space if k.endswith("_shape")][0]
+    rng = np.random.default_rng(1)
+    draws = np.array([stoch.sample(runner.space[name], rng=rng)
+                      for _ in range(2000)])
+    assert np.all(draws == np.round(draws))
+    assert draws.min() >= 1 and draws.max() <= 15
+    assert np.median(draws) <= 5
