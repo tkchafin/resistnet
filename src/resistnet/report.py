@@ -154,6 +154,7 @@ class RunOutputs:
         self.edges = {w: _read(f"{prefix}.Model-{w}.{kind}.tsv",
                                na_values="NA")
                       for w in ("Average", "Best")}
+        self.reach_values = pd.DataFrame()
         self.geometry = self._geometry()
 
     def _unique_models(self):
@@ -181,7 +182,7 @@ class RunOutputs:
         reachid = pd.read_json(spec, typ="series")["reachid_col"]
         with open(path, "rb") as fh:
             G = pickle.load(fh)
-        lines = {}
+        lines, values = {}, []
         for u, v, d in G.edges(data=True):
             geom = d.get("geometry")
             if geom is not None and hasattr(geom, "coords"):
@@ -189,6 +190,12 @@ class RunOutputs:
             else:
                 xy = np.array([u[:2], v[:2]], dtype=float)
             lines[str(d.get(reachid))] = xy
+            values.append({k: x for k, x in d.items()
+                           if k in self.variables or k == reachid})
+        # Each reach's values of the variables (mean over its edges)
+        if values:
+            self.reach_values = (pd.DataFrame(values)
+                                 .groupby(reachid).mean(numeric_only=True))
         return lines
 
     def sites(self):
@@ -315,11 +322,12 @@ def fig_pairwise(run):
     return fig
 
 
-def fig_map(run, layers, colorbar_title, fixed_range=None):
+def fig_map(run, layers, colorbar_title, fixed_range=None, log=False):
     """
     Map of the network's reaches coloured by a value, with the sites; one
     layer per entry of layers ({name: Series by reach ID}), chosen from a
-    menu.
+    menu. With log, the colours follow log10 of the values (for skewed
+    positive values, such as resistances per km).
     """
     go = _go()
     lines = run.geometry
@@ -327,12 +335,23 @@ def fig_map(run, layers, colorbar_title, fixed_range=None):
     colours = BLUES_FOR_LINES
     n = len(colours)
     menu, vis_all = [], []
-    for li, (name, values) in enumerate(layers.items()):
-        values = values.dropna()
-        values.index = values.index.astype(str)
+    for li, (name, raw) in enumerate(layers.items()):
+        raw = raw.dropna()
+        raw.index = raw.index.astype(str)
+        if log:
+            raw = raw[raw > 0]
+        values = np.log10(raw) if log else raw
         lo, hi = (fixed_range if fixed_range is not None
                   else (float(values.min()), float(values.max())))
         span = hi - lo if hi > lo else 1.0
+        colorbar = dict(title=dict(text=colorbar_title, side="right",
+                                   font=dict(color=TEXT2)),
+                        tickfont=dict(color=TEXT2), thickness=14,
+                        outlinewidth=0)
+        if log:
+            ticks = _log_ticks(10 ** lo, 10 ** hi)
+            colorbar.update(tickvals=np.log10(ticks).tolist(),
+                            ticktext=[f"{t:g}" for t in ticks])
         vis = []
         # Reaches without a value, in grey
         missing = [r for r in lines if r not in values.index]
@@ -361,14 +380,11 @@ def fig_map(run, layers, colorbar_title, fixed_range=None):
             mode="markers", showlegend=False, visible=li == 0,
             marker=dict(size=10, opacity=0, color=values[ids],
                         colorscale=plotly_colorscale(colours), cmin=lo,
-                        cmax=hi, colorbar=dict(
-                            title=dict(text=colorbar_title, side="right",
-                                       font=dict(color=TEXT2)),
-                            tickfont=dict(color=TEXT2), thickness=14,
-                            outlinewidth=0)),
-            customdata=ids,
-            hovertemplate="reach %{customdata}<br>" + colorbar_title
-                          + " %{marker.color:.3f}<extra></extra>"))
+                        cmax=hi, colorbar=colorbar),
+            customdata=np.column_stack([ids, raw[ids].to_numpy()])
+            if ids else [],
+            hovertemplate="reach %{customdata[0]}<br>" + colorbar_title
+                          + " %{customdata[1]:.4g}<extra></extra>"))
         vis.append(len(fig.data) - 1)
         vis_all.append(vis)
         menu.append(name)
@@ -407,6 +423,83 @@ def fig_map(run, layers, colorbar_title, fixed_range=None):
     fig.update_xaxes(title="Longitude", showgrid=False)
     fig.update_yaxes(title="Latitude", showgrid=False, scaleanchor="x",
                      scaleratio=1 / max(np.cos(np.radians(lat)), 0.1))
+    return fig
+
+
+def _log_ticks(lo, hi):
+    """Colour bar ticks (1, 2, 5 x powers of 10) from lo to hi."""
+    ticks = [m * 10 ** e for e in range(int(np.floor(np.log10(lo))),
+                                        int(np.ceil(np.log10(hi))) + 1)
+             for m in (1, 2, 5) if lo <= m * 10 ** e <= hi]
+    if len(ticks) < 2:
+        ticks = [float(f"{t:.2g}") for t in np.geomspace(lo, hi, 3)]
+    return ticks
+
+
+def fig_response(run):
+    """
+    How the best model's resistance responds to each of its variables (as
+    ResistanceGA's Plot.trans): the resistance per km due to that variable
+    (standard model per km: 1 + (K - 1) x its weight share x its 0-1
+    value), or its transformed 0-1 value (per reach and SAMC), against its
+    raw values over its range in the network, from the model's
+    specification (modelSpec.json); the network's reaches are marked on
+    each curve.
+    """
+    path = f"{run.prefix}.modelSpec.json"
+    if not os.path.exists(path):
+        return None
+    from resistnet.predict import load_spec, variable_values
+    model = load_spec(path)["models"][0]
+    variables = model.get("variables", {})
+    if not variables:
+        return None
+    go = _go()
+    from plotly.subplots import make_subplots
+    names = list(variables)
+    ncol = min(3, len(names))
+    nrow = int(np.ceil(len(names) / ncol))
+    fig = make_subplots(rows=nrow, cols=ncol, subplot_titles=names,
+                        horizontal_spacing=0.1, vertical_spacing=0.22)
+    total = sum(var["weight"] for var in variables.values())
+    per_km = run.per_km and "max_resistance" in model and total > 0
+    label = "Resistance per km" if per_km else "Transformed value (0-1)"
+    colour = COLOURS[run.model]
+
+    def curve(x, var):
+        f = variable_values(x, var)
+        if per_km:
+            share = var["weight"] / total
+            return 1 + (model["max_resistance"] - 1) * share * f
+        return f
+
+    for i, (v, var) in enumerate(variables.items()):
+        row, col = i // ncol + 1, i % ncol + 1
+        x = np.linspace(var["min"], var["max"], 201)
+        line = go.Scatter(
+            x=x, y=curve(x, var), mode="lines", showlegend=False,
+            line=dict(color=colour, width=2.5),
+            hovertemplate=(v + " %{x:.4g}<br>" + label
+                           + " %{y:.4g}<extra></extra>"))
+        fig.add_trace(line, row=row, col=col)
+        if v in run.reach_values:
+            r = run.reach_values[v].dropna()
+            dots = go.Scatter(
+                x=r.to_numpy(), y=curve(r.to_numpy(), var), mode="markers",
+                showlegend=False, customdata=r.index.astype(str),
+                marker=dict(size=7, color="white",
+                            line=dict(color=colour, width=1.2)),
+                hovertemplate=("reach %{customdata}<br>" + v
+                               + " %{x:.4g}<br>" + label
+                               + " %{y:.4g}<extra></extra>"))
+            fig.add_trace(dots, row=row, col=col)
+        fig.update_xaxes(title_text=f"{v} (raw value)", row=row, col=col)
+    fig.update_layout(**plotly_layout(height=300 * nrow + 60))
+    fig.update_xaxes(gridcolor=GRID, linecolor=AXIS)
+    fig.update_yaxes(gridcolor=GRID, linecolor=AXIS)
+    fig.update_yaxes(title_text=label, col=1)
+    for a in fig.layout.annotations:
+        a.update(font=dict(color=TEXT, size=12))
     return fig
 
 
@@ -822,6 +915,18 @@ def _model_section(run):
                      "model-averaged weights are averaged over those models."
                      "</p>")
         parts.append(_panel(fig_importance(run)))
+    response = fig_response(run)
+    if response is not None:
+        parts.append(
+            "<h3>The best model's response to each variable</h3><p>"
+            + ("The resistance per km that each variable adds over its range "
+               "in this network (1 = distance alone; the variables' "
+               "contributions add up), as ResistanceGA's Plot.trans. "
+               if run.per_km else
+               "Each variable's transformed value (0-1) over its range in "
+               "this network, as ResistanceGA's Plot.trans. ")
+            + "Dots are this network's reaches.</p>")
+        parts.append(_panel(response))
     if run.pairwise is not None:
         parts.append("<h3>Fit to the genetic distances</h3><p>Each point is "
                      "a pair of sites. Hover for the pair.</p>")
@@ -854,10 +959,11 @@ def _model_section(run):
                     layers[f"{label}: resistance"] = \
                         e.set_index("EDGE_ID")["Resistance"]
             fig = fig_map(run, layers, "Resistance per km" if run.per_km
-                          else "Resistance")
+                          else "Resistance", log=run.per_km)
             note = ("Resistance per km of each reach (1 = distance alone, "
-                    "up to the model's maximum K; choose the model average "
-                    "or the best model in the menu)." if run.per_km else
+                    "up to the model's maximum K; colours on a log scale; "
+                    "choose the model average or the best model in the "
+                    "menu)." if run.per_km else
                     "Resistance of each reach (0-1; choose the model "
                     "average or the best model in the menu).")
         parts.append(f"<h3>Map</h3><p>{note} Hover over a reach for its "

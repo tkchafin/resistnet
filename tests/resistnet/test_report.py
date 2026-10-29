@@ -32,3 +32,37 @@ def test_sites_with_numpy_scalars(tmp_path):
     assert list(sites["lon"]) == [-96.5, -95.03541666666736]
     assert list(sites["lat"]) == [38.25, 36.98125]
     assert os.path.exists(f"{prefix}.HallOfFame.tsv")
+
+
+def test_describe_per_km():
+    # Standard model per km: the range of the resistance per km
+    row = pd.Series({"a": 1, "a_weight": 1.0, "a_trans": 7, "a_shape": 1.0,
+                     "max_resistance": 144.6})
+    assert describe(row, ["a"], samc=False) == (
+        "a (inverse monomolecular, shape 1); resistance 1-145 per km")
+
+
+def test_response_curves_match_fitted_model():
+    # The best model's response to its variable, from modelSpec.json: on
+    # the bundled example (one variable), each reach's point is its fitted
+    # resistance per km (Model-Best.ResistanceEdges.tsv)
+    import numpy as np
+    import resistnet
+    from resistnet.report import fig_response
+    prefix = os.path.join(os.path.dirname(resistnet.__file__), "data",
+                          "example_output", "resistance", "nmt")
+    run = RunOutputs(prefix, "resistance")
+    assert run.per_km
+    fig = fig_response(run)
+    curve, dots = fig.data
+    assert curve.y.min() >= 1.0
+    edges = pd.read_csv(f"{prefix}.Model-Best.ResistanceEdges.tsv",
+                        sep="\t", index_col=0)["Resistance"]
+    fitted = edges.loc[[int(r) for r in dots.customdata]].to_numpy()
+    np.testing.assert_allclose(dots.y, fitted, rtol=1e-9)
+
+
+def test_log_ticks():
+    from resistnet.report import _log_ticks
+    assert _log_ticks(1.0, 145.0) == [1, 2, 5, 10, 20, 50, 100]
+    assert len(_log_ticks(74.0, 78.0)) >= 2
