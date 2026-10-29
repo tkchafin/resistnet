@@ -740,7 +740,28 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
         if oname:
             table.to_csv(f"{oname}.Null-Model.tsv", sep="\t")
+            self.write_flow_profile(oname)
         return table
+
+    def write_flow_profile(self, oname):
+        """
+        Writes {oname}.flowProfile.tsv: the AIC of flow alone (equal
+        movement weights plus the flow term) at each rate evaluated when
+        fitting it, in both directions (rate 0: distance alone), and its
+        difference from the best rate.
+
+        Args:
+            oname (str): Output prefix.
+        """
+        profile = getattr(self, "_flow_profile", None)
+        if profile is None:
+            return
+        profile = profile[np.isfinite(profile["loglik"])].copy()
+        # Distance alone (rate 0) has no flow parameter
+        k = np.where(profile["rate"] == 0, 4, 5)
+        profile["aic"] = 2 * k - 2 * profile["loglik"]
+        profile["delta_aic"] = profile["aic"] - profile["aic"].min()
+        profile.to_csv(f"{oname}.flowProfile.tsv", sep="\t", index=False)
 
     def _flow_alone(self, rate):
         """
@@ -766,9 +787,13 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         Returns:
             tuple: The fitted rate, and the MLPE results.
         """
+        profile = {}
+
         def loglik(rate):
             res = self._flow_alone(rate)
-            return -np.inf if res is None else res["loglik"].iloc[0]
+            ll = -np.inf if res is None else res["loglik"].iloc[0]
+            profile[float(rate)] = ll
+            return ll
 
         mags = np.logspace(np.log10(MIN_FLOW), np.log10(self.max_flow), 13)
         grid = np.concatenate([-mags[::-1], [0.0], mags])
@@ -782,6 +807,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                                   options={"xatol": 1e-4 * self.max_flow})
             if -opt.fun > lls[i]:
                 best = float(opt.x)
+        # Every rate evaluated, for the flow profile (flowProfile.tsv)
+        self._flow_profile = pd.DataFrame(
+            sorted(profile.items()), columns=["rate", "loglik"])
         return best, self._flow_alone(best)
 
     def model_output(self, model):

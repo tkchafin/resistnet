@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 import resistnet
+import resistnet.MLPE as mlpe
 from resistnet.compare import comparison_tables, write_comparison
 from resistnet.model_optimisation import ModelRunnerTPE
 from resistnet.resistance_network import ResistanceNetwork
@@ -143,6 +144,25 @@ def test_run_both_models_layout(tmp_path):
             pw["best_model_distance"],
             [(M.loc[a, b] + M.loc[b, a]) / 2
              for a, b in zip(pw["site1"], pw["site2"])], rtol=1e-12)
+        # River distance is the distance-only reference model's distance:
+        # MLPE on it gives that model's log-likelihood
+        n = 14
+        iu = np.triu_indices(n, 1)
+        sites = list(dict.fromkeys(list(pw["site1"]) + list(pw["site2"])))
+        pos = {s: i for i, s in enumerate(sites)}
+        X, Y = np.zeros((n, n)), np.zeros((n, n))
+        for a, b, km, g in zip(pw["site1"], pw["site2"], pw["river_km"],
+                               pw["genetic_distance"]):
+            i, j = pos[a], pos[b]
+            X[i, j] = X[j, i] = km
+            Y[i, j] = Y[j, i] = g
+        assert np.all(X[iu] > 0)
+        null = pd.read_csv(f"{prefix}.Null-Model.tsv", sep="\t",
+                           index_col=0, keep_default_na=False,
+                           na_values=[""])
+        assert mlpe.MLPE(Y, X, scale=True)["loglik"].iloc[0] == \
+            pytest.approx(float(null.loc["distance_only", "loglik"]),
+                          abs=1e-6)
 
     # The interactive report, with both models and their comparison
     with open(os.path.join(out, "nmt.report.html")) as fh:

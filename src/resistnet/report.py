@@ -37,11 +37,34 @@ REFERENCE_NAMES = {
 
 
 # -------------------------------------------------------------- run tables
+def river_distance_matrix(network):
+    """
+    River distance between every pair of sites: the sum of the reaches'
+    lengths (length_col) along the path, as for the distance_only
+    reference model (isolation by distance).
+
+    Args:
+        network: A network with its sites and incidence matrix.
+
+    Returns:
+        numpy.ndarray: Distances, ordered as network._points_labels.
+    """
+    import resistnet.resist_dist as rd
+    import resistnet.utils as utils
+    df = utils.nx_to_df(network._K)
+    id_col = "EDGE_ID" if network.minimize else network.reachid_col
+    lengths = df.groupby(id_col)[network.length_col].sum()
+    lengths = lengths.loc[list(network._edge_order)]
+    return rd.effectiveResistanceMatrix(network._points_snapped,
+                                        network._inc, lengths)
+
+
 def write_pairwise_table(network, prefix):
     """
     Writes {prefix}.pairwise.tsv: for every pair of sites, the genetic
-    distance and the best and model-averaged models' distances (for SAMC,
-    the mean passage time of the two directions, as fitted).
+    distance, the river distance (km; isolation by distance), and the best
+    and model-averaged models' distances (for SAMC, the mean passage time
+    of the two directions, as fitted).
 
     Args:
         network: The fitted network (with genetic distances).
@@ -53,7 +76,8 @@ def write_pairwise_table(network, prefix):
     iu = np.triu_indices(len(labels), 1)
     names = np.array(labels)
     table = pd.DataFrame({"site1": names[iu[0]], "site2": names[iu[1]],
-                          "genetic_distance": network._gendist[iu]})
+                          "genetic_distance": network._gendist[iu],
+                          "river_km": river_distance_matrix(network)[iu]})
     for which in ("Best", "Average"):
         path = f"{prefix}.Model-{which}.{kind}.tsv"
         if not os.path.exists(path):
@@ -115,6 +139,7 @@ class RunOutputs:
         self.maw = _read(f"{prefix}.modavgWeights.tsv", na_values="-")
         self.pairwise = _read(f"{prefix}.pairwise.tsv")
         self.upstream = _read(f"{prefix}.upstreamChanges.tsv")
+        self.flow_profile = _read(f"{prefix}.flowProfile.tsv")
         self.points = _read(f"{prefix}.pointsTable.txt")
         kind = "TransitionEdges" if self.samc else "ResistanceEdges"
         self.edges = {w: _read(f"{prefix}.Model-{w}.{kind}.tsv",
@@ -385,6 +410,64 @@ def _line_coords(arrays):
     return xs, ys
 
 
+def fig_flow_profile(run):
+    """
+    AIC of flow alone at each rate, both directions (signed log scale):
+    the evidence for moving upstream being easier or harder.
+    """
+    go = _go()
+    t = run.flow_profile.sort_values("rate")
+    rate = t["rate"].to_numpy()
+    low = max(np.abs(rate[rate != 0]).min(), 1e-6) if (rate != 0).any() \
+        else 1e-3
+
+    def position(r):
+        r = np.asarray(r, dtype=float)
+        return np.where(r == 0, 0.0, np.sign(r) * (
+            np.log10(np.maximum(np.abs(r), low) / low) + 1))
+
+    x = position(rate)
+    best = t["delta_aic"].to_numpy().argmin()
+    zero = t[t["rate"] == 0]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=x, y=t["delta_aic"], mode="lines+markers", name="Flow alone",
+        line=dict(color=COLOURS["samc"], width=2),
+        marker=dict(size=7, color=COLOURS["samc"],
+                    line=dict(color="white", width=1)),
+        customdata=np.stack([rate, t["aic"]], axis=1),
+        hovertemplate=("rate %{customdata[0]:+.4f}/km<br>AIC "
+                       "%{customdata[1]:.2f} (Δ %{y:.2f})<extra></extra>")))
+    fig.add_trace(go.Scatter(
+        x=[x[best]], y=[0], mode="markers", name="Best rate",
+        marker=dict(size=13, color=COLOURS["samc"],
+                    line=dict(color=TEXT, width=1.5)),
+        hovertemplate=f"best rate {rate[best]:+.4f}/km<extra></extra>"))
+    if len(zero):
+        fig.add_hline(y=float(zero["delta_aic"].iloc[0]),
+                      line=dict(color=MUTED, width=1, dash="dot"),
+                      annotation_text="distance alone (no flow)",
+                      annotation_font_color=TEXT2,
+                      annotation_position="top left")
+    ticks = [r for r in (-1, -0.1, -0.01, -0.001, 0, 0.001, 0.01, 0.1, 1)
+             if r == 0 or (low <= abs(r) <= np.abs(rate).max() * 1.0001)]
+    top = float(t["delta_aic"].max())
+    for xpos, text in ((x.min(), "← moving upstream easier"),
+                       (x.max(), "moving upstream harder →")):
+        fig.add_annotation(x=xpos, y=top, text=text, showarrow=False,
+                           xanchor="left" if xpos < 0 else "right",
+                           yanchor="bottom", font=dict(color=TEXT2,
+                                                       size=11))
+    fig.update_layout(**plotly_layout(
+        title="Flow alone: AIC difference from the best rate", height=380,
+        margin=dict(l=60, r=24, t=72, b=48)))
+    fig.update_xaxes(title="Flow rate (per km; signed log scale)",
+                     tickvals=position(ticks).tolist(),
+                     ticktext=[f"{r:g}" for r in ticks])
+    fig.update_yaxes(title="ΔAIC (lower is better)", rangemode="tozero")
+    return fig
+
+
 def fig_upstream(run):
     """How each variable changes on a step upstream."""
     go = _go()
@@ -466,25 +549,45 @@ def fig_joint_importance(importance, families):
 
 
 def fig_best_fits(runs):
-    """Genetic distance against each family's best model, side by side."""
+    """
+    Genetic distance against river distance (isolation by distance) and
+    against each family's best model, side by side.
+    """
     go = _go()
     from plotly.subplots import make_subplots
-    fams = [m for m, r in runs.items() if r.pairwise is not None
-            and "best_model_distance" in r.pairwise]
-    fig = make_subplots(rows=1, cols=len(fams), shared_yaxes=True,
-                        horizontal_spacing=0.06,
-                        subplot_titles=[FAMILY_NAMES[f] for f in fams])
-    for i, family in enumerate(fams, start=1):
-        pw = runs[family].pairwise
-        x = pw["best_model_distance"].to_numpy()
-        x = (x - x.mean()) / x.std()
+    panels = []
+    first = next(iter(runs.values()))
+    if first.pairwise is not None and "river_km" in first.pairwise:
+        ref = first.null.loc["distance_only"] if first.null is not None \
+            else None
+        title = "Isolation by distance (river km)"
+        if ref is not None:
+            title += (f"<br><sup>AIC {float(ref['aic']):.1f} · marginal "
+                      f"R² {float(ref['r2m']):.2f}</sup>")
+        panels.append(("reference", first.pairwise, "river_km", title))
+    for family, run in runs.items():
+        if run.pairwise is None or "best_model_distance" not in run.pairwise:
+            continue
+        best = run.models.iloc[0]
+        panels.append((family, run.pairwise, "best_model_distance",
+                       f"{FAMILY_NAMES[family]} best model<br><sup>AIC "
+                       f"{float(best['aic']):.1f} · marginal R² "
+                       f"{float(best['r2m']):.2f}</sup>"))
+    fig = make_subplots(rows=1, cols=len(panels), shared_yaxes=True,
+                        horizontal_spacing=0.05,
+                        subplot_titles=[p[3] for p in panels])
+    for i, (family, pw, column, _) in enumerate(panels, start=1):
+        raw = pw[column].to_numpy()
+        x = (raw - raw.mean()) / raw.std()
         y = pw["genetic_distance"].to_numpy()
+        unit = "km" if column == "river_km" else "model distance"
         points = go.Scatter(
             x=x, y=y, mode="markers", name=FAMILY_NAMES[family],
             marker=dict(size=8, color=COLOURS[family],
                         line=dict(color="white", width=1)),
-            customdata=np.stack([pw["site1"], pw["site2"]], axis=1),
-            hovertemplate=("%{customdata[0]} – %{customdata[1]}<br>genetic "
+            customdata=np.stack([pw["site1"], pw["site2"], raw], axis=1),
+            hovertemplate=("%{customdata[0]} – %{customdata[1]}<br>"
+                           + unit + " %{customdata[2]:.3g}<br>genetic "
                            "distance %{y:.4f}<extra></extra>"))
         fig.add_trace(points, row=1, col=i)
         slope, intercept = np.polyfit(x, y, 1)
@@ -493,10 +596,13 @@ def fig_best_fits(runs):
                                  mode="lines", hoverinfo="skip",
                                  line=dict(color=TEXT2, width=1.5),
                                  showlegend=False), row=1, col=i)
-        fig.update_xaxes(title="Best model's distance (standardised)",
+        fig.update_xaxes(title=("River distance (standardised)"
+                                if column == "river_km"
+                                else "Best model's distance (standardised)"),
                          row=1, col=i)
     fig.update_yaxes(title="Genetic distance", row=1, col=1)
-    fig.update_layout(**plotly_layout(height=420, showlegend=False))
+    fig.update_layout(**plotly_layout(height=440, showlegend=False,
+                                      margin=dict(l=60, r=24, t=80, b=48)))
     for a in fig.layout.annotations:
         a.update(font=dict(color=TEXT, size=12))
     return fig
@@ -630,6 +736,15 @@ def _model_section(run):
             cols["flow"] = "Flow rate (/km)"
         parts.append(_table(ref, cols, numeric=set(cols) - {"name"}))
 
+    if run.samc and run.flow_profile is not None:
+        parts.append("<h3>Flow: moving upstream easier or harder?</h3><p>"
+                     "The flow-alone reference model at each rate tried "
+                     "when fitting it: negative rates make moving upstream "
+                     "easier, positive rates harder, and rate 0 is distance "
+                     "alone. Because genetic distances are symmetric, the "
+                     "sign says where along the river connectivity is high, "
+                     "not which way genes move.</p>")
+        parts.append(_panel(fig_flow_profile(run)))
     parts.append("<h3>Hall of Fame</h3>")
     parts.append(_panel(fig_aic_profile(run)))
     cols = {"model": "Model", "aic": "AIC", "delta": "ΔAIC",
@@ -711,7 +826,10 @@ def _comparison_section(runs, table, summary, importance):
         "passage time are different ideas.</p>",
         _cards(cards), _panel(fig_ranking(table))]
     if any(r.pairwise is not None for r in runs.values()):
-        parts.append("<h3>Each family's best model</h3><p>Model distances "
+        parts.append("<h3>Each family's best model, and isolation by "
+                     "distance</h3><p>Genetic distance against river "
+                     "distance (the distance-only reference model) and "
+                     "against each family's best model. Distances are "
                      "standardised, as fitted; lines are least-squares fits "
                      "for display.</p>")
         parts.append(_panel(fig_best_fits(runs)))

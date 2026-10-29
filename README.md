@@ -286,7 +286,7 @@ The best model from each chain is retained in the Hall of Fame, which is used fo
 | output.Null-Model.tsv                        | Table giving fitness metrics for the distance-only and null (population effect only) models                                     |
 | output.varImportance.pdf                     | Bar plot of relative variable importances                                                                                       |
 | output.incidenceMatrix.txt                   | Incidence matrix for paths between each pair of samples (only used internally)                                                  |
-| output.pairwise.tsv                          | Every pair of sites: genetic distance, and the best and model-averaged models' distances (for SAMC, the mean of both directions)  |
+| output.pairwise.tsv                          | Every pair of sites: genetic distance, river distance (km), and the best and model-averaged models' distances (for SAMC, the mean of both directions) |
 | output.varImportance.tsv                     | Table giving the model-averaged relative variable importances for each covariate                                                |
 | output.gpkg                                  | The input geodatabase, subset to the reaches in the subgraph (only with `-s`; format set with `-O,--output_driver`)             |
 | output.univariateFitness.tsv/.pdf            | Fitness of each transformation and shape for each variable (only with `--gridSearch`)                                           |
@@ -420,6 +420,7 @@ The AIC counts the MLPE parameters, the transformation, shape and direction of e
 | output.adjacencyMatrix.tsv                   | Reach adjacency (1 = column reach is downstream of row reach; -1 = upstream)                        |
 | output.graphOrigin.pdf, graphDirectionality.pdf | The inferred outlet, and the flow direction of each reach                                        |
 | output.upstreamChanges.tsv, .pdf             | Share of upstream steps on which each variable rises, stays the same, or falls                      |
+| output.flowProfile.tsv                       | AIC of flow alone at each rate tried when fitting it, in both directions (rate 0 = distance alone)  |
 
 (and the same for `Model-Average`). The Hall of Fame includes `$var_asym`, `max_resistance` and `flow` (the rate; 0 = no flow term) columns. `Null-Model.tsv` includes two SAMC reference models: `samc_distance`, distance alone (equal movement weights between all neighbouring reaches, i.e. no landscape or flow effect), and `samc_flow`, flow alone (the same plus the flow term, with its rate fitted and given in the `flow` column). The Hall of Fame reports each model's AIC difference from them, `delta_aic_distance` and `delta_aic_flow` (positive = the model fits better, as for `delta_aic_null`), to judge whether the variables explain genetic distances beyond distance and flow alone.
 
@@ -458,7 +459,7 @@ With `--model both`, `ResistNet` fits the standard model and then the SAMC model
 | NAME.jointImportance.tsv     | Relative importance of each variable over both families (the summed Akaike weight of the models that include it), and the part of it from each family's models                                         |
 | NAME.modelComparison.pdf     | The ranking as AIC differences from the best model, coloured by family, with each family's summed Akaike weight                                                                                        |
 | NAME.jointImportance.pdf     | The joint importance of each variable, split by family                                                                                                                                                  |
-| NAME.bestFits.pdf            | The genetic distances against each family's best model, side by side                                                                                                                                    |
+| NAME.bestFits.pdf            | The genetic distances against river distance (isolation by distance) and against each family's best model, side by side                                                                               |
 
 For example, adding `--model both` to the command in the [Example Dataset](#example) section gives `nmt/resistance/`, `nmt/samc/` and:
 
