@@ -588,3 +588,28 @@ def test_per_km_contributions(tmp_path):
     # Per reach: not defined
     net.units = "reach"
     assert net.contributions(ind) is None
+
+
+def test_paths_follow_river_length(tmp_path):
+    # With a loop (two routes between the sites: 1 km in two reaches, or
+    # one 10 km reach), the subgraph, incidence matrix and river distance
+    # follow the shorter route (autoStreamTree's paths by river length)
+    G = nx.Graph()
+    a, x, b = (0.0, 0.0), (0.5, 0.5), (1.0, 0.0)
+    G.add_edge(a, x, HYRIV_ID=1, LENGTH_KM=0.5, var=1.0)
+    G.add_edge(x, b, HYRIV_ID=2, LENGTH_KM=0.5, var=2.0)
+    G.add_edge(a, b, HYRIV_ID=3, LENGTH_KM=10.0, var=3.0)
+    with open(tmp_path / "loop.network", "wb") as fh:
+        pickle.dump(G, fh)
+    pd.DataFrame({"sample": ["s1", "s2"], "lat": [0.0, 0.0],
+                  "long": [0.0, 1.0]}).to_csv(tmp_path / "coords.txt",
+                                              sep="\t", index=False)
+    net = ResistanceNetwork(
+        network=str(tmp_path / "loop.network"), shapefile=None,
+        coords=str(tmp_path / "coords.txt"), variables=["var"], inmat=None,
+        agg_opts={"var": "ARITH"}, reachid_col="HYRIV_ID",
+        length_col="LENGTH_KM", out=str(tmp_path / "out"), verbose=False)
+    assert sorted(net._edge_order) == [1, 2]
+    assert net._inc.tolist() == [[1, 1]]
+    from resistnet.report import river_distance_matrix
+    assert river_distance_matrix(net)[0, 1] == pytest.approx(1.0)

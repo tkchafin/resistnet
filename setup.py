@@ -31,7 +31,8 @@ setup(
         "geopy",
         "hyperopt",
         "deap",
-        "scipy"
+        "scipy",
+        "autostreamtree"
     ],
     include_package_data=True,
     author='Tyler Chafin',

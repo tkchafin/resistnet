@@ -1,8 +1,9 @@
+import contextlib
+import io
 import os
 import sys
 from functools import partial
 import pickle
-import traceback
 import itertools
 import random
 import pandas as pd
@@ -16,6 +17,7 @@ import momepy
 import networkx as nx
 
 import resistnet.utils as utils
+from autostreamtree import network as astnet
 import resistnet.aggregators as agg
 import resistnet.transform as trans
 import resistnet.resist_dist as rd
@@ -266,11 +268,10 @@ class ResistanceNetwork:
                 print("Building network from shapefile:", self.shapefile)
                 print("WARNING: This can take a while with very large files!")
 
-            # Read the shapefile and construct the network
-            rivers = pyogrio.read_dataframe(self.shapefile)
-            self._G = momepy.gdf_to_nx(
-                rivers, approach="primal", directed=False, multigraph=False
-            )
+            # Read the shapefile and construct the network (with
+            # autoStreamTree, which also splits multi-part reaches)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self._G = astnet.read_network(None, self.shapefile)
 
     def snap_points(self, points, graph, out=None):
         """
@@ -661,10 +662,10 @@ class ResistanceNetwork:
         # First pass: Extract full subgraph from master shapefile graph
         if self.verbose:
             print("\nExtracting full subgraph...")
-        K = self._path_subgraph(
+        K = astnet.path_subgraph(
             self._G,
             points,
-            self._extract_full_subgraph,
+            astnet.extract_full_subgraph,
             self.reachid_col,
             self.length_col
         )
@@ -680,10 +681,10 @@ class ResistanceNetwork:
         # Second pass: Simplify subgraph by merging redundant paths
         if self.verbose:
             print("\nMerging redundant paths...\n")
-        Kmin = self._path_subgraph(
+        Kmin = astnet.path_subgraph(
             K,
             points,
-            self._extract_minimal_subgraph,
+            astnet.extract_minimal_subgraph,
             self.reachid_col,
             self.length_col
         )
@@ -793,13 +794,6 @@ class ResistanceNetwork:
         # Map edge IDs to indices
         edge_to_index = {e: idx for idx, e in enumerate(self._edge_order)}
 
-        def dijkstra_weight(left, right, attributes):
-            # Calculates weights for Dijkstra's shortest path algorithm by
-            # inverting the edge length with a small constant to avoid
-            # division by zero.
-            epsilon = 1e-9
-            return 1 / (attributes[self.length_col] + epsilon)
-
         # Compute the incidence matrix
         index = 0
         for ia, ib in itertools.combinations(
@@ -809,7 +803,7 @@ class ResistanceNetwork:
                 self._K,
                 list(self._points_snapped.keys())[ia],
                 list(self._points_snapped.keys())[ib],
-                weight=dijkstra_weight
+                weight=astnet.river_length(self.length_col)
             )
             # NOTE: several reaches can share an ID (e.g., segments); an ID
             # is on the path if any of its reaches are
@@ -824,59 +818,6 @@ class ResistanceNetwork:
         if out:
             ofh = f"{out}.incidenceMatrix.txt"
             utils.write_numpy_matrix(inc, ofh)
-
-    @staticmethod
-    def _path_subgraph(graph, nodes, method, id_col, len_col):
-        """
-        Finds and extracts paths between points from a graph.
-
-        This method utilizes Dijkstra's shortest path algorithm to find the
-        shortest paths between a set of nodes in a graph. It builds a subgraph
-        based on these paths using a specified method.
-
-        Args:
-            graph (NetworkX graph): The graph from which paths are extracted.
-            nodes (dict): A dictionary of nodes for which paths are to be found
-            method (function): The method used to process the paths and build
-                               the subgraph.
-            id_col (str): The column name for edge IDs.
-            len_col (str): The column name for edge lengths.
-
-        Returns:
-            NetworkX graph: A subgraph containing the paths between the
-                            specified nodes.
-        """
-
-        k = nx.Graph()
-
-        def dijkstra_weight(left, right, attributes):
-            epsilon = 1e-9
-            return 1 / (attributes[len_col] + epsilon)
-
-        # Process each pair of points
-        p1 = list(nodes.values())[0]
-        for p2 in list(nodes.values())[1:]:
-            try:
-                # Find shortest path between two points
-                path = nx.bidirectional_dijkstra(
-                    graph, p1, p2, weight=dijkstra_weight
-                )
-
-                # Traverse the nodes in the path to build minimal set of edges
-                method(k, graph, nodes.values(), id_col, len_col, path[1])
-
-                # Ensure the nodes are in the new subgraph
-                if p1 not in k:
-                    k.add_node(p1)
-                if p2 not in k:
-                    k.add_node(p2)
-
-            except Exception as e:
-                traceback.print_exc()
-                print(f"Something unexpected happened: {e}")
-                sys.exit(1)
-
-        return k
 
     @staticmethod
     def _check_format_inmat(mat, points, agg_method):
@@ -939,97 +880,6 @@ class ResistanceNetwork:
                 sys.exit(1)
         else:
             return None
-
-    @staticmethod
-    def _extract_full_subgraph(
-        subgraph, graph, nodelist, id_col, len_col, path
-    ):
-        """
-        Extracts the full subgraph from nodes based on the provided path.
-
-        This method traverses the path between nodes and adds the corresponding
-        nodes and edges to the subgraph. It ensures that all nodes and edges
-        present in the path are included in the subgraph.
-
-        Args:
-            subgraph (NetworkX graph): The subgraph to which nodes and edges
-                                       will be added.
-            graph (NetworkX graph): The original graph from which data will be
-                                    extracted.
-            nodelist (list): A list of nodes involved in the path.
-            id_col (str): The column name for edge IDs. Not used in this method
-            len_col (str): The column name for edge lengths. Not used in this
-                           method.
-            path (list): The path of nodes to be included in the subgraph.
-        """
-
-        # Iterate through pairs of nodes in the path
-        for first, second in zip(path, path[1:]):
-            # Add nodes to the subgraph if they are not already present
-            if first not in subgraph:
-                subgraph.add_node(first)
-            if second not in subgraph:
-                subgraph.add_node(second)
-
-            # Retrieve edge data and add the edge to the subgraph
-            dat = graph.get_edge_data(first, second)
-            subgraph.add_edge(first, second, **dat)
-
-    @staticmethod
-    def _extract_minimal_subgraph(
-        subgraph, graph, nodelist, id_col, len_col, path
-    ):
-        """
-        Extracts a simplified subgraph from paths, keeping only terminal and
-        junction nodes.
-
-        This method processes a path and constructs a minimal subgraph from it.
-        The subgraph includes only the terminal nodes (site nodes) and junction
-        nodes. It aggregates edge attributes along the path between these nodes
-
-        Args:
-            subgraph (NetworkX graph): The subgraph to which nodes and edges
-                                       will be added.
-            graph (NetworkX graph): The original graph from which data will be
-                                    extracted.
-            nodelist (list): A list of terminal nodes (site nodes).
-            id_col (str): The column name for edge IDs.
-            len_col (str): The column name for edge lengths.
-            path (list): The path of nodes to be included in the subgraph.
-        """
-
-        # Initialize current edge data
-        curr_edge = {id_col: list(), len_col: 0.0}
-        curr_start = None
-
-        # Iterate through pairs of nodes in the path
-        for first, second in zip(path, path[1:]):
-            if not curr_start:
-                curr_start = first
-                if first in nodelist or len(graph[first]) > 2:
-                    subgraph.add_node(first)
-
-            # Add path attributes to current edge
-            dat = graph.get_edge_data(first, second)
-
-            # Determine the extension for the current edge's id_col
-            if not isinstance(dat[id_col], list):
-                extension = [dat[id_col]]
-            else:
-                extension = dat[id_col]
-
-            # Extend the current edge's id_col with the determined extension
-            curr_edge[id_col].extend(extension)
-            curr_edge[len_col] += float(dat[len_col])
-
-            # Check if second node is a STOP node (in nodelist or a junction)
-            if second in nodelist or len(graph[second]) > 2:
-                subgraph.add_node(second)
-                subgraph.add_edge(curr_start, second, **curr_edge)
-                curr_edge = {id_col: list(), len_col: 0}
-                curr_start = second
-            else:
-                continue  # Continue building current edge
 
     def transform(self, dat, transformation, shape):
         """

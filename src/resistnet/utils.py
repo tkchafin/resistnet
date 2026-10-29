@@ -1,5 +1,4 @@
 import itertools
-import math
 import pickle
 import random
 from math import radians, cos, sin, asin, sqrt
@@ -8,6 +7,9 @@ import numpy as np
 import pandas as pd
 from sortedcontainers import SortedDict
 import warnings
+from autostreamtree import network as astnet
+# Shared with autoStreamTree
+from autostreamtree.network import find_pair, nCr  # noqa: F401
 
 
 def graph_to_dag(K, origin):
@@ -213,10 +215,7 @@ def snap_to_node(graph, pos):
             all(isinstance(coord, (int, float)) for coord in pos):
         raise ValueError("Position must be a tuple of two numeric values.")
 
-    # Convert graph nodes to a numpy array and find the closest node
-    nodes = np.array(list(graph.nodes()))
-    node_pos = np.argmin(np.sum((nodes - np.array(pos)) ** 2, axis=1))
-    return tuple(nodes[node_pos])
+    return astnet.snap_to_node(graph, pos)
 
 
 def check_dataframe_columns(df):
@@ -361,27 +360,6 @@ def read_pickle_network(pik):
         raise IOError("Error occurred while reading from the file.")
 
 
-def find_pair(lst, x, y):
-    """
-    Check if two elements are consecutive in a list, irrespective of their
-    order.
-
-    Args:
-        lst: The list in which to check for consecutive elements.
-        x: The first element to check.
-        y: The second element to check.
-
-    Returns:
-        bool: True if x and y are consecutive in lst, False otherwise.
-    """
-    if x not in lst or y not in lst:
-        return False
-    elif abs(lst.index(x) - lst.index(y)) == 1:
-        return True
-    else:
-        return False
-
-
 def nx_to_df(G):
     """
     Convert a networkx Graph object to a pandas DataFrame.
@@ -488,24 +466,6 @@ def read_points_flatten(pfile):
         flattened_data[coords].append(name)
 
     return flattened_data
-
-
-def nCr(n, k):
-    """
-    Calculate the number of combinations for choosing k items from n items.
-
-    Utilizes the mathematical formula for combinations, n choose k, which is
-    defined as n! / (k!(n-k)!).
-
-    Args:
-        n: The total number of items.
-        k: The number of items to choose.
-
-    Returns:
-        int: The number of possible combinations.
-    """
-    f = math.factorial
-    return f(n) // f(k) // f(n - k)
 
 
 def write_numpy_matrix(mat, ofh):
