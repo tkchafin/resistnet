@@ -1,0 +1,9 @@
+set	variable	transformation	shape	max	A
+1	dor_pc_pva	Inv.Monomolecular	1	120	0.999954600070238
+2	dor_pc_pva	Monomolecular	3	50	0.964326006652747
+2	sgr_dk_rav	Ricker	2	200	0.735424479996871
+3	dor_pc_pva	Inv.Ricker	4	10	1.47151776468577
+3	sgr_dk_rav	Rev.Monomolecular	8	700	0.71349520313981
+3	ele_mt_cav	Inv.Rev.Monomolecular	2	3	0.993262053000914
+4	sgr_dk_rav	Rev.Ricker	5	1000	1.73915531069822
+4	ele_mt_cav	Inv.Rev.Ricker	3	0.5	1.10355352211528

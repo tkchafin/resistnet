@@ -43,7 +43,8 @@ def read_null_table(prefix):
 def describe(row, variables, network, runner):
     """
     Describes a Hall of Fame model: its variables with their transformation
-    and, for SAMC, their direction in raw values and the flow rate.
+    and, for SAMC, their direction in raw values and the flow rate; for the
+    standard model per km, the range of its resistance per km (1 to K).
 
     Args:
         row (pd.Series): Hall of Fame row (as read from HallOfFame.tsv).
@@ -83,7 +84,11 @@ def describe(row, variables, network, runner):
     if flow:
         parts.append(f"flow {flow:+.3f}/km (upstream "
                      f"{'harder' if flow > 0 else 'easier'})")
-    return " + ".join(parts)
+    text = " + ".join(parts)
+    # Standard model per km: the range of its resistance per km
+    if not samc and parts and "max_resistance" in row:
+        text += f"; resistance 1-{float(row['max_resistance']):.3g} per km"
+    return text
 
 
 def comparison_tables(runs, tol=1e-6):

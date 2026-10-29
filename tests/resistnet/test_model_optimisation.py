@@ -1,6 +1,7 @@
 import os
 
 import numpy as np
+import pandas as pd
 import pytest
 import tempfile
 import resistnet
@@ -241,3 +242,37 @@ def test_shape_search_space(model_runner_fixture):
     assert np.all(draws == np.round(draws))
     assert draws.min() >= 1 and draws.max() <= 15
     assert np.median(draws) <= 5
+
+
+def test_max_resistance_per_km(model_runner_fixture, tmp_path):
+    # Standard model per km: the maximum resistance per km is searched
+    # log-uniformly from 1 to max_resist, kept in the Hall of Fame (whose
+    # AIC is the model's, re-evaluated) and the best model's table
+    import hyperopt.pyll.stochastic as stoch
+    runner = model_runner_fixture
+    net = runner.resistance_network
+    assert runner.per_km and net.max_resist == 1000
+    runner.set_tpe_parameters(max_shape=15)
+    runner.initialize_space()
+    rng = np.random.default_rng(1)
+    draws = np.array([stoch.sample(runner.space["max_resistance"], rng=rng)
+                      for _ in range(2000)])
+    assert draws.min() >= 1 and draws.max() <= 1000
+    assert np.median(draws) == pytest.approx(np.sqrt(1000), rel=0.15)
+
+    out = str(tmp_path / "km")
+    runner.run_tpe(max_evals=6, threads=1, reps=2, max_shape=15,
+                   n_startup=3, out=out, verbose=False, plot=False)
+    hof = pd.read_csv(f"{out}.HallOfFame.tsv", sep="\t", na_values="-")
+    assert "max_resistance" in hof.columns
+    assert hof["max_resistance"].between(1, 1000).all()
+    best = runner.bests.getHOF().iloc[0]
+    ind = runner._row_individual(best)
+    assert ind[-1] == best["max_resistance"]
+    assert -net.evaluate(ind)[1][2] == pytest.approx(float(best["aic"]),
+                                                     abs=1e-9)
+    table = pd.read_csv(f"{out}.bestModel.tsv", sep="\t", na_values="-")
+    rows = table.set_index("Variable")
+    assert rows.loc["max_resistance", "Value"] == pytest.approx(
+        best["max_resistance"])
+    assert rows["Contribution"].sum() == pytest.approx(1.0, abs=1e-9)

@@ -32,6 +32,16 @@ def main():
         os.makedirs(os.path.dirname(prefix), exist_ok=True)
         if len(params.models) > 1:
             print(f"\n=== Fitting the {model} model ===\n")
+        if model == "resistance":
+            if params.per_reach:
+                print("Standard model: resistance per reach (--per_reach)")
+            elif params.fix_resist is not None:
+                print("Standard model: resistance per km, from 1 to "
+                      f"{params.fix_resist:g} (--fix_resist)")
+            else:
+                print("Standard model: resistance per km, from 1 to a "
+                      "maximum optimised up to "
+                      f"{params.max_resist_for('resistance'):g}")
 
         # Step 1: Initialise network
         network = build_network(params, model, prefix)
@@ -145,7 +155,7 @@ def build_network(params, model, prefix):
             length_col=params.length_col,
             infer_origin=params.infer_origin,
             ne=params.ne,
-            max_resist=params.max_resist,
+            max_resist=params.max_resist_for("samc"),
             fix_resist=params.fix_resist,
             max_flow=params.max_flow,
             out=prefix,
@@ -161,7 +171,10 @@ def build_network(params, model, prefix):
         reachid_col=params.reachid_col,
         length_col=params.length_col,
         out=prefix,
-        verbose=True
+        verbose=True,
+        units="reach" if params.per_reach else "km",
+        max_resist=params.max_resist_for("resistance"),
+        fix_resist=params.fix_resist
     )
 
 

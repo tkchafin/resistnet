@@ -158,6 +158,14 @@ class parseArgs:
             help='Same as --model samc'
         )
         parser.add_argument(
+            '--per_reach', action='store_true',
+            help=(
+                'Standard model: each reach costs its composite value '
+                'whatever its length (the formulation of earlier versions), '
+                'instead of a resistance per km times its length'
+            )
+        )
+        parser.add_argument(
             '--sizes', type=str,
             help=(
                 'SAMC: tsv with columns sample, size (effective population '
@@ -173,16 +181,17 @@ class parseArgs:
             help='SAMC: attribute giving the next downstream reach ID'
         )
         parser.add_argument(
-            '--max_resist', type=float, default=500,
+            '--max_resist', type=float, default=None,
             help=(
-                'SAMC: upper limit for the maximum resistance of the '
-                'composite surface (relative to a minimum of 1), which is '
-                'optimised'
+                'Upper limit for the maximum resistance (relative to a '
+                'minimum of 1), which is optimised: per km for the standard '
+                "model (default 1000, as ResistanceGA's max.cont), and of "
+                'the composite surface for SAMC (default 500)'
             )
         )
         parser.add_argument(
             '--fix_resist', type=float,
-            help='SAMC: fix the maximum resistance instead of optimising it'
+            help='Fix the maximum resistance instead of optimising it'
         )
         parser.add_argument(
             '--fixAsym', action='store_true',
@@ -225,7 +234,7 @@ class parseArgs:
             parser.error(f"--samc conflicts with --model {self.model}")
         self.models = (["resistance", "samc"] if self.model == "both"
                        else [self.model])
-        if self.max_resist <= 1:
+        if self.max_resist is not None and self.max_resist <= 1:
             parser.error("--max_resist must be greater than 1")
         if self.fix_resist is not None and self.fix_resist < 1:
             parser.error("--fix_resist must be at least 1")
@@ -258,3 +267,19 @@ class parseArgs:
             sys.exit(1)
         if self.vars:
             self.agg_opts = {var: "ARITH" for var in self.variables}
+
+    def max_resist_for(self, model):
+        """
+        The upper limit of the maximum resistance for a model: --max_resist,
+        or by default 1000 for the standard model (per km, as ResistanceGA's
+        max.cont) and 500 for SAMC (of the composite surface).
+
+        Args:
+            model (str): "resistance" or "samc".
+
+        Returns:
+            float: The upper limit.
+        """
+        if self.max_resist is not None:
+            return float(self.max_resist)
+        return 500.0 if model == "samc" else 1000.0

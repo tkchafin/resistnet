@@ -117,7 +117,12 @@ def describe(row, variables, samc):
     flow = float(row.get("flow", 0) or 0) if samc else 0.0
     if flow:
         parts.append(f"flow {flow:+.3f}/km")
-    return " + ".join(parts) or "(no variables)"
+    text = " + ".join(parts) or "(no variables)"
+    # Standard model per km: the range of its resistance per km
+    max_r = row.get("max_resistance")
+    if not samc and parts and max_r is not None and pd.notna(max_r):
+        text += f"; resistance 1-{float(max_r):.3g} per km"
+    return text
 
 
 class RunOutputs:
@@ -127,6 +132,10 @@ class RunOutputs:
         self.prefix, self.model = prefix, model
         self.samc = model == "samc"
         self.hof = _read(f"{prefix}.HallOfFame.tsv", na_values="-")
+        # Standard model with resistances per km (else per reach, as in
+        # earlier versions)
+        self.per_km = (not self.samc and self.hof is not None
+                       and "max_resistance" in self.hof.columns)
         self.variables = [c[:-6] for c in self.hof.columns
                           if c.endswith("_trans")]
         self.hof["model"] = [describe(r, self.variables, self.samc)
@@ -701,6 +710,50 @@ def _cards(items):
         for a, b, c in items) + "</div>"
 
 
+HOW_IT_WORKS = {
+    "km": (
+        "How this model works: each selected variable is transformed and "
+        "rescaled to 0-1, and their weighted mean gives each reach a "
+        "resistance per km of 1 + (K - 1) × mean, from 1 (distance alone) "
+        "to the maximum resistance K, which is fitted. A reach costs its "
+        "resistance per km times its length, and the distance between two "
+        "sites is the sum along the river between them. This is "
+        "ResistanceGA's formulation (resistance 1 + max × f(x), times the "
+        "distance between cells): distance is always part of the model, "
+        "K = 1 is distance alone, and a large K means the variables "
+        "dominate."),
+    "reach": (
+        "How this model works: each selected variable is transformed and "
+        "rescaled to 0-1, and their weighted sum, rescaled to 0-1, is each "
+        "reach's resistance, whatever its length (the formulation of "
+        "earlier versions, --per_reach). The distance between two sites is "
+        "the sum along the river between them."),
+    "samc": (
+        "How this model works: a random walker moves between adjacent "
+        "reaches with weights 1/resistance, the resistance going from 1 "
+        "to a fitted maximum K with the weighted variables (directional "
+        "variables make one direction harder), times exp(-rate × km moved "
+        "upstream) with a flow term; at each site it is absorbed with "
+        "probability 1/(2 Ne). The distance between two sites is the "
+        "conditional first passage time, averaged over both directions."),
+}
+
+
+def _distance_share(run):
+    """Distance's share of the best model's resistance per km (from
+    bestModel.tsv), or None."""
+    b = run.best
+    if (not run.per_km or b is None or "Contribution" not in b
+            or "distance" not in set(b["Variable"])):
+        return None
+    return float(b.set_index("Variable").loc["distance", "Contribution"])
+
+
+def _kind(run):
+    """The model's formulation: "samc", "km" or "reach"."""
+    return "samc" if run.samc else "km" if run.per_km else "reach"
+
+
 def _model_section(run):
     """The section of one model's run."""
     hof = run.models
@@ -713,6 +766,11 @@ def _model_section(run):
         cards.append(("vs distance alone",
                       _fmt(float(best["delta_aic_distance"]), 1),
                       "AIC better (positive) or worse"))
+    share = _distance_share(run)
+    if share is not None:
+        cards.append(("Distance's share", f"{share:.0%}",
+                      "of the best model's resistance per km (the rest "
+                      "from its variables)"))
     if run.samc and "delta_aic_flow" in hof:
         cards.append(("vs flow alone", _fmt(float(best["delta_aic_flow"]),
                                             1),
@@ -720,7 +778,7 @@ def _model_section(run):
     cards.append(("Hall of Fame", f"{len(hof)} models",
                   f"{kept} kept for model averaging; from "
                   f"{int(hof['chains'].sum())} chains"))
-    parts = [_cards(cards)]
+    parts = [f"<p>{HOW_IT_WORKS[_kind(run)]}</p>", _cards(cards)]
 
     if run.null is not None:
         ref = run.null.copy()
@@ -795,8 +853,12 @@ def _model_section(run):
                         "Best model"
                     layers[f"{label}: resistance"] = \
                         e.set_index("EDGE_ID")["Resistance"]
-            fig = fig_map(run, layers, "Resistance")
-            note = ("Resistance of each reach (0-1; choose the model "
+            fig = fig_map(run, layers, "Resistance per km" if run.per_km
+                          else "Resistance")
+            note = ("Resistance per km of each reach (1 = distance alone, "
+                    "up to the model's maximum K; choose the model average "
+                    "or the best model in the menu)." if run.per_km else
+                    "Resistance of each reach (0-1; choose the model "
                     "average or the best model in the menu).")
         parts.append(f"<h3>Map</h3><p>{note} Hover over a reach for its "
                      "value; scroll to zoom.</p>")

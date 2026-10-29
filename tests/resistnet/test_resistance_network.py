@@ -233,14 +233,25 @@ def test_resistance_network_worker_creation(resistance_network_fixture):
     assert worker.max_shape == 100.0
 
 
-def test_surface_parameters(resistance_network_fixture):
-    net = resistance_network_fixture
+def _three_variables(units):
+    """A network of three variables, for counting parameters only."""
+    net = object.__new__(ResistanceNetwork)
+    net._predictors = pd.DataFrame(columns=["a", "b", "c"])
+    net.num_attributes = 4
+    net.units = units
+    net.fix_resist = None
+    return net
+
+
+def test_surface_parameters():
     # sel, weight, trans, shape for three variables
     one = [1, 0.5, 1, 3, 0, 0.2, 0, 1, 0, 0.9, 5, 10]
     three = [1, 0.5, 1, 3, 1, 0.2, 0, 1, 1, 0.9, 5, 10]
     none = [0, 0.5, 1, 3, 0, 0.2, 0, 1, 0, 0.9, 5, 10]
 
-    # transform + shape per variable, plus m - 1 relative weights
+    # Per reach: transform + shape per variable, plus m - 1 relative
+    # weights
+    net = _three_variables("reach")
     assert net.surface_parameters(one) == 2
     assert net.surface_parameters(three) == 8
     assert net.surface_parameters(none) == 0
@@ -251,6 +262,19 @@ def test_surface_parameters(resistance_network_fixture):
     assert net.surface_parameters(three) == 0
     net.fixWeight = False
     assert net.surface_parameters(three) == 2
+
+    # Per km: plus the maximum resistance per km if it was optimised (3
+    # per variable in all, as ResistanceGA's equation, shape and maximum)
+    net = _three_variables("km")
+    assert net.surface_parameters(one + [50.0]) == 3
+    assert net.surface_parameters(three + [50.0]) == 9
+    # K is not read as a selected variable (even if 1), nor counted
+    # without variables
+    assert net.surface_parameters(none + [1.0]) == 0
+    # Not optimised: absent (e.g. the grid search), or fixed
+    assert net.surface_parameters(three) == 8
+    net.fix_resist = 50.0
+    assert net.surface_parameters(three + [50.0]) == 8
 
 
 def test_evaluate_penalises_aic(resistance_network_fixture):
@@ -331,9 +355,11 @@ def test_snap_points_merges_samples(
     assert sorted(names) == sorted(list(pts["sample"]) + ["extra"])
 
 
+@pytest.mark.parametrize("units", ["km", "reach"])
 def test_simulate_matches_fitted_model(
-        sim_resistance_network_params, network_graph_path, tmp_path):
+        sim_resistance_network_params, network_graph_path, tmp_path, units):
     # Simulated resistances must equal those of the same model as fitted
+    # (per km, with the same maximum resistance per km)
     spec = pd.DataFrame({
         "VAR": ["LENGTH_KM", "UPLAND_SKM"],
         "WEIGHT": [1.0, 0.4],
@@ -345,7 +371,8 @@ def test_simulate_matches_fitted_model(
     spec.to_csv(spec_file, sep="\t", index=False)
     out = str(tmp_path / "sim")
     sim_engine = SimResistanceNetwork(**sim_resistance_network_params,
-                                      seed=5)
+                                      seed=5, units=units,
+                                      max_resistance=37.0)
     sim_engine.simulate(str(spec_file), 1, 12, out)
 
     sim = pd.read_csv(f"{out}_1.ResistanceMatrix.tsv", sep="\t", index_col=0)
@@ -357,10 +384,12 @@ def test_simulate_matches_fitted_model(
         coords=f"{out}_1.coords", variables=list(spec["VAR"]), inmat=None,
         agg_opts=dict(zip(spec["VAR"], spec["AGG"])),
         reachid_col="HYRIV_ID", length_col="LENGTH_KM",
-        out=str(tmp_path / "fit"), verbose=False)
+        out=str(tmp_path / "fit"), verbose=False, units=units)
     model = []
     for _, s in spec.set_index("VAR").loc[net._predictors.columns].iterrows():
         model.extend([1, s["WEIGHT"], int(s["TRANSFORM"]), int(s["SHAPE"])])
+    if units == "km":
+        model.append(37.0)
     fitted, _ = net.model_output(model)
     labels = [int(x) for x in net._points_labels.values()]
     np.testing.assert_allclose(
@@ -484,3 +513,78 @@ def test_mlpe_reference_inputs_nmt(tmp_path):
             net._build_composite_surface([1, 1.0, 7, 1])),
         np.loadtxt(os.path.join(ref, "nmt_mlpe_X_dor_inv_mono.tsv")),
         rtol=1e-12)
+
+
+def test_per_km_surface_matches_resistancega(tmp_path):
+    # ResistanceGA's composite surface (R/Combine_Surfaces.R: each
+    # continuous surface 1 + max * A * f, summed, divided by its minimum),
+    # computed in R with its own functions for the NMT reaches
+    # (reference/resistancega_surfaces.R), equals the resistance per km,
+    # 1 + (K - 1) * weighted mean of f, divided by its minimum, with
+    # weights max_i * A_i and K - 1 = sum(max_i * A_i) / n
+    ref_dir = os.path.join(os.path.dirname(__file__), "reference")
+    surfaces = pd.read_csv(os.path.join(ref_dir, "resistancega_surfaces.tsv"),
+                           sep="\t")
+    constants = pd.read_csv(
+        os.path.join(ref_dir, "resistancega_surface_constants.tsv"),
+        sep="\t")
+    code = {"Ricker": 1, "Rev.Ricker": 2, "Inv.Ricker": 3,
+            "Inv.Rev.Ricker": 4, "Monomolecular": 5, "Rev.Monomolecular": 6,
+            "Inv.Monomolecular": 7, "Inv.Rev.Monomolecular": 8}
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    variables = ["dor_pc_pva", "sgr_dk_rav", "ele_mt_cav"]
+    net = ResistanceNetwork(
+        network=os.path.join(data, "nmt.network"), shapefile=None,
+        coords=os.path.join(data, "nmt.pointCoords.txt"),
+        variables=variables, inmat=None,
+        agg_opts={v: "ARITH" for v in variables}, reachid_col="HYRIV_ID",
+        out=str(tmp_path / "nmt"), verbose=False, units="km")
+    for s, c in constants.groupby("set"):
+        c = c.set_index("variable")
+        ind = []
+        for v in variables:
+            if v in c.index:
+                ind += [1, c.loc[v, "max"] * c.loc[v, "A"],
+                        code[c.loc[v, "transformation"]], c.loc[v, "shape"]]
+            else:
+                ind += [0, 1.0, 0, 1]
+        ind.append(1.0 + (c["max"] * c["A"]).sum() / len(c))
+        rho = net.resistance_surface(ind)
+        ref = surfaces[surfaces["set"] == s].set_index("HYRIV_ID")["value"]
+        ref = ref.loc[list(net._edge_order)].to_numpy()
+        np.testing.assert_allclose((rho / rho.min()).to_numpy(), ref,
+                                   rtol=1e-12, err_msg=f"set {s}")
+        # Each reach's resistance is its resistance per km times its
+        # length (ResistanceGA's geoCorrection: per distance between cells)
+        np.testing.assert_allclose(net.edge_resistances(ind).to_numpy(),
+                                   rho.to_numpy() * net._lengths, rtol=1e-15)
+
+
+def test_per_km_contributions(tmp_path):
+    # Shares of the resistance per km due to distance (the baseline of 1)
+    # and to each variable, averaged over the network's km: they sum to 1,
+    # and distance is everything when K = 1
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    variables = ["dor_pc_pva", "sgr_dk_rav"]
+    net = ResistanceNetwork(
+        network=os.path.join(data, "nmt.network"), shapefile=None,
+        coords=os.path.join(data, "nmt.pointCoords.txt"),
+        variables=variables, inmat=None,
+        agg_opts={v: "ARITH" for v in variables}, reachid_col="HYRIV_ID",
+        out=str(tmp_path / "nmt"), verbose=False, units="km")
+    ind = [1, 0.6, 7, 1, 1, 0.2, 5, 3, 40.0]
+    shares = net.contributions(ind)
+    assert set(shares) == {"distance", *variables}
+    assert sum(shares.values()) == pytest.approx(1.0, abs=1e-12)
+    rho = net.resistance_surface(ind).to_numpy()
+    km = net._lengths
+    assert shares["distance"] == pytest.approx(
+        np.sum(km / rho) / km.sum(), rel=1e-12)
+    f = net.transform(net._predictors["dor_pc_pva"], 7, 1).to_numpy()
+    assert shares["dor_pc_pva"] == pytest.approx(
+        np.sum(km * 39.0 * 0.75 * f / rho) / km.sum(), rel=1e-12)
+    assert net.contributions(ind[:-1] + [1.0])["distance"] == \
+        pytest.approx(1.0, abs=1e-12)
+    # Per reach: not defined
+    net.units = "reach"
+    assert net.contributions(ind) is None

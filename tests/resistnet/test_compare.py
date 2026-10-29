@@ -185,3 +185,43 @@ def test_run_both_models_layout(tmp_path):
                                "samc"], capture_output=True, text=True)
     assert p.returncode == 0, p.stderr[-2000:]
     assert os.path.exists(str(tmp_path / "ens.Model-Best.CFPTMatrix.tsv"))
+
+    # Standard runs per km (with max_resistance) are averaged per km: the
+    # ensemble's best model is the run's
+    p = subprocess.run(args + ["-o", str(tmp_path / "ens_km"), "--model",
+                               "resistance"], capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr[-2000:]
+    run_best = pd.read_csv(
+        os.path.join(out, "resistance", "nmt.Model-Best.ResistanceMatrix.tsv"),
+        sep="\t", index_col=0)
+    ens_best = pd.read_csv(str(tmp_path / "ens_km.Model-Best."
+                               "ResistanceMatrix.tsv"), sep="\t", index_col=0)
+    np.testing.assert_allclose(ens_best.loc[run_best.index, run_best.columns],
+                               run_best, rtol=1e-12)
+    # A run per reach (no max_resistance column) is rebuilt per reach, and
+    # runs per km and per reach can't be mixed
+    hof = pd.read_csv(os.path.join(out, "resistance", "nmt.HallOfFame.tsv"),
+                      sep="\t")
+    reach = tmp_path / "reach"
+    reach.mkdir()
+    hof.drop(columns="max_resistance").to_csv(
+        reach / "nmt.HallOfFame.tsv", sep="\t", index=False)
+    p = subprocess.run(args[:5] + [str(reach)] + args[6:]
+                       + ["-o", str(tmp_path / "ens_reach")],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr[-2000:]
+    reach_best = pd.read_csv(str(tmp_path / "ens_reach.Model-Best."
+                                 "ResistanceMatrix.tsv"), sep="\t",
+                             index_col=0)
+    assert not np.allclose(reach_best.loc[run_best.index, run_best.columns],
+                           run_best)
+    mixed = tmp_path / "mixed_units"
+    mixed.mkdir()
+    hof.to_csv(mixed / "a.HallOfFame.tsv", sep="\t", index=False)
+    hof.drop(columns="max_resistance").to_csv(
+        mixed / "b.HallOfFame.tsv", sep="\t", index=False)
+    p = subprocess.run(args[:5] + [str(mixed)] + args[6:]
+                       + ["-o", str(tmp_path / "ens_mixed")],
+                       capture_output=True, text=True)
+    assert p.returncode != 0
+    assert "per km and per reach" in p.stderr + p.stdout

@@ -26,3 +26,15 @@ against them rather than against its own earlier output.
   rescaled to 0-1 (`resistancega_transformations.R` made it). Note that
   ResistanceGA itself turns any Ricker-family transformation with shape
   > 5 into plain distance; ResistNet does not.
+- `resistancega_surfaces.tsv`: ResistanceGA's composite resistance
+  surface (as in its `R/Combine_Surfaces.R`: each continuous surface
+  rescaled to 0-10 with `SCALE.vector`, transformed with parm =
+  c(eq, shape, max), summed, and divided by its minimum) for the 127 NMT
+  reaches of `nmt.network`, for four sets of one to three surfaces (six
+  of the eight transformations; maxima from 0.5 to 1000), computed in R
+  with its own functions (`resistancega_surfaces.R`, from
+  `nmt_reach_covariates.tsv`, the reaches' raw values).
+  `resistancega_surface_constants.tsv` gives each surface's parameters
+  and its range at max = 1 (A), which map them onto ResistNet's
+  resistance per km (weights max_i x A_i, and K - 1 = sum(max_i x A_i) /
+  number of surfaces).

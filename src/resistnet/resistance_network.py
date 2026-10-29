@@ -50,7 +50,8 @@ class ResistanceNetwork:
                  pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
                  origin=None, out="out", verbose=True,
-                 minimize=False):
+                 minimize=False, units="km", max_resist=1000,
+                 fix_resist=None):
         """
         Constructs all the necessary attributes for the ResistanceNetwork
         object.
@@ -72,7 +73,19 @@ class ResistanceNetwork:
             out (str): Prefix for output files. Defaults to "out".
             verbose (bool): Flag to enable verbose output. Defaults to True.
             minimize (bool): Flag to minimize subgraph. Defaults to False.
+            units (str): "km" (default): each reach's resistance is a
+                         resistance per km times its length (see
+                         resistance_surface()); "reach": each reach costs
+                         its composite value, whatever its length (the
+                         formulation of earlier versions).
+            max_resist (float): Upper limit when optimising the maximum
+                                resistance per km (units "km"). Defaults to
+                                1000, as ResistanceGA's max.cont.
+            fix_resist (float, optional): Fix that maximum resistance
+                                          instead of optimising it.
         """
+        if units not in ("km", "reach"):
+            raise ValueError(f"units must be 'km' or 'reach', not {units!r}")
         self.network = network
         self.shapefile = shapefile
         self.coords = coords
@@ -88,6 +101,9 @@ class ResistanceNetwork:
         self.fitmetric = "aic"
         self.infer_origin = infer_origin
         self.origin = origin
+        self.units = units
+        self.max_resist = max_resist
+        self.fix_resist = fix_resist
 
         # Additional attributes for internal use
         self.minimized_subgraph = None
@@ -102,6 +118,7 @@ class ResistanceNetwork:
         self._predictors = None
         self._predictor_range = None
         self._edge_order = None
+        self._lengths = None
         self._gendist = None
 
         self.num_attributes = 4
@@ -139,10 +156,16 @@ class ResistanceNetwork:
         grouped = df.groupby('EDGE_ID')
         for v in self.variables:
             agg_funs[v] = partial(agg.aggregateDist, method=self.agg_opts[v])
+        lengths = (grouped[self.length_col].sum()
+                   if self.length_col in df.columns else None)
         df = grouped.agg(agg_funs)
 
-        # Save the order of edges
+        # Save the order of edges, and their lengths (summed, as for the
+        # distance_only model)
         self._edge_order = df.index
+        if lengths is not None:
+            self._lengths = lengths.loc[self._edge_order].to_numpy(
+                dtype=float)
 
         # Rescale variables to a specified range (0 to 10), keeping each
         # variable's range in this network (see model_spec())
@@ -1036,7 +1059,7 @@ class ResistanceNetwork:
             tuple: A tuple containing the fitness value and the results of the
                    evaluation.
         """
-        multi = self._build_composite_surface(individual)
+        multi = self.edge_resistances(individual)
         if multi is None:
             return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
         r, res = rd.parsePairwise(
@@ -1059,9 +1082,12 @@ class ResistanceNetwork:
         be added to k in the AIC (as ResistanceGA's default k.value = 2).
 
         Each selected variable has a transformation and shape (unless
-        fixShape). The composite surface is rescaled to 0-1, so only the
-        relative weights matter: m selected variables have m - 1 weights
-        (unless fixWeight).
+        fixShape). Only the relative weights matter (the composite surface
+        is a weighted mean, or rescaled to 0-1 with units "reach"), so m
+        selected variables have m - 1 weights (unless fixWeight). With
+        units "km", the maximum resistance per km is one more (if it was
+        optimised): 3 per variable in all, as ResistanceGA's equation,
+        shape and maximum for each surface.
 
         Args:
             individual (list): Model specification, as for evaluate().
@@ -1069,15 +1095,39 @@ class ResistanceNetwork:
         Returns:
             int: The number of surface parameters.
         """
+        n_var = len(self._predictors.columns) * self.num_attributes
         n_sel = sum(
-            1 for s in individual[0::self.num_attributes] if s == 1
+            1 for s in individual[0:n_var:self.num_attributes] if s == 1
         )
         k = 0
         if not getattr(self, "fixShape", False):
             k += 2 * n_sel
         if not getattr(self, "fixWeight", False):
             k += max(n_sel - 1, 0)
+        if (getattr(self, "units", "reach") == "km" and n_sel
+                and len(individual) > n_var and self.fix_resist is None):
+            k += 1
         return k
+
+    def max_resistance(self, individual):
+        """
+        The maximum resistance per km K of a model (units "km"): the value
+        following the variable attributes in the individual if present
+        (when it is optimised), otherwise fix_resist, or 100 (capped at
+        max_resist).
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            float: The maximum resistance per km.
+        """
+        n_var = len(self._predictors.columns) * self.num_attributes
+        if len(individual) > n_var:
+            return float(individual[n_var])
+        if self.fix_resist is not None:
+            return float(self.fix_resist)
+        return min(100.0, float(self.max_resist))
 
     def model_output(self, model):
         """
@@ -1094,19 +1144,108 @@ class ResistanceNetwork:
 
         Returns:
             tuple: A tuple containing the effective resistance matrix and the
-                   multi-surface representation for the model.
+                   resistance of each reach (per km with units "km"; see
+                   resistance_surface()).
         """
-        multi = self._build_composite_surface(model)
+        multi = self.edge_resistances(model)
         if multi is not None:
             r = rd.effectiveResistanceMatrix(
                 self._points_snapped, self._inc, multi
             )
-            return r, multi
+            return r, self.resistance_surface(model)
         return None, None
+
+    def resistance_surface(self, individual):
+        """
+        The resistance surface of a model: with units "km", the resistance
+        per km of each reach, from 1 (distance alone) to the maximum
+        resistance K,
+
+            1 + (K - 1) * composite
+
+        as ResistanceGA's continuous surfaces (1 + max * f(x), summed over
+        surfaces; see _build_composite_surface()). With units "reach", the
+        composite itself (0-1).
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            pd.Series: Resistance of each reach (None if no variable is
+                       selected).
+        """
+        multi = self._build_composite_surface(individual)
+        if multi is None or getattr(self, "units", "reach") != "km":
+            return multi
+        return 1.0 + (self.max_resistance(individual) - 1.0) * multi
+
+    def contributions(self, individual):
+        """
+        The share of the resistance per km due to distance (the baseline
+        of 1) and to each selected variable, for each reach, averaged over
+        the network's km (units "km"), as ResistanceGA's p.contribution
+        (each surface's share of the composite, averaged over cells, which
+        all have the same size). The shares sum to 1.
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            dict: {"distance": share, variable: share, ...}, or None if no
+                  variable is selected or units are "reach".
+        """
+        surface = self.resistance_surface(individual)
+        if surface is None or getattr(self, "units", "reach") != "km":
+            return None
+        n_att = self.num_attributes
+        rho = surface.to_numpy(dtype=float)
+        length = self._lengths / self._lengths.sum()
+        parts = {}
+        for i, v in enumerate(self._predictors.columns):
+            if individual[i * n_att] == 1:
+                f = self.transform(self._predictors[v],
+                                   individual[i * n_att + 2],
+                                   individual[i * n_att + 3])
+                parts[v] = (individual[i * n_att + 1]
+                            * f.to_numpy(dtype=float))
+        total = sum(individual[i * n_att + 1]
+                    for i, v in enumerate(self._predictors.columns)
+                    if individual[i * n_att] == 1)
+        scale = ((self.max_resistance(individual) - 1.0) / total
+                 if total > 0 else 0.0)
+        shares = {"distance": float(np.sum(length / rho))}
+        for v, x in parts.items():
+            shares[v] = float(np.sum(length * scale * x / rho))
+        return shares
+
+    def edge_resistances(self, individual):
+        """
+        The resistance of each reach, summed along the paths between sites:
+        with units "km", its resistance per km times its length (as
+        ResistanceGA's geoCorrection: cost = resistance x distance between
+        cell centres), so that a model with K = 1 is the distance_only
+        model; with units "reach", the composite itself.
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            pd.Series: Resistance of each reach (None if no variable is
+                       selected).
+        """
+        surface = self.resistance_surface(individual)
+        if surface is None or getattr(self, "units", "reach") != "km":
+            return surface
+        return surface * self._lengths
 
     def _build_composite_surface(self, config):
         """
-        Builds a multi-surface representation from a model configuration.
+        Builds the composite surface of a model's variables, each
+        transformed and rescaled to 0-1 (see transform()): with units "km",
+        their weighted mean, so that 1 + (K - 1) * composite equals
+        ResistanceGA's sum of surfaces (1 + max_i * f_i(x)), divided by its
+        minimum, with max_i proportional to (K - 1) * weight_i; with units
+        "reach", their weighted sum rescaled to 0-1.
 
         Args:
             config (list): A list representing an individual or model in the
@@ -1114,9 +1253,11 @@ class ResistanceNetwork:
                         information for variables.
 
         Returns:
-            ndarray: The multi-surface representation for the configuration.
+            pd.Series: The composite surface (None if no variable is
+                       selected).
         """
         multi = None
+        total = 0.0
         first = True
         for i, variable in enumerate(self._predictors.columns):
             if config[0::self.num_attributes][i] == 1:
@@ -1125,14 +1266,19 @@ class ResistanceNetwork:
                     config[2::self.num_attributes][i],
                     config[3::self.num_attributes][i]
                 )
+                weight = config[1::self.num_attributes][i]
+                total += weight
                 if first:
-                    multi = var * config[1::self.num_attributes][i]
+                    multi = var * weight
                     first = False
                 else:
-                    multi += var * config[1::self.num_attributes][i]
-        if not first:
-            multi = trans.rescaleCols(multi, 0, 1)
-        return multi
+                    multi += var * weight
+        if first:
+            return None
+        if getattr(self, "units", "reach") == "km":
+            # All weights 0: no variable effect (distance alone)
+            return multi / total if total > 0 else multi * 0.0
+        return trans.rescaleCols(multi, 0, 1)
 
     def model_spec(self, individual):
         """
@@ -1140,7 +1286,8 @@ class ResistanceNetwork:
         of another network (see resistnet.predict). For each selected
         variable: its range in this network (for the 0-10 rescaling), its
         transformation, shape and weight, and its range after the
-        transformation (for the 0-1 rescaling); and the range of the
+        transformation (for the 0-1 rescaling); with units "km", the
+        maximum resistance per km; with units "reach", the range of the
         composite surface (for its 0-1 rescaling).
 
         Args:
@@ -1150,7 +1297,8 @@ class ResistanceNetwork:
             dict: The model specification (JSON-serialisable).
         """
         n_att = self.num_attributes
-        spec = {"type": "standard", "variables": {}}
+        units = getattr(self, "units", "reach")
+        spec = {"type": "standard", "units": units, "variables": {}}
         multi = None
         for i, v in enumerate(self._predictors.columns):
             if individual[i * n_att] != 1:
@@ -1162,8 +1310,11 @@ class ResistanceNetwork:
             x = self._spec_values(v, var) * var["weight"]
             multi = x if multi is None else multi + x
         if multi is not None:
-            spec["composite_min"] = float(multi.min())
-            spec["composite_max"] = float(multi.max())
+            if units == "km":
+                spec["max_resistance"] = self.max_resistance(individual)
+            else:
+                spec["composite_min"] = float(multi.min())
+                spec["composite_max"] = float(multi.max())
         return spec
 
     def _variable_spec(self, variable, transformation, shape):
@@ -1215,12 +1366,17 @@ class ResistanceNetworkWorker(ResistanceNetwork):
         predictors (DataFrame): Predictor variables.
         edge_order (list): Order of edges.
         gendist (numpy.ndarray): Genetic distance matrix.
+        units (str): "km" or "reach" (see ResistanceNetwork).
+        lengths (numpy.ndarray): Length of each edge, in edge order.
+        max_resist (float): Upper limit of the maximum resistance per km.
+        fix_resist (float, optional): Fixed maximum resistance per km.
     """
     def __init__(self, network, pop_agg, reachid_col, length_col,
                  variables, agg_opts, fitmetric, fixWeight,
                  fixShape, min_weight, max_shape, inc, point_coords,
                  points_names, points_snapped, points_labels, predictors,
-                 edge_order, gendist):
+                 edge_order, gendist, units="reach", lengths=None,
+                 max_resist=1000, fix_resist=None):
 
         self.network = network
         self.pop_agg = pop_agg
@@ -1247,6 +1403,10 @@ class ResistanceNetworkWorker(ResistanceNetwork):
         self._predictors = predictors
         self._edge_order = edge_order
         self._gendist = gendist
+        self.units = units
+        self._lengths = lengths
+        self.max_resist = max_resist
+        self.fix_resist = fix_resist
 
         self.num_attributes = 4
 
@@ -1263,9 +1423,15 @@ class SimResistanceNetwork(ResistanceNetwork):
         verbose (bool, optional): Flag to enable verbose output. Defaults to
                                   False.
         seed (int, optional): Random seed for reproducibility.
+        units (str, optional): "km" (default) or "reach", as for
+                               ResistanceNetwork.
+        max_resistance (float, optional): Maximum resistance per km K
+                                          (units "km"). Defaults to 100.
     """
     def __init__(self, network, reachid_col, length_col, verbose=False,
-                 seed=None):
+                 seed=None, units="km", max_resistance=100.0):
+        if units not in ("km", "reach"):
+            raise ValueError(f"units must be 'km' or 'reach', not {units!r}")
         self.network = network
         self.reachid_col = reachid_col
         self.length_col = length_col
@@ -1273,6 +1439,10 @@ class SimResistanceNetwork(ResistanceNetwork):
         self.minimize = False
         self.variables = None
         self.agg_opts = None
+        self.units = units
+        self.sim_max_resistance = float(max_resistance)
+        self.max_resist = self.sim_max_resistance
+        self.fix_resist = None
         self.num_attributes = 4
         self._inc = None
         self._G = None
@@ -1284,6 +1454,7 @@ class SimResistanceNetwork(ResistanceNetwork):
         self._predictors = None
         self._predictor_range = None
         self._edge_order = None
+        self._lengths = None
         self._gendist = None
 
         if seed is not None:
@@ -1335,6 +1506,7 @@ class SimResistanceNetwork(ResistanceNetwork):
         self._predictors = None
         self._predictor_range = None
         self._edge_order = None
+        self._lengths = None
         self._gendist = None
 
     def simulate_resistance(self, vars):
@@ -1342,9 +1514,11 @@ class SimResistanceNetwork(ResistanceNetwork):
         Simulates resistance based on various variables and their
         transformations.
 
-        The composite surface is built exactly as when fitting models
-        (initialize_predictors and _build_composite_surface), so that
-        simulated models can be recovered by runResistnet.py.
+        The reach resistances are built exactly as when fitting models
+        (initialize_predictors and edge_resistances), so that simulated
+        models can be recovered by runResistnet.py: with units "km", the
+        resistance per km (with maximum sim_max_resistance) times the
+        reach length.
 
         Args:
             vars (DataFrame): A DataFrame containing variables along with their
@@ -1353,8 +1527,8 @@ class SimResistanceNetwork(ResistanceNetwork):
                               variable (AGG; default ARITH).
 
         Returns:
-            pd.Series: The resulting composite resistance surface, in the
-                       order of self._edge_order.
+            pd.Series: The resistance of each reach, in the order of
+                       self._edge_order.
         """
         self.variables = list(vars['VAR'])
         if 'AGG' in vars.columns:
@@ -1371,7 +1545,9 @@ class SimResistanceNetwork(ResistanceNetwork):
                 1, spec['WEIGHT'].item(), spec['TRANSFORM'].item(),
                 spec['SHAPE'].item()
             ])
-        return self._build_composite_surface(model)
+        if self.units == "km":
+            model.append(self.sim_max_resistance)
+        return self.edge_resistances(model)
 
     def simulated_distances(self, vars, base):
         """
