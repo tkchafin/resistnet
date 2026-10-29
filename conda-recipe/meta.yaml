@@ -35,7 +35,7 @@ requirements:
   - networkx>3
   - pyogrio
   - nlopt
-  - mantel >=2.2.1
+  - mantel
   # with autostreamtree.network (river network functions)
   - autostreamtree
 

@@ -25,10 +25,11 @@ dependencies:
   - deap>=1.4
   - nlopt
   - hyperopt
-  - mantel>=2.2.1
+  - mantel
   - pysam
   # River network functions are shared with autoStreamTree
   # (autostreamtree.network); until a release includes them, install it
-  # from GitHub (then: - autostreamtree, from the ecoevoinfo channel)
+  # from GitHub (then: - autostreamtree, from the ecoevoinfo channel);
+  # pip also updates mantel (>= 2.2.1, for numpy 2) from PyPI
   - pip:
     - git+https://github.com/tkchafin/autostreamtree@network-fixes
