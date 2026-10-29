@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 
+from resistnet.plotting import COLOURS, FAMILY_NAMES, GRID, TEXT, TEXT2
 from resistnet.samc_network import ResistanceNetworkSAMC
 
 TRANSFORMATIONS = {
@@ -23,14 +24,6 @@ TRANSFORMATIONS = {
     6: "reverse monomolecular", 7: "inverse monomolecular",
     8: "reverse-inverse monomolecular"
 }
-
-# Plot colours: one per family (validated as a categorical pair), and
-# neutral grey for the reference models; text and grid
-COLOURS = {"resistance": "#2a78d6", "samc": "#eb6834",
-           "reference": "#8a8986"}
-FAMILY_NAMES = {"resistance": "Standard (resistance)", "samc": "SAMC",
-                "reference": "Reference model"}
-TEXT, TEXT2, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 
 # Reference models: (family, description, number of parameters)
 REFERENCES = {

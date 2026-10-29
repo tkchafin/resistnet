@@ -8,6 +8,7 @@ from resistnet.resistance_network import ResistanceNetwork
 from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.model_optimisation import ModelRunnerTPE
 from resistnet.compare import write_comparison
+from resistnet.report import build_report
 
 
 def main():
@@ -87,6 +88,9 @@ def main():
     # Step 3: With both models, rank their models together
     if len(runs) > 1 and params.inmat:
         write_comparison(runs, os.path.join(params.out, name))
+
+    # Step 4: Interactive report of the run
+    build_report(params.out)
 
     # # Step 2: Initialise ModelRunner
     # runner = ModelRunnerGA(

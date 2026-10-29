@@ -16,6 +16,7 @@ dependencies:
   - matplotlib
   - scikit-learn
   - seaborn
+  - plotly
   - geopandas
   - sortedcontainers
   - momepy

@@ -20,6 +20,7 @@ from resistnet.resistance_network import ResistanceNetworkWorker
 from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.samc_network import ResistanceNetworkSAMCWorker
 from resistnet.samc_network import MIN_FLOW
+from resistnet.report import write_pairwise_table
 from resistnet.hall_of_fame import HallOfFame
 
 
@@ -179,9 +180,12 @@ class ModelRunner:
                 f"{out}.FitnessLog.tsv", sep="\t", header=True, index=False
             )
 
-        # Get results for best models and model-averaged (only written out)
+        # Get results for best models and model-averaged (only written out),
+        # and every pair of sites' genetic and model distances
         if out:
             self.model_average(out, plot)
+            if self.resistance_network._gendist is not None:
+                write_pairwise_table(self.resistance_network, out)
 
         # Reference models
         if null is not None and verbose:

@@ -15,7 +15,8 @@ setup(
         'scripts/runResistnet.py',
         'scripts/simResistnet.py',
         'scripts/ensembleResistnet.py',
-        'scripts/predictResistnet.py'
+        'scripts/predictResistnet.py',
+        'scripts/reportResistnet.py'
     ],
     install_requires=[
         "numpy",
@@ -23,6 +24,7 @@ setup(
         "networkx",
         "pytest",
         "seaborn",
+        "plotly",
         "matplotlib",
         "pyogrio",
         "momepy",

@@ -1,0 +1,795 @@
+"""
+Interactive HTML report of a ResistNet run (runResistnet.py -o DIR/NAME):
+DIR/NAME/NAME.report.html, with Plotly figures of each model's results
+and, with --model both, of their comparison.
+
+The report is built only from the run's output files (each figure from a
+table the run writes), so it can be rebuilt with reportResistnet.py, and
+the same tables can feed other reports (e.g. MultiQC).
+"""
+import html
+import os
+import pickle
+import re
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
+
+from resistnet.plotting import (AXIS, BLUES_FOR_LINES, COLOURS,
+                                FAMILY_NAMES, GRID, MUTED, TEXT, TEXT2,
+                                plotly_colorscale, plotly_layout)
+
+TRANSFORMATIONS = {
+    0: "linear", 1: "Ricker", 2: "reverse Ricker", 3: "inverse Ricker",
+    4: "reverse-inverse Ricker", 5: "monomolecular",
+    6: "reverse monomolecular", 7: "inverse monomolecular",
+    8: "reverse-inverse monomolecular"
+}
+NUMBER = re.compile(r"-?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?")
+NP_SCALAR = re.compile(r"np\.\w+\(")
+REFERENCE_NAMES = {
+    "null": "Population effects only (null)",
+    "distance_only": "Distance only (river km)",
+    "samc_distance": "SAMC distance alone",
+    "samc_flow": "SAMC flow alone",
+}
+
+
+# -------------------------------------------------------------- run tables
+def write_pairwise_table(network, prefix):
+    """
+    Writes {prefix}.pairwise.tsv: for every pair of sites, the genetic
+    distance and the best and model-averaged models' distances (for SAMC,
+    the mean passage time of the two directions, as fitted).
+
+    Args:
+        network: The fitted network (with genetic distances).
+        prefix (str): Output prefix of the run.
+    """
+    samc = os.path.exists(f"{prefix}.Model-Best.CFPTMatrix.tsv")
+    kind = "CFPTMatrix" if samc else "ResistanceMatrix"
+    labels = [str(x) for x in network._points_labels.values()]
+    iu = np.triu_indices(len(labels), 1)
+    names = np.array(labels)
+    table = pd.DataFrame({"site1": names[iu[0]], "site2": names[iu[1]],
+                          "genetic_distance": network._gendist[iu]})
+    for which in ("Best", "Average"):
+        path = f"{prefix}.Model-{which}.{kind}.tsv"
+        if not os.path.exists(path):
+            continue
+        M = pd.read_csv(path, sep="\t", index_col=0)
+        M.index = M.index.astype(str)
+        M.columns = M.columns.astype(str)
+        M = M.loc[labels, labels].to_numpy(dtype=float)
+        if samc:
+            M = (M + M.T) / 2.0
+        table[f"{which.lower()}_model_distance"] = M[iu]
+    table.to_csv(f"{prefix}.pairwise.tsv", sep="\t", index=False)
+
+
+def _read(path, **kw):
+    return (pd.read_csv(path, sep="\t", **kw) if os.path.exists(path)
+            else None)
+
+
+def describe(row, variables, samc):
+    """A Hall of Fame model's description, from its row alone."""
+    parts = []
+    several = sum(row.get(v) == 1 for v in variables) > 1
+    for v in variables:
+        if row.get(v) != 1:
+            continue
+        t = int(row[f"{v}_trans"])
+        label = TRANSFORMATIONS[t]
+        if t:
+            label += f", shape {float(row[f'{v}_shape']):g}"
+        if samc:
+            label += (", directional" if int(row[f"{v}_asym"]) == 1
+                      else ", symmetric")
+        if several:
+            label += f", weight {float(row[f'{v}_weight']):.2f}"
+        parts.append(f"{v} ({label})")
+    flow = float(row.get("flow", 0) or 0) if samc else 0.0
+    if flow:
+        parts.append(f"flow {flow:+.3f}/km")
+    return " + ".join(parts) or "(no variables)"
+
+
+class RunOutputs:
+    """The output tables of one model's run (DIR/NAME/{model}/NAME.*)."""
+
+    def __init__(self, prefix, model):
+        self.prefix, self.model = prefix, model
+        self.samc = model == "samc"
+        self.hof = _read(f"{prefix}.HallOfFame.tsv", na_values="-")
+        self.variables = [c[:-6] for c in self.hof.columns
+                          if c.endswith("_trans")]
+        self.hof["model"] = [describe(r, self.variables, self.samc)
+                             for _, r in self.hof.iterrows()]
+        self.models = self._unique_models()
+        self.null = _read(f"{prefix}.Null-Model.tsv", index_col=0,
+                          keep_default_na=False, na_values=[""])
+        self.best = _read(f"{prefix}.bestModel.tsv", na_values="-")
+        self.rvi = _read(f"{prefix}.varImportance.tsv")
+        self.maw = _read(f"{prefix}.modavgWeights.tsv", na_values="-")
+        self.pairwise = _read(f"{prefix}.pairwise.tsv")
+        self.upstream = _read(f"{prefix}.upstreamChanges.tsv")
+        self.points = _read(f"{prefix}.pointsTable.txt")
+        kind = "TransitionEdges" if self.samc else "ResistanceEdges"
+        self.edges = {w: _read(f"{prefix}.Model-{w}.{kind}.tsv",
+                               na_values="NA")
+                      for w in ("Average", "Best")}
+        self.geometry = self._geometry()
+
+    def _unique_models(self):
+        """
+        The Hall of Fame with each model once: the best model of several
+        chains can be the same, splitting its Akaike weight.
+        """
+        hof = self.hof.copy()
+        hof["key"] = list(zip(hof["model"], hof["aic"].round(6)))
+        hof["kept"] = hof["keep"].astype(str).str.lower() == "true"
+        models = hof.groupby("key", sort=False).agg(
+            model=("model", "first"), aic=("aic", "first"),
+            r2m=("r2m", "first"), akaike_weight=("akaike_weight", "sum"),
+            chains=("model", "size"), kept=("kept", "any"),
+            **{c: (c, "first") for c in ("delta_aic_distance",
+                                         "delta_aic_flow") if c in hof})
+        return models.sort_values("aic").reset_index(drop=True)
+
+    def _geometry(self):
+        """Reach lines (lon, lat) by reach ID, from the run's network."""
+        path = f"{self.prefix}.subgraph.net"
+        spec = f"{self.prefix}.modelSpec.json"
+        if not (os.path.exists(path) and os.path.exists(spec)):
+            return {}
+        reachid = pd.read_json(spec, typ="series")["reachid_col"]
+        with open(path, "rb") as fh:
+            G = pickle.load(fh)
+        lines = {}
+        for u, v, d in G.edges(data=True):
+            geom = d.get("geometry")
+            if geom is not None and hasattr(geom, "coords"):
+                xy = np.asarray(geom.coords)[:, :2]
+            else:
+                xy = np.array([u[:2], v[:2]], dtype=float)
+            lines[str(d.get(reachid))] = xy
+        return lines
+
+    def sites(self):
+        """Site labels and coordinates (lon, lat)."""
+        if self.points is None:
+            return pd.DataFrame(columns=["label", "lon", "lat"])
+        # Nodes are written as "(x, y)", or with numpy's scalar reprs
+        # ("(np.float64(x), np.float64(y))")
+        xy = [[float(v) for v in NUMBER.findall(NP_SCALAR.sub("", str(n)))]
+              for n in self.points["Node"]]
+        return pd.DataFrame({"label": self.points["Label"].astype(str),
+                             "lon": [p[0] for p in xy],
+                             "lat": [p[1] for p in xy]})
+
+
+# ------------------------------------------------------------------ figures
+def _go():
+    import plotly.graph_objects as go
+    return go
+
+
+def fig_aic_profile(run):
+    """AIC of each Hall of Fame model, best first."""
+    go = _go()
+    hof = run.models
+    colour = COLOURS[run.model]
+    kept = hof["kept"].to_numpy()
+    weight = hof["akaike_weight"].fillna(0).to_numpy()
+    size = 9 + 22 * np.sqrt(weight)
+    hover = [f"<b>{html.escape(m)}</b><br>AIC {a:.2f} (Δ {d:.2f})<br>"
+             f"Akaike weight {w:.3f}<br>marginal R² {r:.3f}<br>"
+             f"best of {c} chain{'s' if c > 1 else ''}"
+             for m, a, d, w, r, c in zip(hof["model"], hof["aic"],
+                                         hof["aic"] - hof["aic"].min(),
+                                         weight, hof["r2m"],
+                                         hof["chains"])]
+    fig = go.Figure()
+    for flag, name, col in ((True, "kept for model averaging", colour),
+                            (False, "not kept", MUTED)):
+        sel = kept == flag
+        if not sel.any():
+            continue
+        fig.add_trace(go.Scatter(
+            x=hof.index[sel] + 1, y=hof["aic"][sel], mode="markers",
+            name=name, hovertext=np.array(hover)[sel], hoverinfo="text",
+            marker=dict(size=size[sel], color=col,
+                        line=dict(color="white", width=1.5))))
+    fig.add_hline(y=hof["aic"].min() + 2, line=dict(color=TEXT2, width=1,
+                                                    dash="dot"),
+                  annotation_text="best + 2", annotation_font_color=TEXT2,
+                  annotation_position="top left")
+    fig.update_layout(**plotly_layout(
+        title="AIC of the Hall of Fame models (marker size: Akaike weight)",
+        height=360))
+    fig.update_xaxes(title="Model (best first)", dtick=1)
+    fig.update_yaxes(title="AIC")
+    return fig
+
+
+def fig_importance(run):
+    """Relative importance and model-averaged weight of each variable."""
+    go = _go()
+    from plotly.subplots import make_subplots
+    colour = COLOURS[run.model]
+    fig = make_subplots(rows=1, cols=2, horizontal_spacing=0.18,
+                        subplot_titles=("Relative importance (RVI)",
+                                        "Model-averaged weight"))
+    for col, table, column in ((1, run.rvi, "RVI"), (2, run.maw, "MAW")):
+        if table is None:
+            continue
+        t = table.dropna(subset=[column]).sort_values(column)
+        fig.add_trace(go.Bar(
+            x=t[column], y=t["variable"], orientation="h",
+            marker=dict(color=colour), text=[f"{v:.2f}" for v in t[column]],
+            textposition="outside", textfont=dict(color=TEXT2),
+            hovertemplate="%{y}: %{x:.3f}<extra></extra>", showlegend=False),
+            row=1, col=col)
+    fig.update_layout(**plotly_layout(height=max(260, 46 * len(run.variables)
+                                                 + 120)))
+    fig.update_xaxes(range=[0, 1.15], gridcolor=GRID, linecolor=AXIS)
+    fig.update_yaxes(gridcolor="rgba(0,0,0,0)", linecolor=AXIS,
+                     tickfont=dict(color=TEXT))
+    for a in fig.layout.annotations:
+        a.update(font=dict(color=TEXT, size=12), x=a.x - 0.2,
+                 xanchor="left")
+    return fig
+
+
+def fig_pairwise(run):
+    """Genetic distance against the model distances of each pair."""
+    go = _go()
+    pw = run.pairwise
+    colour = COLOURS[run.model]
+    fig = go.Figure()
+    unit = "passage time (steps)" if run.samc else "resistance distance"
+    for column, name, style in (
+            ("average_model_distance", "Model average",
+             dict(color="white", size=8, line=dict(color=colour, width=1.5))),
+            ("best_model_distance", "Best model",
+             dict(color=colour, size=8, line=dict(color="white",
+                                                  width=1)))):
+        if column not in pw:
+            continue
+        x, y = pw[column].to_numpy(), pw["genetic_distance"].to_numpy()
+        fig.add_trace(go.Scatter(
+            x=x, y=y, mode="markers", name=name, marker=style,
+            customdata=np.stack([pw["site1"], pw["site2"]], axis=1),
+            hovertemplate=("%{customdata[0]} – %{customdata[1]}<br>"
+                           "model distance %{x:.3g}<br>genetic distance "
+                           "%{y:.4f}<extra>" + name + "</extra>")))
+        if column == "best_model_distance":
+            slope, intercept = np.polyfit(x, y, 1)
+            xs = np.array([x.min(), x.max()])
+            fig.add_trace(go.Scatter(
+                x=xs, y=intercept + slope * xs, mode="lines",
+                line=dict(color=TEXT2, width=1.5), hoverinfo="skip",
+                name="Least-squares line (best model)"))
+    r2m = float(run.hof.sort_values("aic")["r2m"].iloc[0])
+    fig.update_layout(**plotly_layout(
+        title=f"Genetic distance against model distance (best model: "
+              f"marginal R² {r2m:.2f})", height=420))
+    fig.update_xaxes(title=f"Model {unit}")
+    fig.update_yaxes(title="Genetic distance")
+    return fig
+
+
+def fig_map(run, layers, colorbar_title, fixed_range=None):
+    """
+    Map of the network's reaches coloured by a value, with the sites; one
+    layer per entry of layers ({name: Series by reach ID}), chosen from a
+    menu.
+    """
+    go = _go()
+    lines = run.geometry
+    fig = go.Figure()
+    colours = BLUES_FOR_LINES
+    n = len(colours)
+    menu, vis_all = [], []
+    for li, (name, values) in enumerate(layers.items()):
+        values = values.dropna()
+        values.index = values.index.astype(str)
+        lo, hi = (fixed_range if fixed_range is not None
+                  else (float(values.min()), float(values.max())))
+        span = hi - lo if hi > lo else 1.0
+        vis = []
+        # Reaches without a value, in grey
+        missing = [r for r in lines if r not in values.index]
+        xs, ys = _line_coords([lines[r] for r in missing])
+        fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", hoverinfo="skip",
+                                 line=dict(color=AXIS, width=2),
+                                 showlegend=False, visible=li == 0))
+        vis.append(len(fig.data) - 1)
+        # Lines in bins of the colour ramp
+        bins = np.clip(((values - lo) / span * n).astype(int), 0, n - 1)
+        for b in range(n):
+            ids = [r for r in values.index[bins == b] if r in lines]
+            if not ids:
+                continue
+            xs, ys = _line_coords([lines[r] for r in ids])
+            fig.add_trace(go.Scatter(
+                x=xs, y=ys, mode="lines", hoverinfo="skip",
+                line=dict(color=colours[b], width=3.2), showlegend=False,
+                visible=li == 0))
+            vis.append(len(fig.data) - 1)
+        # Invisible markers at reach midpoints: hover and colour bar
+        ids = [r for r in values.index if r in lines]
+        mid = np.array([lines[r][len(lines[r]) // 2] for r in ids])
+        fig.add_trace(go.Scatter(
+            x=mid[:, 0] if len(mid) else [], y=mid[:, 1] if len(mid) else [],
+            mode="markers", showlegend=False, visible=li == 0,
+            marker=dict(size=10, opacity=0, color=values[ids],
+                        colorscale=plotly_colorscale(colours), cmin=lo,
+                        cmax=hi, colorbar=dict(
+                            title=dict(text=colorbar_title, side="right",
+                                       font=dict(color=TEXT2)),
+                            tickfont=dict(color=TEXT2), thickness=14,
+                            outlinewidth=0)),
+            customdata=ids,
+            hovertemplate="reach %{customdata}<br>" + colorbar_title
+                          + " %{marker.color:.3f}<extra></extra>"))
+        vis.append(len(fig.data) - 1)
+        vis_all.append(vis)
+        menu.append(name)
+
+    # Sites, on every layer
+    sites = run.sites()
+    fig.add_trace(go.Scatter(
+        x=sites["lon"], y=sites["lat"], mode="markers+text",
+        text=sites["label"], textposition="top center",
+        textfont=dict(color=TEXT, size=10), name="Sampling sites",
+        marker=dict(size=9, color=COLOURS["samc"] if not run.samc
+                    else COLOURS["resistance"],
+                    line=dict(color="white", width=1.5)),
+        hovertemplate="site %{text}<extra></extra>"))
+    site_trace = len(fig.data) - 1
+
+    buttons = []
+    for li, name in enumerate(menu):
+        visible = [False] * len(fig.data)
+        for i in vis_all[li]:
+            visible[i] = True
+        visible[site_trace] = True
+        buttons.append(dict(label=name, method="update",
+                            args=[{"visible": visible}]))
+    lat = float(sites["lat"].mean()) if len(sites) else 0.0
+    layout = plotly_layout(height=560, margin=dict(l=60, r=24, t=72, b=48))
+    if len(buttons) > 1:
+        layout["updatemenus"] = [dict(
+            buttons=buttons, direction="down", x=0, xanchor="left", y=1.12,
+            yanchor="top", bgcolor="white", bordercolor=AXIS,
+            font=dict(color=TEXT, size=11), showactive=True)]
+    else:
+        layout["title"] = dict(text=menu[0], font=dict(size=14, color=TEXT),
+                               x=0, xanchor="left")
+    fig.update_layout(**layout)
+    fig.update_xaxes(title="Longitude", showgrid=False)
+    fig.update_yaxes(title="Latitude", showgrid=False, scaleanchor="x",
+                     scaleratio=1 / max(np.cos(np.radians(lat)), 0.1))
+    return fig
+
+
+def _line_coords(arrays):
+    """Concatenates lines for one Plotly trace (None between lines)."""
+    xs, ys = [], []
+    for xy in arrays:
+        xs.extend(xy[:, 0].tolist() + [None])
+        ys.extend(xy[:, 1].tolist() + [None])
+    return xs, ys
+
+
+def fig_upstream(run):
+    """How each variable changes on a step upstream."""
+    go = _go()
+    t = run.upstream.iloc[::-1]
+    fig = go.Figure()
+    for column, name, colour in (("rises", "rises", COLOURS["resistance"]),
+                                 ("no_change", "no change", MUTED),
+                                 ("falls", "falls", COLOURS["samc"])):
+        fig.add_trace(go.Bar(
+            x=t[column], y=t["variable"], orientation="h", name=name,
+            marker=dict(color=colour, line=dict(color="white", width=1.5)),
+            hovertemplate="%{y}: " + name + " on %{x:.0%} of upstream "
+                          "steps<extra></extra>"))
+    fig.update_layout(**plotly_layout(
+        barmode="stack", height=max(240, 44 * len(t) + 120),
+        title="How each variable changes on a step upstream"))
+    fig.update_layout(legend_traceorder="normal")
+    fig.update_xaxes(title="Share of upstream steps", tickformat=".0%",
+                     range=[0, 1])
+    fig.update_yaxes(gridcolor="rgba(0,0,0,0)")
+    return fig
+
+
+def fig_ranking(table, top=20):
+    """The joint ranking of both families and the reference models."""
+    go = _go()
+    t = table.head(top)
+    fig = go.Figure()
+    for family in ("resistance", "samc", "reference"):
+        sel = t[t["family"] == family]
+        if sel.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=sel["delta_aic"], y=sel["model"], mode="markers",
+            name=FAMILY_NAMES[family],
+            marker=dict(size=12, color=COLOURS[family],
+                        line=dict(color="white", width=1.5)),
+            customdata=np.stack([sel["aic"], sel["akaike_weight"],
+                                 sel["k"], sel["rank"]], axis=1),
+            hovertemplate=("<b>%{y}</b><br>rank %{customdata[3]} · ΔAIC "
+                           "%{x:.2f} (AIC %{customdata[0]:.2f}, k "
+                           "%{customdata[2]})<br>Akaike weight "
+                           "%{customdata[1]:.3f}<extra></extra>")))
+    fig.add_vline(x=2, line=dict(color=TEXT2, width=1, dash="dot"),
+                  annotation_text="ΔAIC 2", annotation_font_color=TEXT2,
+                  annotation_position="bottom right")
+    fig.update_layout(**plotly_layout(
+        title="AIC difference from the best model (best at the top)",
+        height=max(340, 32 * len(t) + 140)))
+    fig.update_xaxes(title="ΔAIC", rangemode="tozero")
+    fig.update_yaxes(categoryorder="array",
+                     categoryarray=list(t["model"])[::-1], automargin=True,
+                     tickfont=dict(size=11, color=TEXT))
+    return fig
+
+
+def fig_joint_importance(importance, families):
+    go = _go()
+    imp = importance.iloc[::-1]
+    fig = go.Figure()
+    for family in families:
+        column = f"RVI_{family}"
+        if column not in imp:
+            continue
+        fig.add_trace(go.Bar(
+            x=imp[column], y=imp["variable"], orientation="h",
+            name=FAMILY_NAMES[family],
+            marker=dict(color=COLOURS[family],
+                        line=dict(color="white", width=1.5)),
+            hovertemplate="%{y}: %{x:.3f} from " + FAMILY_NAMES[family]
+                          + " models<extra></extra>"))
+    fig.update_layout(**plotly_layout(
+        barmode="stack", height=max(240, 44 * len(imp) + 120),
+        title="Variable importance over both families"))
+    fig.update_xaxes(title="Relative importance (summed Akaike weight of "
+                     "the models with the variable)", range=[0, 1.05])
+    fig.update_yaxes(gridcolor="rgba(0,0,0,0)")
+    return fig
+
+
+def fig_best_fits(runs):
+    """Genetic distance against each family's best model, side by side."""
+    go = _go()
+    from plotly.subplots import make_subplots
+    fams = [m for m, r in runs.items() if r.pairwise is not None
+            and "best_model_distance" in r.pairwise]
+    fig = make_subplots(rows=1, cols=len(fams), shared_yaxes=True,
+                        horizontal_spacing=0.06,
+                        subplot_titles=[FAMILY_NAMES[f] for f in fams])
+    for i, family in enumerate(fams, start=1):
+        pw = runs[family].pairwise
+        x = pw["best_model_distance"].to_numpy()
+        x = (x - x.mean()) / x.std()
+        y = pw["genetic_distance"].to_numpy()
+        points = go.Scatter(
+            x=x, y=y, mode="markers", name=FAMILY_NAMES[family],
+            marker=dict(size=8, color=COLOURS[family],
+                        line=dict(color="white", width=1)),
+            customdata=np.stack([pw["site1"], pw["site2"]], axis=1),
+            hovertemplate=("%{customdata[0]} – %{customdata[1]}<br>genetic "
+                           "distance %{y:.4f}<extra></extra>"))
+        fig.add_trace(points, row=1, col=i)
+        slope, intercept = np.polyfit(x, y, 1)
+        xs = np.array([x.min(), x.max()])
+        fig.add_trace(go.Scatter(x=xs, y=intercept + slope * xs,
+                                 mode="lines", hoverinfo="skip",
+                                 line=dict(color=TEXT2, width=1.5),
+                                 showlegend=False), row=1, col=i)
+        fig.update_xaxes(title="Best model's distance (standardised)",
+                         row=1, col=i)
+    fig.update_yaxes(title="Genetic distance", row=1, col=1)
+    fig.update_layout(**plotly_layout(height=420, showlegend=False))
+    for a in fig.layout.annotations:
+        a.update(font=dict(color=TEXT, size=12))
+    return fig
+
+
+# ------------------------------------------------------------------- report
+CSS = """
+:root { --ink: #0b0b0b; --ink2: #52514e; --muted: #898781; --rule: #e1e0d9;
+  --axis: #c3c2b7; --bg: #f9f9f7; --surface: #ffffff; --accent: #2a78d6;
+  --samc: #eb6834; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px; line-height: 1.55; }
+header { background: var(--surface); border-bottom: 1px solid var(--rule);
+  padding: 22px 24px 14px; }
+header h1 { margin: 0 0 4px; font-size: 1.55rem; font-weight: 600; }
+header .meta { color: var(--ink2); font-size: 0.9rem; }
+nav { position: sticky; top: 0; z-index: 10; background: var(--surface);
+  border-bottom: 1px solid var(--rule); padding: 8px 24px; display: flex;
+  gap: 18px; flex-wrap: wrap; font-size: 0.9rem; }
+nav a { color: var(--ink2); text-decoration: none; }
+nav a:hover { color: var(--accent); }
+main { max-width: 1180px; margin: 0 auto; padding: 8px 16px 64px; }
+section { margin-top: 30px; }
+section > h2 { font-size: 1.3rem; font-weight: 600; margin: 0 0 6px;
+  padding-bottom: 6px; border-bottom: 2px solid var(--rule); }
+section > h2 .tag { display: inline-block; width: 10px; height: 10px;
+  border-radius: 50%; margin-right: 8px; }
+h3 { font-size: 1.02rem; font-weight: 600; margin: 22px 0 6px; }
+p { margin: 6px 0; color: var(--ink2); max-width: 78ch; }
+.cards { display: grid; gap: 10px; margin: 12px 0;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 8px; padding: 10px 14px; }
+.card .label { color: var(--muted); font-size: 0.75rem; letter-spacing: .04em;
+  text-transform: uppercase; }
+.card .value { font-size: 1.15rem; font-weight: 600; margin-top: 2px; }
+.card .sub { color: var(--ink2); font-size: 0.82rem; }
+.panel { background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 8px; padding: 8px; margin: 10px 0; }
+.tablewrap { overflow-x: auto; background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 8px; margin: 10px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid
+  var(--rule); vertical-align: top; }
+th { color: var(--ink2); font-weight: 600; background: #f3f2ee; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums;
+  white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+footer { color: var(--muted); font-size: 0.8rem; margin-top: 40px; }
+"""
+
+
+def _fig_html(fig):
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={
+        "displaylogo": False, "responsive": True,
+        "toImageButtonOptions": {"format": "svg"}})
+
+
+def _panel(fig):
+    return f'<div class="panel">{_fig_html(fig)}</div>'
+
+
+def _fmt(v, d=2):
+    if v is None or (isinstance(v, float) and not np.isfinite(v)):
+        return "–"
+    if isinstance(v, (int, np.integer)):
+        return str(v)
+    if isinstance(v, (float, np.floating)):
+        if v != 0 and abs(v) < 0.001:
+            return f"{v:.1e}"
+        return f"{v:,.{d}f}"
+    return html.escape(str(v))
+
+
+def _table(df, columns, numeric=()):
+    """An HTML table of the given columns ({column: header})."""
+    head = "".join(
+        f'<th class="{"num" if c in numeric else ""}">{html.escape(h)}</th>'
+        for c, h in columns.items())
+    rows = []
+    for _, r in df.iterrows():
+        cells = "".join(
+            f'<td class="{"num" if c in numeric else ""}">{_fmt(r.get(c))}'
+            "</td>" for c in columns)
+        rows.append(f"<tr>{cells}</tr>")
+    return (f'<div class="tablewrap"><table><thead><tr>{head}</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table></div>')
+
+
+def _cards(items):
+    return '<div class="cards">' + "".join(
+        f'<div class="card"><div class="label">{html.escape(a)}</div>'
+        f'<div class="value">{b}</div><div class="sub">{c}</div></div>'
+        for a, b, c in items) + "</div>"
+
+
+def _model_section(run):
+    """The section of one model's run."""
+    hof = run.models
+    best = hof.iloc[0]
+    kept = int(hof["kept"].sum())
+    cards = [("Best model", html.escape(best["model"]), ""),
+             ("AIC", _fmt(float(best["aic"])),
+              f"marginal R² {_fmt(float(best['r2m']), 3)}")]
+    if "delta_aic_distance" in hof:
+        cards.append(("vs distance alone",
+                      _fmt(float(best["delta_aic_distance"]), 1),
+                      "AIC better (positive) or worse"))
+    if run.samc and "delta_aic_flow" in hof:
+        cards.append(("vs flow alone", _fmt(float(best["delta_aic_flow"]),
+                                            1),
+                      "AIC better (positive) or worse"))
+    cards.append(("Hall of Fame", f"{len(hof)} models",
+                  f"{kept} kept for model averaging; from "
+                  f"{int(hof['chains'].sum())} chains"))
+    parts = [_cards(cards)]
+
+    if run.null is not None:
+        ref = run.null.copy()
+        ref["name"] = [REFERENCE_NAMES.get(i, i) for i in ref.index]
+        ref["delta"] = ref["aic"] - float(best["aic"])
+        parts.append("<h3>Reference models</h3><p>Fitted to the same genetic "
+                     "distances. ΔAIC is the reference's AIC minus the best "
+                     "model's: positive means the best model fits better."
+                     "</p>")
+        cols = {"name": "Model", "aic": "AIC", "delta": "ΔAIC",
+                "r2m": "Marginal R²", "loglik": "Log-likelihood"}
+        if "flow" in ref:
+            cols["flow"] = "Flow rate (/km)"
+        parts.append(_table(ref, cols, numeric=set(cols) - {"name"}))
+
+    parts.append("<h3>Hall of Fame</h3>")
+    parts.append(_panel(fig_aic_profile(run)))
+    cols = {"model": "Model", "aic": "AIC", "delta": "ΔAIC",
+            "akaike_weight": "Akaike weight", "r2m": "Marginal R²",
+            "chains": "Chains"}
+    if "delta_aic_distance" in hof:
+        cols["delta_aic_distance"] = "vs distance alone"
+    if run.samc and "delta_aic_flow" in hof:
+        cols["delta_aic_flow"] = "vs flow alone"
+    hof = hof.copy()
+    hof["delta"] = hof["aic"] - hof["aic"].min()
+    parts.append(_table(hof.head(15), cols, numeric=set(cols) - {"model"}))
+
+    if run.rvi is not None or run.maw is not None:
+        parts.append("<h3>Variables</h3><p>Relative importance is the summed "
+                     "Akaike weight of the models with the variable; "
+                     "model-averaged weights are averaged over those models."
+                     "</p>")
+        parts.append(_panel(fig_importance(run)))
+    if run.pairwise is not None:
+        parts.append("<h3>Fit to the genetic distances</h3><p>Each point is "
+                     "a pair of sites. Hover for the pair.</p>")
+        parts.append(_panel(fig_pairwise(run)))
+    if run.geometry and any(e is not None for e in run.edges.values()):
+        if run.samc:
+            layers = {}
+            for which in ("Average", "Best"):
+                e = run.edges[which]
+                if e is None:
+                    continue
+                e = e.set_index("EDGE_ID")
+                label = "Model average" if which == "Average" else \
+                    "Best model"
+                layers[f"{label}: probability of moving downstream"] = \
+                    e["Downstream"]
+                layers[f"{label}: probability of moving upstream"] = \
+                    e["Upstream"]
+            fig = fig_map(run, layers, "Probability", fixed_range=(0, 1))
+            note = ("Probability that a walker leaving each reach moves "
+                    "downstream, or upstream (choose in the menu). Grey: "
+                    "no reach in that direction.")
+        else:
+            layers = {}
+            for which in ("Average", "Best"):
+                e = run.edges[which]
+                if e is not None:
+                    label = "Model average" if which == "Average" else \
+                        "Best model"
+                    layers[f"{label}: resistance"] = \
+                        e.set_index("EDGE_ID")["Resistance"]
+            fig = fig_map(run, layers, "Resistance")
+            note = ("Resistance of each reach (0-1; choose the model "
+                    "average or the best model in the menu).")
+        parts.append(f"<h3>Map</h3><p>{note} Hover over a reach for its "
+                     "value; scroll to zoom.</p>")
+        parts.append(_panel(fig))
+    if run.samc and run.upstream is not None:
+        parts.append("<h3>Variables along the river</h3><p>A directional "
+                     "variable that changes the same way on almost every "
+                     "upstream step acts much like the flow term.</p>")
+        parts.append(_panel(fig_upstream(run)))
+    return "\n".join(parts)
+
+
+def _comparison_section(runs, table, summary, importance):
+    best = summary.set_index("family")
+    cards = []
+    for family in summary["family"]:
+        r = best.loc[family]
+        cards.append((FAMILY_NAMES[family], html.escape(r["best_model"]),
+                      f"AIC {_fmt(r['best_aic'])} · ΔAIC "
+                      f"{_fmt(r['delta_aic'], 1)} · the family's summed "
+                      f"Akaike weight {_fmt(r['akaike_weight'], 3)}"))
+    parts = [
+        "<p>Both models were fitted with the same MLPE to the same genetic "
+        "distances, so their AICs are comparable. Akaike weights are "
+        "computed over the models of both and the reference models. AIC "
+        "ranks fits, not mechanisms: path resistance and a walker's "
+        "passage time are different ideas.</p>",
+        _cards(cards), _panel(fig_ranking(table))]
+    if any(r.pairwise is not None for r in runs.values()):
+        parts.append("<h3>Each family's best model</h3><p>Model distances "
+                     "standardised, as fitted; lines are least-squares fits "
+                     "for display.</p>")
+        parts.append(_panel(fig_best_fits(runs)))
+    if importance is not None and len(importance):
+        parts.append("<h3>Variables</h3>")
+        parts.append(_panel(fig_joint_importance(importance, list(runs))))
+    parts.append("<h3>Ranking</h3>")
+    parts.append(_table(table.head(15), {
+        "rank": "Rank", "family": "Family", "model": "Model", "k": "k",
+        "aic": "AIC", "delta_aic": "ΔAIC", "akaike_weight": "Akaike weight"},
+        numeric={"rank", "k", "aic", "delta_aic", "akaike_weight"}))
+    return "\n".join(parts)
+
+
+def build_report(out, verbose=True):
+    """
+    Builds DIR/NAME/NAME.report.html from the outputs of
+    runResistnet.py -o DIR/NAME (one or both models).
+
+    Args:
+        out (str): The run's -o value (DIR/NAME).
+        verbose (bool): Print the report's path.
+
+    Returns:
+        str: Path of the report.
+    """
+    from plotly.offline import get_plotlyjs
+    name = os.path.basename(os.path.normpath(out))
+    runs = {}
+    for model in ("resistance", "samc"):
+        prefix = os.path.join(out, model, name)
+        if os.path.exists(f"{prefix}.HallOfFame.tsv"):
+            runs[model] = RunOutputs(prefix, model)
+    if not runs:
+        raise FileNotFoundError(f"No ResistNet outputs found in {out}")
+
+    sections = []
+    table = _read(os.path.join(out, f"{name}.modelComparison.tsv"))
+    summary = _read(os.path.join(out, f"{name}.familySummary.tsv"))
+    if len(runs) > 1 and table is not None and summary is not None:
+        importance = _read(os.path.join(out, f"{name}.jointImportance.tsv"))
+        sections.append(("comparison", "Model comparison", MUTED,
+                         _comparison_section(runs, table, summary,
+                                             importance)))
+    for model, run in runs.items():
+        sections.append((model, FAMILY_NAMES[model], COLOURS[model],
+                         _model_section(run)))
+
+    first = next(iter(runs.values()))
+    n_sites = len(first.points) if first.points is not None else "?"
+    nav = "".join(f'<a href="#{sid}">{html.escape(title)}</a>'
+                  for sid, title, _, _ in sections)
+    body = "".join(
+        f'<section id="{sid}"><h2><span class="tag" style="background:'
+        f'{colour}"></span>{html.escape(title)}</h2>{content}</section>'
+        for sid, title, colour, content in sections)
+    page = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ResistNet report: {html.escape(name)}</title>
+<style>{CSS}</style>
+<script>{get_plotlyjs()}</script>
+</head><body>
+<header><h1>ResistNet report: {html.escape(name)}</h1>
+<div class="meta">{len(runs)} model{"s" if len(runs) > 1 else ""}
+({", ".join(FAMILY_NAMES[m] for m in runs)}) · {n_sites} sites ·
+{len(first.variables)} variables ({", ".join(first.variables)}) ·
+{datetime.now().strftime("%Y-%m-%d %H:%M")}</div></header>
+<nav>{nav}</nav>
+<main>{body}
+<footer>Built from the run's output files in {html.escape(out)}; each
+figure's data is in those tables (e.g. *.pairwise.tsv, *.HallOfFame.tsv).
+Hover for values; drag to zoom; double-click to reset; the camera icon saves
+a figure as SVG.</footer></main></body></html>
+"""
+    path = os.path.join(out, f"{name}.report.html")
+    with open(path, "w") as fh:
+        fh.write(page)
+    if verbose:
+        print(f"\nReport: {path}")
+    return path

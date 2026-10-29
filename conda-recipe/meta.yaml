@@ -28,6 +28,7 @@ requirements:
   - scikit-learn
   - lightgbm
   - seaborn
+  - plotly
   - geopandas
   - sortedcontainers
   - momepy

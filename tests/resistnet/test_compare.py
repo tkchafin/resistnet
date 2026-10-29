@@ -123,6 +123,34 @@ def test_run_both_models_layout(tmp_path):
     for ext in ("modelComparison", "familySummary", "jointImportance"):
         assert os.path.exists(os.path.join(out, f"nmt.{ext}.tsv"))
 
+    # The pairwise tables: genetic distances as in the input, and model
+    # distances as in the written matrices (SAMC: mean of both directions)
+    gen = pd.read_csv(os.path.join(DATA, "nmt.popGenDistMat.txt"),
+                      sep="\t", index_col=0)
+    for model, kind in (("resistance", "ResistanceMatrix"),
+                        ("samc", "CFPTMatrix")):
+        prefix = os.path.join(out, model, "nmt")
+        pw = pd.read_csv(f"{prefix}.pairwise.tsv", sep="\t")
+        assert len(pw) == 14 * 13 // 2
+        np.testing.assert_allclose(
+            pw["genetic_distance"],
+            [gen.loc[a, b] for a, b in zip(pw["site1"], pw["site2"])],
+            rtol=1e-12)
+        M = pd.read_csv(f"{prefix}.Model-Best.{kind}.tsv", sep="\t",
+                        index_col=0)
+        M.columns = M.columns.astype(str)
+        np.testing.assert_allclose(
+            pw["best_model_distance"],
+            [(M.loc[a, b] + M.loc[b, a]) / 2
+             for a, b in zip(pw["site1"], pw["site2"])], rtol=1e-12)
+
+    # The interactive report, with both models and their comparison
+    with open(os.path.join(out, "nmt.report.html")) as fh:
+        page = fh.read()
+    for section in ('id="comparison"', 'id="resistance"', 'id="samc"'):
+        assert section in page
+    assert page.count('class="plotly-graph-div"') >= 10
+
     # ensembleResistnet.py finds runs in the model subdirectories; with
     # both models there, --model picks one
     ens = os.path.join(os.path.dirname(script), "ensembleResistnet.py")

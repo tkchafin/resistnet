@@ -286,6 +286,7 @@ The best model from each chain is retained in the Hall of Fame, which is used fo
 | output.Null-Model.tsv                        | Table giving fitness metrics for the distance-only and null (population effect only) models                                     |
 | output.varImportance.pdf                     | Bar plot of relative variable importances                                                                                       |
 | output.incidenceMatrix.txt                   | Incidence matrix for paths between each pair of samples (only used internally)                                                  |
+| output.pairwise.tsv                          | Every pair of sites: genetic distance, and the best and model-averaged models' distances (for SAMC, the mean of both directions)  |
 | output.varImportance.tsv                     | Table giving the model-averaged relative variable importances for each covariate                                                |
 | output.gpkg                                  | The input geodatabase, subset to the reaches in the subgraph (only with `-s`; format set with `-O,--output_driver`)             |
 | output.univariateFitness.tsv/.pdf            | Fitness of each transformation and shape for each variable (only with `--gridSearch`)                                           |
@@ -436,6 +437,16 @@ runResistnet.py \
 
 In this short run, the best SAMC model is stream gradient (`sgr_dk_rav`, symmetric) with a flow term of -0.22 per km (moving upstream easier; AIC -474.6), which fits better than SAMC distance alone (-416.1) and flow alone (-437.8), but less well than the standard model with degree of regulation (-502.0 with a longer run). The two models fit the same genetic distances with the same MLPE, so their AICs can be compared directly (see below).
 
+### Interactive report <a name="report"></a>
+
+Every run also writes an interactive HTML report, `DIR/NAME/NAME.report.html` (for `-o DIR/NAME`), with Plotly figures of each model's results: the best model and reference models, the Hall of Fame, the variables' importance, the fit to the genetic distances (hover for each pair of sites), and a map of the network coloured by the model-averaged or best model's resistances (or, for SAMC, the probabilities of moving downstream and upstream), with the sampling sites; and, with `--model both`, the comparison of the two models. The report works offline (one file, about 5 MB), and is built only from the run's output files, so it can be rebuilt (e.g. after editing them) with:
+
+```
+reportResistnet.py -o DIR/NAME
+```
+
+Each figure's data is in one of the run's tables (e.g. `*.pairwise.tsv`, `*.HallOfFame.tsv`, `*.TransitionEdges.tsv`).
+
 ### Comparing the two models <a name="compare"></a>
 
 With `--model both`, `ResistNet` fits the standard model and then the SAMC model, each with its own search, Hall of Fame, model averaging and outputs (in `DIR/NAME/resistance/` and `DIR/NAME/samc/`), and then ranks the models of both, with the reference models, by AIC. Both are fitted with the same MLPE to the same genetic distances, so their AICs are comparable; this is checked (the null and distance-only models of both must be identical). These outputs are written to `DIR/NAME/`:
@@ -491,7 +502,7 @@ To fit the SAMC model as well and compare the two, add `--model both` (see [Comp
 
 ### Utility Scripts <a name="scripts"></a>
 
-The primary functions of `ResistNet` are accessed via the command-line interface `runResistnet.py`. However, there are also three other utilities that are installed alongside `runResistnet.py` (whether installing via conda or pip, or found directly in the `scripts/` directory of the GitHub repository): `simResistnet.py`, `ensembleResistnet.py` and `predictResistnet.py`. 
+The primary functions of `ResistNet` are accessed via the command-line interface `runResistnet.py`. However, there are also four other utilities that are installed alongside `runResistnet.py` (whether installing via conda or pip, or found directly in the `scripts/` directory of the GitHub repository): `simResistnet.py`, `ensembleResistnet.py`, `predictResistnet.py` and `reportResistnet.py` (see [Interactive report](#report)). 
 
 #### Simulating datasets with simResistnet.py
 
