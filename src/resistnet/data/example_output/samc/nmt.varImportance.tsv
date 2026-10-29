@@ -1,6 +1,6 @@
 variable	RVI
-sgr_dk_rav	0.9999999998619186
-dor_pc_pva	1.380814445096141e-10
-run_mm_cyr	0.0
-tmp_dc_cyr	0.0
-ele_mt_cav	0.0
+dor_pc_pva	0.015892441508110363
+tmp_dc_cyr	0.0019243779811512801
+run_mm_cyr	0.000322157382280743
+ele_mt_cav	0.000322157382280743
+sgr_dk_rav	0.0

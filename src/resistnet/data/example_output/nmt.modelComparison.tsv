@@ -1,13 +1,13 @@
 rank	family	model	k	loglik	aic	delta_aic	akaike_weight
-1	samc	sgr_dk_rav (inverse monomolecular, shape 72, symmetric) + flow -0.222/km (upstream easier)	9	246.3085806390519	-474.6171612781038	0.0	0.9999998115985809
-2	resistance	dor_pc_pva (inverse Ricker, shape 13)	6	227.42366250532928	-442.84732501065855	31.76983626744527	1.2626053558126575e-07
-3	resistance	sgr_dk_rav (reverse-inverse monomolecular, shape 47) + ele_mt_cav (reverse-inverse monomolecular, shape 24) + dor_pc_pva (inverse Ricker, shape 8)	12	232.52922410723065	-441.0584482144613	33.55871306364253	5.1619995996004116e-08
-4	reference	SAMC flow alone (-0.151/km)	5	223.88532044353295	-437.7706408870659	36.84652039103793	9.974236844439375e-09
-5	resistance	run_mm_cyr (inverse Ricker, shape 21) + sgr_dk_rav (Ricker, shape 63) + ele_mt_cav (inverse monomolecular, shape 25)	12	227.2124627232279	-430.4249254464558	44.19223583164802	2.5338321123917605e-10
-6	samc	sgr_dk_rav (linear, directional: towards higher values harder) + flow -0.178/km (upstream easier)	9	223.60499176324652	-429.20998352649303	45.40717775161079	1.3802461678124278e-10
-7	samc	dor_pc_pva (reverse-inverse monomolecular, shape 85, directional: towards higher values harder) + flow -0.156/km (upstream easier)	9	223.58067860519432	-429.16135721038864	45.45580406771518	1.347092690600061e-10
-8	resistance	sgr_dk_rav (reverse-inverse Ricker, shape 35)	6	218.45859509821463	-424.91719019642926	49.69997108167456	1.6135719010754446e-11
-9	samc	dor_pc_pva (reverse-inverse Ricker, shape 77, symmetric)	8	218.89311007837856	-421.7862201567572	52.8309411213466	3.3721494729930926e-12
-10	reference	distance only (km; standard model)	4	213.48774552493063	-418.97549104986126	55.64167022824256	8.271128083134604e-13
-11	reference	SAMC distance alone	4	212.06027287261895	-416.1205457452379	58.49661553286592	1.9843635918396435e-13
-12	reference	population effects only (null)	3	196.0180308460841	-386.0360616921681	88.5810995859357	5.81913647365938e-20
+1	resistance	dor_pc_pva (inverse monomolecular, shape 1); resistance 1-145 per km	7	232.74698490345705	-451.4939698069141	0.0	0.5078641126245104
+2	resistance	dor_pc_pva (inverse monomolecular, shape 1); resistance 1-194 per km	7	232.71551981566188	-451.43103963132376	0.06293017559033842	0.4921329133857125
+3	resistance	tmp_dc_cyr (reverse Ricker, shape 1) + dor_pc_pva (inverse Ricker, shape 7); resistance 1-93.5 per km	10	223.69840294593376	-427.39680589186753	24.097163915046565	2.972452109956058e-06
+4	resistance	tmp_dc_cyr (reverse-inverse Ricker, shape 4); resistance 1-19.7 per km	7	212.67669587278377	-411.3533917455675	40.140578061346616	9.75734697602616e-10
+5	reference	SAMC flow alone (-0.157/km)	5	209.48094516729495	-408.9618903345899	42.5320794723242	2.951371069665225e-10
+6	samc	flow -0.176/km (upstream easier)	5	209.3616627926255	-408.723325585251	42.770644221663076	2.619510470744901e-10
+7	samc	dor_pc_pva (reverse-inverse monomolecular, shape 14, directional: towards higher values harder) + flow -0.156/km (upstream easier)	9	209.23805663794604	-400.4761132758921	51.017856531022005	4.239950049504047e-12
+8	samc	tmp_dc_cyr (reverse-inverse Ricker, shape 1, directional: mixed) + flow -0.039/km (upstream easier)	9	207.12681580744407	-396.25363161488815	55.240338192025945	5.13405477206442e-13
+9	samc	run_mm_cyr (reverse monomolecular, shape 1, symmetric) + ele_mt_cav (linear, symmetric) + flow -0.162/km (upstream easier)	13	209.33949793059833	-392.67899586119665	58.81497394571744	8.594848112244155e-14
+10	reference	distance only (km; standard model)	4	197.2531495509465	-386.5062991018929	64.98767070502117	3.9251308190753586e-15
+11	reference	SAMC distance alone	4	195.87075493128063	-383.74150986256126	67.75245994435284	9.851169249853109e-16
+12	reference	population effects only (null)	3	182.1901259130407	-358.3802518260814	93.11371798083269	3.0645066698747908e-21

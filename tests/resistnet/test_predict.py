@@ -14,8 +14,10 @@ DATA = os.path.join(os.path.dirname(resistnet.__file__), "data")
 VARIABLES = ["run_mm_cyr", "tmp_dc_cyr", "sgr_dk_rav"]
 
 
-@pytest.fixture(scope="module")
-def net(tmp_path_factory):
+@pytest.fixture(scope="module", params=["km", "reach"])
+def net(request, tmp_path_factory):
+    # Both formulations of the standard model: resistance per km (default)
+    # and per reach (earlier versions)
     out = tmp_path_factory.mktemp("predict")
     return ResistanceNetwork(
         network=os.path.join(DATA, "nmt.network"), shapefile=None,
@@ -23,14 +25,17 @@ def net(tmp_path_factory):
         variables=VARIABLES,
         inmat=os.path.join(DATA, "nmt.popGenDistMat.txt"),
         agg_opts={v: "ARITH" for v in VARIABLES}, reachid_col="HYRIV_ID",
-        out=str(out / "net"), verbose=False)
+        out=str(out / "net"), verbose=False, units=request.param)
 
 
-def model(spec):
-    """spec: {variable: (weight, transformation, shape)}"""
+def model(spec, net=None, max_resistance=37.5):
+    """spec: {variable: (weight, transformation, shape)}; per km, with the
+    maximum resistance per km after the variables"""
     ind = []
     for v in VARIABLES:
         ind += [1, *spec[v]] if v in spec else [0, 1.0, 0, 1]
+    if net is not None and net.units == "km":
+        ind.append(max_resistance)
     return ind
 
 
@@ -47,13 +52,29 @@ def raw_values(net):
 def test_spec_reproduces_resistances(net, t, s):
     # The saved specification, applied to the training edges' raw values,
     # gives exactly the fitted model's edge resistances
-    ind = model({"run_mm_cyr": (0.7, t, s), "sgr_dk_rav": (0.3, 5, 9)})
+    ind = model({"run_mm_cyr": (0.7, t, s), "sgr_dk_rav": (0.3, 5, 9)},
+                net)
     spec = net.model_spec(ind)
     assert spec["type"] == "standard"
-    expected = net._build_composite_surface(ind).to_numpy(dtype=float)
+    assert spec["units"] == net.units
+    expected = net.resistance_surface(ind).to_numpy(dtype=float)
     np.testing.assert_allclose(
         pr.standard_resistance(raw_values(net), spec), expected,
         rtol=1e-12, atol=1e-15)
+    if net.units == "km":
+        # From 1 (distance alone) to the maximum resistance per km
+        assert spec["max_resistance"] == 37.5
+        assert expected.min() >= 1.0 and expected.max() <= 37.5
+        # Times the reaches' lengths: the fitted model's reach resistances
+        reaches = raw_values(net)
+        reaches.insert(0, "HYRIV_ID", reaches.index.to_numpy())
+        reaches["LENGTH_KM"] = net._lengths
+        table, _, _ = pr.predict_reaches(
+            reaches, {"reachid_col": "HYRIV_ID", "models": [spec]})
+        np.testing.assert_allclose(
+            table["reach_resistance"],
+            net.edge_resistances(ind).to_numpy(dtype=float),
+            rtol=1e-12, atol=1e-15)
 
 
 def test_spec_file_and_reach_prediction(net, tmp_path):
@@ -77,7 +98,7 @@ def test_spec_file_and_reach_prediction(net, tmp_path):
     ind = runner._row_individual(runner.bests.getHOF().iloc[0])
     np.testing.assert_allclose(
         table["resistance"],
-        net._build_composite_surface(ind).to_numpy(dtype=float),
+        net.resistance_surface(ind).to_numpy(dtype=float),
         rtol=1e-12, atol=1e-15)
     assert len(spec["models"]) == len(hof)
     # Out-of-range reaches get the value at the edge of the range

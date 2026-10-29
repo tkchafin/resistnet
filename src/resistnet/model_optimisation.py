@@ -20,6 +20,7 @@ from resistnet.resistance_network import ResistanceNetworkWorker
 from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.samc_network import ResistanceNetworkSAMCWorker
 from resistnet.samc_network import MIN_FLOW
+from resistnet.report import write_pairwise_table
 from resistnet.hall_of_fame import HallOfFame
 
 
@@ -79,6 +80,12 @@ class ModelRunner:
 
         self.num_attributes = getattr(
             resistance_network, "num_attributes", 4
+        )
+        # Standard model with resistances per km: each model also has a
+        # maximum resistance per km (after the variables' attributes)
+        self.per_km = (
+            self.num_attributes == 4
+            and getattr(resistance_network, "units", "reach") == "km"
         )
 
         random.seed(self.seed)
@@ -146,6 +153,12 @@ class ModelRunner:
             self.bests.effective_direction = (
                 self.resistance_network.effective_directions(
                     self._row_individual(best)))
+        # Shares of the best model's resistance per km due to distance and
+        # to each variable (standard model per km)
+        elif self.per_km:
+            best = self.bests.getHOF().iloc[0]
+            self.bests.contribution = self.resistance_network.contributions(
+                self._row_individual(best))
 
         # Printing and writing the results
         if verbose:
@@ -179,9 +192,12 @@ class ModelRunner:
                 f"{out}.FitnessLog.tsv", sep="\t", header=True, index=False
             )
 
-        # Get results for best models and model-averaged (only written out)
+        # Get results for best models and model-averaged (only written out),
+        # and every pair of sites' genetic and model distances
         if out:
             self.model_average(out, plot)
+            if self.resistance_network._gendist is not None:
+                write_pairwise_table(self.resistance_network, out)
 
         # Reference models
         if null is not None and verbose:
@@ -207,6 +223,8 @@ class ModelRunner:
         if self.num_attributes == 5:
             individual.append(row["max_resistance"])
             individual.append(row.get("flow", 0.0))
+        elif self.per_km:
+            individual.append(row["max_resistance"])
         return individual
 
     def write_model_specs(self, out):
@@ -420,6 +438,12 @@ class ModelRunner:
             "min_weight": self.min_weight,
             "max_shape": self.max_shape
         }
+        if worker_type == "base":
+            net = self.resistance_network
+            worker_args['units'] = getattr(net, "units", "reach")
+            worker_args['lengths'] = getattr(net, "_lengths", None)
+            worker_args['max_resist'] = getattr(net, "max_resist", 1000)
+            worker_args['fix_resist'] = getattr(net, "fix_resist", None)
         if worker_type == "samc":
             worker_args['adj'] = self.resistance_network._adj
             worker_args['origin'] = self.resistance_network._origin
@@ -761,10 +785,13 @@ class ModelRunnerTPE(ModelRunner):
                     [fixed['shape']]
                 )
             elif not self.fixShape:
-                self.space[f"{var_name}_shape"] = hp.quniform(
+                # Log-uniform: on the 0-10 scale, small shapes give the
+                # most different curves (large ones are all close to
+                # linear), so they are drawn more often
+                self.space[f"{var_name}_shape"] = hp.qloguniform(
                     f"{var_name}_shape",
-                    1,
-                    self.max_shape,
+                    0.0,
+                    np.log(max(float(self.max_shape), 1.0)),
                     1.0
                 )
             else:
@@ -780,6 +807,19 @@ class ModelRunnerTPE(ModelRunner):
                 self.space[f"{var_name}_asym"] = hp.choice(
                     f"{var_name}_asym",
                     [0] if self.fixAsym else [0, 1]
+                )
+
+        if self.per_km:
+            # Maximum resistance per km K (standard model, units "km"),
+            # log-uniform from 1 (distance alone), as SAMC's
+            net = self.resistance_network
+            if net.fix_resist is not None:
+                self.space["max_resistance"] = hp.choice(
+                    "max_resistance", [float(net.fix_resist)]
+                )
+            else:
+                self.space["max_resistance"] = hp.loguniform(
+                    "max_resistance", 0.0, np.log(net.max_resist)
                 )
 
         if self.num_attributes == 5:
@@ -1045,6 +1085,8 @@ class ModelRunnerTPE(ModelRunner):
             individual.append(float(model["max_resistance"]))
             individual.append(
                 float(model["flow_dir"]) * float(model["flow_rate"]))
+        elif self.per_km:
+            individual.append(float(model["max_resistance"]))
         return individual
 
     def process_hall_of_fame(self, trials_list):
@@ -1096,6 +1138,8 @@ class ModelRunnerTPE(ModelRunner):
 
             if num_attributes == 5:
                 individual_columns.extend(["max_resistance", "flow"])
+            elif self.per_km:
+                individual_columns.append("max_resistance")
             res_columns = ['loglik', 'r2m', 'aic', 'delta_aic_null']
             columns = ['fitness'] + individual_columns + res_columns
 

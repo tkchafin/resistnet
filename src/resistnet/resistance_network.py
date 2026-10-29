@@ -1,8 +1,9 @@
+import contextlib
+import io
 import os
 import sys
 from functools import partial
 import pickle
-import traceback
 import itertools
 import random
 import pandas as pd
@@ -16,6 +17,7 @@ import momepy
 import networkx as nx
 
 import resistnet.utils as utils
+from autostreamtree import network as astnet
 import resistnet.aggregators as agg
 import resistnet.transform as trans
 import resistnet.resist_dist as rd
@@ -50,7 +52,8 @@ class ResistanceNetwork:
                  pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
                  origin=None, out="out", verbose=True,
-                 minimize=False):
+                 minimize=False, units="km", max_resist=1000,
+                 fix_resist=None):
         """
         Constructs all the necessary attributes for the ResistanceNetwork
         object.
@@ -72,7 +75,19 @@ class ResistanceNetwork:
             out (str): Prefix for output files. Defaults to "out".
             verbose (bool): Flag to enable verbose output. Defaults to True.
             minimize (bool): Flag to minimize subgraph. Defaults to False.
+            units (str): "km" (default): each reach's resistance is a
+                         resistance per km times its length (see
+                         resistance_surface()); "reach": each reach costs
+                         its composite value, whatever its length (the
+                         formulation of earlier versions).
+            max_resist (float): Upper limit when optimising the maximum
+                                resistance per km (units "km"). Defaults to
+                                1000, as ResistanceGA's max.cont.
+            fix_resist (float, optional): Fix that maximum resistance
+                                          instead of optimising it.
         """
+        if units not in ("km", "reach"):
+            raise ValueError(f"units must be 'km' or 'reach', not {units!r}")
         self.network = network
         self.shapefile = shapefile
         self.coords = coords
@@ -88,6 +103,9 @@ class ResistanceNetwork:
         self.fitmetric = "aic"
         self.infer_origin = infer_origin
         self.origin = origin
+        self.units = units
+        self.max_resist = max_resist
+        self.fix_resist = fix_resist
 
         # Additional attributes for internal use
         self.minimized_subgraph = None
@@ -102,6 +120,7 @@ class ResistanceNetwork:
         self._predictors = None
         self._predictor_range = None
         self._edge_order = None
+        self._lengths = None
         self._gendist = None
 
         self.num_attributes = 4
@@ -139,10 +158,16 @@ class ResistanceNetwork:
         grouped = df.groupby('EDGE_ID')
         for v in self.variables:
             agg_funs[v] = partial(agg.aggregateDist, method=self.agg_opts[v])
+        lengths = (grouped[self.length_col].sum()
+                   if self.length_col in df.columns else None)
         df = grouped.agg(agg_funs)
 
-        # Save the order of edges
+        # Save the order of edges, and their lengths (summed, as for the
+        # distance_only model)
         self._edge_order = df.index
+        if lengths is not None:
+            self._lengths = lengths.loc[self._edge_order].to_numpy(
+                dtype=float)
 
         # Rescale variables to a specified range (0 to 10), keeping each
         # variable's range in this network (see model_spec())
@@ -243,11 +268,10 @@ class ResistanceNetwork:
                 print("Building network from shapefile:", self.shapefile)
                 print("WARNING: This can take a while with very large files!")
 
-            # Read the shapefile and construct the network
-            rivers = pyogrio.read_dataframe(self.shapefile)
-            self._G = momepy.gdf_to_nx(
-                rivers, approach="primal", directed=False, multigraph=False
-            )
+            # Read the shapefile and construct the network (with
+            # autoStreamTree, which also splits multi-part reaches)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self._G = astnet.read_network(None, self.shapefile)
 
     def snap_points(self, points, graph, out=None):
         """
@@ -541,10 +565,20 @@ class ResistanceNetwork:
         edgeDF['EDGE_ID'] = edgeDF[self.reachid_col].astype(int)
         geoDF = edgeDF.merge(resistance_values, on="EDGE_ID")
 
-        # Plotting the resistance network
+        # Plotting the resistance network; resistances per km are skewed
+        # (from 1 up to the maximum), so they are coloured on a log scale
         sns.set(style="ticks")
-        geoDF.plot(column="Resistance", cmap="RdYlGn_r", legend=True)
-        plt.title("Stream network colored by resistance")
+        per_km = getattr(self, "units", "reach") == "km"
+        values = geoDF["Resistance"]
+        norm = None
+        if per_km and (values > 0).all() and values.max() > values.min():
+            from matplotlib.colors import LogNorm
+            norm = LogNorm(vmin=values.min(), vmax=values.max())
+        geoDF.plot(column="Resistance", cmap="RdYlGn_r", legend=True,
+                   norm=norm)
+        plt.title("Stream network coloured by resistance per km (log scale)"
+                  if norm is not None else
+                  "Stream network colored by resistance")
         plt.savefig(f"{oname}.streamsByResistance.pdf")
         plt.clf()
         plt.close()
@@ -628,10 +662,10 @@ class ResistanceNetwork:
         # First pass: Extract full subgraph from master shapefile graph
         if self.verbose:
             print("\nExtracting full subgraph...")
-        K = self._path_subgraph(
+        K = astnet.path_subgraph(
             self._G,
             points,
-            self._extract_full_subgraph,
+            astnet.extract_full_subgraph,
             self.reachid_col,
             self.length_col
         )
@@ -647,10 +681,10 @@ class ResistanceNetwork:
         # Second pass: Simplify subgraph by merging redundant paths
         if self.verbose:
             print("\nMerging redundant paths...\n")
-        Kmin = self._path_subgraph(
+        Kmin = astnet.path_subgraph(
             K,
             points,
-            self._extract_minimal_subgraph,
+            astnet.extract_minimal_subgraph,
             self.reachid_col,
             self.length_col
         )
@@ -760,13 +794,6 @@ class ResistanceNetwork:
         # Map edge IDs to indices
         edge_to_index = {e: idx for idx, e in enumerate(self._edge_order)}
 
-        def dijkstra_weight(left, right, attributes):
-            # Calculates weights for Dijkstra's shortest path algorithm by
-            # inverting the edge length with a small constant to avoid
-            # division by zero.
-            epsilon = 1e-9
-            return 1 / (attributes[self.length_col] + epsilon)
-
         # Compute the incidence matrix
         index = 0
         for ia, ib in itertools.combinations(
@@ -776,7 +803,7 @@ class ResistanceNetwork:
                 self._K,
                 list(self._points_snapped.keys())[ia],
                 list(self._points_snapped.keys())[ib],
-                weight=dijkstra_weight
+                weight=astnet.river_length(self.length_col)
             )
             # NOTE: several reaches can share an ID (e.g., segments); an ID
             # is on the path if any of its reaches are
@@ -791,59 +818,6 @@ class ResistanceNetwork:
         if out:
             ofh = f"{out}.incidenceMatrix.txt"
             utils.write_numpy_matrix(inc, ofh)
-
-    @staticmethod
-    def _path_subgraph(graph, nodes, method, id_col, len_col):
-        """
-        Finds and extracts paths between points from a graph.
-
-        This method utilizes Dijkstra's shortest path algorithm to find the
-        shortest paths between a set of nodes in a graph. It builds a subgraph
-        based on these paths using a specified method.
-
-        Args:
-            graph (NetworkX graph): The graph from which paths are extracted.
-            nodes (dict): A dictionary of nodes for which paths are to be found
-            method (function): The method used to process the paths and build
-                               the subgraph.
-            id_col (str): The column name for edge IDs.
-            len_col (str): The column name for edge lengths.
-
-        Returns:
-            NetworkX graph: A subgraph containing the paths between the
-                            specified nodes.
-        """
-
-        k = nx.Graph()
-
-        def dijkstra_weight(left, right, attributes):
-            epsilon = 1e-9
-            return 1 / (attributes[len_col] + epsilon)
-
-        # Process each pair of points
-        p1 = list(nodes.values())[0]
-        for p2 in list(nodes.values())[1:]:
-            try:
-                # Find shortest path between two points
-                path = nx.bidirectional_dijkstra(
-                    graph, p1, p2, weight=dijkstra_weight
-                )
-
-                # Traverse the nodes in the path to build minimal set of edges
-                method(k, graph, nodes.values(), id_col, len_col, path[1])
-
-                # Ensure the nodes are in the new subgraph
-                if p1 not in k:
-                    k.add_node(p1)
-                if p2 not in k:
-                    k.add_node(p2)
-
-            except Exception as e:
-                traceback.print_exc()
-                print(f"Something unexpected happened: {e}")
-                sys.exit(1)
-
-        return k
 
     @staticmethod
     def _check_format_inmat(mat, points, agg_method):
@@ -907,97 +881,6 @@ class ResistanceNetwork:
         else:
             return None
 
-    @staticmethod
-    def _extract_full_subgraph(
-        subgraph, graph, nodelist, id_col, len_col, path
-    ):
-        """
-        Extracts the full subgraph from nodes based on the provided path.
-
-        This method traverses the path between nodes and adds the corresponding
-        nodes and edges to the subgraph. It ensures that all nodes and edges
-        present in the path are included in the subgraph.
-
-        Args:
-            subgraph (NetworkX graph): The subgraph to which nodes and edges
-                                       will be added.
-            graph (NetworkX graph): The original graph from which data will be
-                                    extracted.
-            nodelist (list): A list of nodes involved in the path.
-            id_col (str): The column name for edge IDs. Not used in this method
-            len_col (str): The column name for edge lengths. Not used in this
-                           method.
-            path (list): The path of nodes to be included in the subgraph.
-        """
-
-        # Iterate through pairs of nodes in the path
-        for first, second in zip(path, path[1:]):
-            # Add nodes to the subgraph if they are not already present
-            if first not in subgraph:
-                subgraph.add_node(first)
-            if second not in subgraph:
-                subgraph.add_node(second)
-
-            # Retrieve edge data and add the edge to the subgraph
-            dat = graph.get_edge_data(first, second)
-            subgraph.add_edge(first, second, **dat)
-
-    @staticmethod
-    def _extract_minimal_subgraph(
-        subgraph, graph, nodelist, id_col, len_col, path
-    ):
-        """
-        Extracts a simplified subgraph from paths, keeping only terminal and
-        junction nodes.
-
-        This method processes a path and constructs a minimal subgraph from it.
-        The subgraph includes only the terminal nodes (site nodes) and junction
-        nodes. It aggregates edge attributes along the path between these nodes
-
-        Args:
-            subgraph (NetworkX graph): The subgraph to which nodes and edges
-                                       will be added.
-            graph (NetworkX graph): The original graph from which data will be
-                                    extracted.
-            nodelist (list): A list of terminal nodes (site nodes).
-            id_col (str): The column name for edge IDs.
-            len_col (str): The column name for edge lengths.
-            path (list): The path of nodes to be included in the subgraph.
-        """
-
-        # Initialize current edge data
-        curr_edge = {id_col: list(), len_col: 0.0}
-        curr_start = None
-
-        # Iterate through pairs of nodes in the path
-        for first, second in zip(path, path[1:]):
-            if not curr_start:
-                curr_start = first
-                if first in nodelist or len(graph[first]) > 2:
-                    subgraph.add_node(first)
-
-            # Add path attributes to current edge
-            dat = graph.get_edge_data(first, second)
-
-            # Determine the extension for the current edge's id_col
-            if not isinstance(dat[id_col], list):
-                extension = [dat[id_col]]
-            else:
-                extension = dat[id_col]
-
-            # Extend the current edge's id_col with the determined extension
-            curr_edge[id_col].extend(extension)
-            curr_edge[len_col] += float(dat[len_col])
-
-            # Check if second node is a STOP node (in nodelist or a junction)
-            if second in nodelist or len(graph[second]) > 2:
-                subgraph.add_node(second)
-                subgraph.add_edge(curr_start, second, **curr_edge)
-                curr_edge = {id_col: list(), len_col: 0}
-                curr_start = second
-            else:
-                continue  # Continue building current edge
-
     def transform(self, dat, transformation, shape):
         """
         Applies a specified transformation to the data.
@@ -1036,7 +919,7 @@ class ResistanceNetwork:
             tuple: A tuple containing the fitness value and the results of the
                    evaluation.
         """
-        multi = self._build_composite_surface(individual)
+        multi = self.edge_resistances(individual)
         if multi is None:
             return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
         r, res = rd.parsePairwise(
@@ -1059,9 +942,12 @@ class ResistanceNetwork:
         be added to k in the AIC (as ResistanceGA's default k.value = 2).
 
         Each selected variable has a transformation and shape (unless
-        fixShape). The composite surface is rescaled to 0-1, so only the
-        relative weights matter: m selected variables have m - 1 weights
-        (unless fixWeight).
+        fixShape). Only the relative weights matter (the composite surface
+        is a weighted mean, or rescaled to 0-1 with units "reach"), so m
+        selected variables have m - 1 weights (unless fixWeight). With
+        units "km", the maximum resistance per km is one more (if it was
+        optimised): 3 per variable in all, as ResistanceGA's equation,
+        shape and maximum for each surface.
 
         Args:
             individual (list): Model specification, as for evaluate().
@@ -1069,15 +955,39 @@ class ResistanceNetwork:
         Returns:
             int: The number of surface parameters.
         """
+        n_var = len(self._predictors.columns) * self.num_attributes
         n_sel = sum(
-            1 for s in individual[0::self.num_attributes] if s == 1
+            1 for s in individual[0:n_var:self.num_attributes] if s == 1
         )
         k = 0
         if not getattr(self, "fixShape", False):
             k += 2 * n_sel
         if not getattr(self, "fixWeight", False):
             k += max(n_sel - 1, 0)
+        if (getattr(self, "units", "reach") == "km" and n_sel
+                and len(individual) > n_var and self.fix_resist is None):
+            k += 1
         return k
+
+    def max_resistance(self, individual):
+        """
+        The maximum resistance per km K of a model (units "km"): the value
+        following the variable attributes in the individual if present
+        (when it is optimised), otherwise fix_resist, or 100 (capped at
+        max_resist).
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            float: The maximum resistance per km.
+        """
+        n_var = len(self._predictors.columns) * self.num_attributes
+        if len(individual) > n_var:
+            return float(individual[n_var])
+        if self.fix_resist is not None:
+            return float(self.fix_resist)
+        return min(100.0, float(self.max_resist))
 
     def model_output(self, model):
         """
@@ -1094,19 +1004,108 @@ class ResistanceNetwork:
 
         Returns:
             tuple: A tuple containing the effective resistance matrix and the
-                   multi-surface representation for the model.
+                   resistance of each reach (per km with units "km"; see
+                   resistance_surface()).
         """
-        multi = self._build_composite_surface(model)
+        multi = self.edge_resistances(model)
         if multi is not None:
             r = rd.effectiveResistanceMatrix(
                 self._points_snapped, self._inc, multi
             )
-            return r, multi
+            return r, self.resistance_surface(model)
         return None, None
+
+    def resistance_surface(self, individual):
+        """
+        The resistance surface of a model: with units "km", the resistance
+        per km of each reach, from 1 (distance alone) to the maximum
+        resistance K,
+
+            1 + (K - 1) * composite
+
+        as ResistanceGA's continuous surfaces (1 + max * f(x), summed over
+        surfaces; see _build_composite_surface()). With units "reach", the
+        composite itself (0-1).
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            pd.Series: Resistance of each reach (None if no variable is
+                       selected).
+        """
+        multi = self._build_composite_surface(individual)
+        if multi is None or getattr(self, "units", "reach") != "km":
+            return multi
+        return 1.0 + (self.max_resistance(individual) - 1.0) * multi
+
+    def contributions(self, individual):
+        """
+        The share of the resistance per km due to distance (the baseline
+        of 1) and to each selected variable, for each reach, averaged over
+        the network's km (units "km"), as ResistanceGA's p.contribution
+        (each surface's share of the composite, averaged over cells, which
+        all have the same size). The shares sum to 1.
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            dict: {"distance": share, variable: share, ...}, or None if no
+                  variable is selected or units are "reach".
+        """
+        surface = self.resistance_surface(individual)
+        if surface is None or getattr(self, "units", "reach") != "km":
+            return None
+        n_att = self.num_attributes
+        rho = surface.to_numpy(dtype=float)
+        length = self._lengths / self._lengths.sum()
+        parts = {}
+        for i, v in enumerate(self._predictors.columns):
+            if individual[i * n_att] == 1:
+                f = self.transform(self._predictors[v],
+                                   individual[i * n_att + 2],
+                                   individual[i * n_att + 3])
+                parts[v] = (individual[i * n_att + 1]
+                            * f.to_numpy(dtype=float))
+        total = sum(individual[i * n_att + 1]
+                    for i, v in enumerate(self._predictors.columns)
+                    if individual[i * n_att] == 1)
+        scale = ((self.max_resistance(individual) - 1.0) / total
+                 if total > 0 else 0.0)
+        shares = {"distance": float(np.sum(length / rho))}
+        for v, x in parts.items():
+            shares[v] = float(np.sum(length * scale * x / rho))
+        return shares
+
+    def edge_resistances(self, individual):
+        """
+        The resistance of each reach, summed along the paths between sites:
+        with units "km", its resistance per km times its length (as
+        ResistanceGA's geoCorrection: cost = resistance x distance between
+        cell centres), so that a model with K = 1 is the distance_only
+        model; with units "reach", the composite itself.
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            pd.Series: Resistance of each reach (None if no variable is
+                       selected).
+        """
+        surface = self.resistance_surface(individual)
+        if surface is None or getattr(self, "units", "reach") != "km":
+            return surface
+        return surface * self._lengths
 
     def _build_composite_surface(self, config):
         """
-        Builds a multi-surface representation from a model configuration.
+        Builds the composite surface of a model's variables, each
+        transformed and rescaled to 0-1 (see transform()): with units "km",
+        their weighted mean, so that 1 + (K - 1) * composite equals
+        ResistanceGA's sum of surfaces (1 + max_i * f_i(x)), divided by its
+        minimum, with max_i proportional to (K - 1) * weight_i; with units
+        "reach", their weighted sum rescaled to 0-1.
 
         Args:
             config (list): A list representing an individual or model in the
@@ -1114,9 +1113,11 @@ class ResistanceNetwork:
                         information for variables.
 
         Returns:
-            ndarray: The multi-surface representation for the configuration.
+            pd.Series: The composite surface (None if no variable is
+                       selected).
         """
         multi = None
+        total = 0.0
         first = True
         for i, variable in enumerate(self._predictors.columns):
             if config[0::self.num_attributes][i] == 1:
@@ -1125,14 +1126,19 @@ class ResistanceNetwork:
                     config[2::self.num_attributes][i],
                     config[3::self.num_attributes][i]
                 )
+                weight = config[1::self.num_attributes][i]
+                total += weight
                 if first:
-                    multi = var * config[1::self.num_attributes][i]
+                    multi = var * weight
                     first = False
                 else:
-                    multi += var * config[1::self.num_attributes][i]
-        if not first:
-            multi = trans.rescaleCols(multi, 0, 1)
-        return multi
+                    multi += var * weight
+        if first:
+            return None
+        if getattr(self, "units", "reach") == "km":
+            # All weights 0: no variable effect (distance alone)
+            return multi / total if total > 0 else multi * 0.0
+        return trans.rescaleCols(multi, 0, 1)
 
     def model_spec(self, individual):
         """
@@ -1140,7 +1146,8 @@ class ResistanceNetwork:
         of another network (see resistnet.predict). For each selected
         variable: its range in this network (for the 0-10 rescaling), its
         transformation, shape and weight, and its range after the
-        transformation (for the 0-1 rescaling); and the range of the
+        transformation (for the 0-1 rescaling); with units "km", the
+        maximum resistance per km; with units "reach", the range of the
         composite surface (for its 0-1 rescaling).
 
         Args:
@@ -1150,7 +1157,8 @@ class ResistanceNetwork:
             dict: The model specification (JSON-serialisable).
         """
         n_att = self.num_attributes
-        spec = {"type": "standard", "variables": {}}
+        units = getattr(self, "units", "reach")
+        spec = {"type": "standard", "units": units, "variables": {}}
         multi = None
         for i, v in enumerate(self._predictors.columns):
             if individual[i * n_att] != 1:
@@ -1162,8 +1170,11 @@ class ResistanceNetwork:
             x = self._spec_values(v, var) * var["weight"]
             multi = x if multi is None else multi + x
         if multi is not None:
-            spec["composite_min"] = float(multi.min())
-            spec["composite_max"] = float(multi.max())
+            if units == "km":
+                spec["max_resistance"] = self.max_resistance(individual)
+            else:
+                spec["composite_min"] = float(multi.min())
+                spec["composite_max"] = float(multi.max())
         return spec
 
     def _variable_spec(self, variable, transformation, shape):
@@ -1215,12 +1226,17 @@ class ResistanceNetworkWorker(ResistanceNetwork):
         predictors (DataFrame): Predictor variables.
         edge_order (list): Order of edges.
         gendist (numpy.ndarray): Genetic distance matrix.
+        units (str): "km" or "reach" (see ResistanceNetwork).
+        lengths (numpy.ndarray): Length of each edge, in edge order.
+        max_resist (float): Upper limit of the maximum resistance per km.
+        fix_resist (float, optional): Fixed maximum resistance per km.
     """
     def __init__(self, network, pop_agg, reachid_col, length_col,
                  variables, agg_opts, fitmetric, fixWeight,
                  fixShape, min_weight, max_shape, inc, point_coords,
                  points_names, points_snapped, points_labels, predictors,
-                 edge_order, gendist):
+                 edge_order, gendist, units="reach", lengths=None,
+                 max_resist=1000, fix_resist=None):
 
         self.network = network
         self.pop_agg = pop_agg
@@ -1247,6 +1263,10 @@ class ResistanceNetworkWorker(ResistanceNetwork):
         self._predictors = predictors
         self._edge_order = edge_order
         self._gendist = gendist
+        self.units = units
+        self._lengths = lengths
+        self.max_resist = max_resist
+        self.fix_resist = fix_resist
 
         self.num_attributes = 4
 
@@ -1263,9 +1283,15 @@ class SimResistanceNetwork(ResistanceNetwork):
         verbose (bool, optional): Flag to enable verbose output. Defaults to
                                   False.
         seed (int, optional): Random seed for reproducibility.
+        units (str, optional): "km" (default) or "reach", as for
+                               ResistanceNetwork.
+        max_resistance (float, optional): Maximum resistance per km K
+                                          (units "km"). Defaults to 100.
     """
     def __init__(self, network, reachid_col, length_col, verbose=False,
-                 seed=None):
+                 seed=None, units="km", max_resistance=100.0):
+        if units not in ("km", "reach"):
+            raise ValueError(f"units must be 'km' or 'reach', not {units!r}")
         self.network = network
         self.reachid_col = reachid_col
         self.length_col = length_col
@@ -1273,6 +1299,10 @@ class SimResistanceNetwork(ResistanceNetwork):
         self.minimize = False
         self.variables = None
         self.agg_opts = None
+        self.units = units
+        self.sim_max_resistance = float(max_resistance)
+        self.max_resist = self.sim_max_resistance
+        self.fix_resist = None
         self.num_attributes = 4
         self._inc = None
         self._G = None
@@ -1284,6 +1314,7 @@ class SimResistanceNetwork(ResistanceNetwork):
         self._predictors = None
         self._predictor_range = None
         self._edge_order = None
+        self._lengths = None
         self._gendist = None
 
         if seed is not None:
@@ -1335,6 +1366,7 @@ class SimResistanceNetwork(ResistanceNetwork):
         self._predictors = None
         self._predictor_range = None
         self._edge_order = None
+        self._lengths = None
         self._gendist = None
 
     def simulate_resistance(self, vars):
@@ -1342,9 +1374,11 @@ class SimResistanceNetwork(ResistanceNetwork):
         Simulates resistance based on various variables and their
         transformations.
 
-        The composite surface is built exactly as when fitting models
-        (initialize_predictors and _build_composite_surface), so that
-        simulated models can be recovered by runResistnet.py.
+        The reach resistances are built exactly as when fitting models
+        (initialize_predictors and edge_resistances), so that simulated
+        models can be recovered by runResistnet.py: with units "km", the
+        resistance per km (with maximum sim_max_resistance) times the
+        reach length.
 
         Args:
             vars (DataFrame): A DataFrame containing variables along with their
@@ -1353,8 +1387,8 @@ class SimResistanceNetwork(ResistanceNetwork):
                               variable (AGG; default ARITH).
 
         Returns:
-            pd.Series: The resulting composite resistance surface, in the
-                       order of self._edge_order.
+            pd.Series: The resistance of each reach, in the order of
+                       self._edge_order.
         """
         self.variables = list(vars['VAR'])
         if 'AGG' in vars.columns:
@@ -1371,7 +1405,9 @@ class SimResistanceNetwork(ResistanceNetwork):
                 1, spec['WEIGHT'].item(), spec['TRANSFORM'].item(),
                 spec['SHAPE'].item()
             ])
-        return self._build_composite_surface(model)
+        if self.units == "km":
+            model.append(self.sim_max_resistance)
+        return self.edge_resistances(model)
 
     def simulated_distances(self, vars, base):
         """

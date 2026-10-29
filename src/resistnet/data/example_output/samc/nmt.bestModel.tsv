@@ -1,8 +1,7 @@
 Variable	Weight	Shape	Transformation	Directional	Effective_direction	Value
 run_mm_cyr	-	-	-	-	-	-
 tmp_dc_cyr	-	-	-	-	-	-
-sgr_dk_rav	0.6362158555335562	72.0	7.0	0.0	symmetric	-
+sgr_dk_rav	-	-	-	-	-	-
 ele_mt_cav	-	-	-	-	-	-
 dor_pc_pva	-	-	-	-	-	-
-max_resistance	-	-	-	-	-	435.38190010495936
-flow	-	-	-	-	-	-0.22154645990513835
+flow	-	-	-	-	-	-0.17590874387848726

@@ -59,6 +59,10 @@ class HallOfFame:
         # SAMC: effective direction of the best model's directional
         # variables (share of moves towards higher values that are harder)
         self.effective_direction = None
+        # Standard model per km: the best model's share of the resistance
+        # per km due to distance and to each variable (see
+        # ResistanceNetwork.contributions())
+        self.contribution = None
 
         if init_pop is not None:
             self.check_population(init_pop)
@@ -400,18 +404,27 @@ class HallOfFame:
                 row["Directional"] = best_model[f"{var}_asym"]
                 row["Effective_direction"] = self._direction_label(
                     var, best_model[f"{var}_asym"])
+            if self.contribution is not None:
+                row["Contribution"] = self.contribution.get(var, np.nan)
             if not selected:
                 row = {k: (v if k == "Variable" else np.nan)
                        for k, v in row.items()}
             best_model_variables.append(row)
 
-        # Model-level parameters (SAMC only), as rows with a Value: the
-        # maximum resistance (if any variable is selected) and the flow rate
-        if "flow" in best_model.index:
+        # Model-level parameters, as rows with a Value: the maximum
+        # resistance (SAMC, and the standard model per km; if any variable
+        # is selected) and the flow rate (SAMC)
+        if "max_resistance" in best_model.index:
             if any(float(best_model[v]) == 1 for v in self.variables):
                 best_model_variables.append({
                     "Variable": "max_resistance",
                     "Value": best_model["max_resistance"]})
+        # Distance's share of the resistance per km (standard model per km)
+        if self.contribution is not None:
+            best_model_variables.append({
+                "Variable": "distance",
+                "Contribution": self.contribution["distance"]})
+        if "flow" in best_model.index:
             best_model_variables.append({
                 "Variable": "flow", "Value": best_model["flow"]})
 

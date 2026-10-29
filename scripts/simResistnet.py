@@ -27,7 +27,9 @@ def main():
             reachid_col=params.id_col,
             length_col=params.length_col,
             verbose=True,
-            seed=params.seed
+            seed=params.seed,
+            units="reach" if params.per_reach else "km",
+            max_resistance=params.max_resistance
         )
 
     # Step 2: Write simulated outputs
@@ -47,7 +49,7 @@ class ParseArgs:
                 sys.argv[1:], 'ho:i:n:s:r:l:c:z:',
                 ["help", "out=", "in=", "network=", "reps=", "samples=",
                  "len_col=", "id_col=", "seed=", "samc", "ne=",
-                 "max_resistance=", "flow=", "infer_origin="]
+                 "max_resistance=", "flow=", "infer_origin=", "per_reach"]
             )
         except getopt.GetoptError as err:
             print(err)
@@ -69,6 +71,7 @@ class ParseArgs:
         self.max_resistance = 100.0
         self.flow = 0.0
         self.infer_origin = "NEXT_DOWN"
+        self.per_reach = False
 
         # First pass to see if help menu was called
         for o, _ in options:
@@ -107,6 +110,8 @@ class ParseArgs:
                 self.flow = float(arg)
             elif opt == "infer_origin":
                 self.infer_origin = arg
+            elif opt == "per_reach":
+                self.per_reach = True
             else:
                 assert False, f"Unhandled option {opt!r}"
 
@@ -133,13 +138,17 @@ Arguments:
     -c, --id_col: Reach ID attribute (def=EDGE_ID)
     -o, --out: Output file name (default=sim)
     -z, --seed: Random seed (optional)
+    --max_resistance: Maximum resistance: per km (standard model; each
+        reach's resistance is 1 + (K - 1) x composite per km, times its
+        length) or of the composite (SAMC) (default=100)
+    --per_reach: Standard model: each reach costs its composite value,
+        whatever its length (the formulation of earlier versions)
 
 SAMC (directional) simulations:
     --samc: Simulate conditional first passage times (mean of the two
         directions) under a SAMC model, instead of effective resistances;
         the input table may have an ASYM column (1 = directional)
     --ne: Effective population size at every site (default=100)
-    --max_resistance: Maximum resistance of the composite (default=100)
     --flow: Flow rate per km (positive = moving upstream harder;
         default=0, no flow term)
     --infer_origin: Next downstream reach attribute (def=NEXT_DOWN)

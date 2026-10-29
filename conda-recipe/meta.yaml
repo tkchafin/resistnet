@@ -28,6 +28,7 @@ requirements:
   - scikit-learn
   - lightgbm
   - seaborn
+  - plotly
   - geopandas
   - sortedcontainers
   - momepy
@@ -35,6 +36,8 @@ requirements:
   - pyogrio
   - nlopt
   - mantel
+  # with autostreamtree.network (river network functions)
+  - autostreamtree
 
 #build:
 #  noarch: python

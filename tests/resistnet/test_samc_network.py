@@ -673,3 +673,17 @@ def test_ensemble_samc(samc_net, tmp_path):
                        capture_output=True, text=True)
     assert p.returncode != 0
     assert "mix standard and SAMC" in p.stderr + p.stdout
+
+
+def test_flow_profile(samc_net, tmp_path):
+    # Flow alone at every rate tried, both directions: its best is the
+    # samc_flow reference, and rate 0 is samc_distance
+    out = str(tmp_path / "ref")
+    table = samc_net.evaluate_null_model(out)
+    profile = pd.read_csv(f"{out}.flowProfile.tsv", sep="\t")
+    assert (profile["rate"] < 0).any() and (profile["rate"] > 0).any()
+    assert profile["aic"].min() == pytest.approx(
+        table.loc["samc_flow", "aic"], abs=1e-6)
+    assert profile.loc[profile["rate"] == 0, "aic"].iloc[0] == \
+        pytest.approx(table.loc["samc_distance", "aic"], abs=1e-6)
+    assert profile["delta_aic"].min() == 0

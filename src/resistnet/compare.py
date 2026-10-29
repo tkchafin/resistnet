@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 
+from resistnet.plotting import COLOURS, FAMILY_NAMES, GRID, TEXT, TEXT2
 from resistnet.samc_network import ResistanceNetworkSAMC
 
 TRANSFORMATIONS = {
@@ -23,14 +24,6 @@ TRANSFORMATIONS = {
     6: "reverse monomolecular", 7: "inverse monomolecular",
     8: "reverse-inverse monomolecular"
 }
-
-# Plot colours: one per family (validated as a categorical pair), and
-# neutral grey for the reference models; text and grid
-COLOURS = {"resistance": "#2a78d6", "samc": "#eb6834",
-           "reference": "#8a8986"}
-FAMILY_NAMES = {"resistance": "Standard (resistance)", "samc": "SAMC",
-                "reference": "Reference model"}
-TEXT, TEXT2, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 
 # Reference models: (family, description, number of parameters)
 REFERENCES = {
@@ -50,7 +43,8 @@ def read_null_table(prefix):
 def describe(row, variables, network, runner):
     """
     Describes a Hall of Fame model: its variables with their transformation
-    and, for SAMC, their direction in raw values and the flow rate.
+    and, for SAMC, their direction in raw values and the flow rate; for the
+    standard model per km, the range of its resistance per km (1 to K).
 
     Args:
         row (pd.Series): Hall of Fame row (as read from HallOfFame.tsv).
@@ -90,7 +84,20 @@ def describe(row, variables, network, runner):
     if flow:
         parts.append(f"flow {flow:+.3f}/km (upstream "
                      f"{'harder' if flow > 0 else 'easier'})")
-    return " + ".join(parts)
+    text = " + ".join(parts)
+    # Standard model per km: the range of its resistance per km
+    if not samc and parts and "max_resistance" in row:
+        text += f"; resistance 1-{float(row['max_resistance']):.3g} per km"
+    return text
+
+
+def duplicate_key(model, aic):
+    """
+    Models that are the same: the same description apart from the maximum
+    resistance per km (which chains converging on the same optimum find
+    with small differences), and the same AIC to 0.01.
+    """
+    return model.split("; resistance 1-")[0], round(float(aic), 2)
 
 
 def comparison_tables(runs, tol=1e-6):
@@ -122,8 +129,10 @@ def comparison_tables(runs, tol=1e-6):
             model = describe(row, variables, network, runner)
             # Each chain's best model is kept, so a model can appear more
             # than once (for SAMC without variables, with different
-            # maximum resistances that have no effect): list it once
-            key = (model, round(float(row["aic"]), 6))
+            # maximum resistances that have no effect; per km, with
+            # maximum resistances differing only by search noise): list it
+            # once
+            key = duplicate_key(model, row["aic"])
             if key in seen:
                 continue
             seen.add(key)
@@ -358,53 +367,53 @@ def plot_importance(importance, families, path):
 
 def plot_best_fits(runs, summary, path):
     """
-    Plots the genetic distances against each family's best model distance
-    (standardised, as fitted by MLPE), side by side.
+    Plots the genetic distances against river distance (isolation by
+    distance; the distance-only reference model) and against each family's
+    best model distance (standardised, as fitted by MLPE), side by side.
     """
-    families = [f for f in runs if os.path.exists(_best_matrix(runs[f]))]
-    if not families:
+    tables = {f: pd.read_csv(f"{p}.pairwise.tsv", sep="\t")
+              for f, (_, _, p) in runs.items()
+              if os.path.exists(f"{p}.pairwise.tsv")}
+    if not tables:
         return
-    fig, axes = plt.subplots(1, len(families),
-                             figsize=(5.0 * len(families), 4.3),
-                             sharey=True, squeeze=False)
     best = summary.set_index("family")
-    for ax, family in zip(axes[0], families):
-        network, _, prefix = runs[family]
-        X = pd.read_csv(_best_matrix(runs[family]), sep="\t",
-                        index_col=0).to_numpy(dtype=float)
-        X = (X + X.T) / 2.0
-        Y = network._gendist
-        iu = np.triu_indices(len(Y), 1)
-        x, y = X[iu], Y[iu]
+    panels = []
+    first = next(iter(tables))
+    if "river_km" in tables[first]:
+        ref = read_null_table(runs[first][2]).loc["distance_only"]
+        panels.append(("reference", tables[first], "river_km",
+                       f"Isolation by distance: AIC {float(ref['aic']):.1f}, "
+                       f"marginal R² {float(ref['r2m']):.2f}\nDistance only "
+                       "(river km)", "River distance (standardised)"))
+    for family, table in tables.items():
+        r2m = pd.read_csv(f"{runs[family][2]}.HallOfFame.tsv", sep="\t",
+                          na_values="-")["r2m"].iloc[0]
+        panels.append((
+            family, table, "best_model_distance",
+            f"{FAMILY_NAMES[family]}: AIC "
+            f"{best.loc[family, 'best_aic']:.1f}, marginal R² {r2m:.2f}\n"
+            + textwrap.fill(best.loc[family, "best_model"], 52),
+            "Best model's distance (standardised)"))
+    fig, axes = plt.subplots(1, len(panels), figsize=(4.6 * len(panels), 4.3),
+                             sharey=True, squeeze=False)
+    for ax, (family, table, column, title, xlabel) in zip(axes[0], panels):
+        x = table[column].to_numpy(dtype=float)
         x = (x - x.mean()) / x.std()
+        y = table["genetic_distance"].to_numpy(dtype=float)
         ax.scatter(x, y, s=16, color=COLOURS[family], alpha=0.8,
                    edgecolors="white", linewidths=0.5)
         slope, intercept = np.polyfit(x, y, 1)
         xs = np.array([x.min(), x.max()])
         ax.plot(xs, intercept + slope * xs, color=TEXT2, linewidth=1.2)
-        r2m = pd.read_csv(f"{prefix}.HallOfFame.tsv", sep="\t",
-                          na_values="-")["r2m"].iloc[0]
-        ax.set_title(
-            f"{FAMILY_NAMES[family]}: AIC {best.loc[family, 'best_aic']:.1f}"
-            f", marginal R² {r2m:.2f}\n"
-            + textwrap.fill(best.loc[family, "best_model"], 58),
-            loc="left", fontsize=8, color=TEXT)
-        ax.set_xlabel("Best model's distance (standardised)", color=TEXT2,
-                      fontsize=8)
+        ax.set_title(title, loc="left", fontsize=8, color=TEXT)
+        ax.set_xlabel(xlabel, color=TEXT2, fontsize=8)
         _style(ax, grid="both")
     axes[0][0].set_ylabel("Genetic distance", color=TEXT2, fontsize=8)
-    fig.suptitle("Genetic distance against each family's best model",
-                 x=0.01, ha="left", fontsize=10, color=TEXT, y=1.1)
+    fig.suptitle("Genetic distance against river distance and each family's "
+                 "best model", x=0.01, ha="left", fontsize=10, color=TEXT,
+                 y=1.1)
     fig.text(0.01, -0.04, "Each point is a pair of sites. Lines are "
              "least-squares fits, for display: the models are fitted with "
              "MLPE (population effects).", color=TEXT2, fontsize=7)
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
-
-
-def _best_matrix(run):
-    """Path of the best model's pairwise distances of a run."""
-    network, _, prefix = run
-    if isinstance(network, ResistanceNetworkSAMC):
-        return f"{prefix}.Model-Best.CFPTMatrix.tsv"
-    return f"{prefix}.Model-Best.ResistanceMatrix.tsv"

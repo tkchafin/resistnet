@@ -7,7 +7,9 @@ import pandas as pd
 import pytest
 
 import resistnet
-from resistnet.compare import comparison_tables, write_comparison
+import resistnet.MLPE as mlpe
+from resistnet.compare import (comparison_tables, read_null_table,
+                               write_comparison)
 from resistnet.model_optimisation import ModelRunnerTPE
 from resistnet.resistance_network import ResistanceNetwork
 from resistnet.samc_network import ResistanceNetworkSAMC
@@ -77,12 +79,12 @@ def test_comparison_requires_same_data(runs, tmp_path):
     # Families fitted to different genetic distances can't be compared
     net, runner, prefix = runs["samc"]
     moved = str(tmp_path / "nmt")
-    for ext in ("HallOfFame.tsv", "Null-Model.tsv"):
-        table = open(f"{prefix}.{ext}").read()
-        if ext == "Null-Model.tsv":
-            table = table.replace("-386.0", "-380.0")
-        with open(f"{moved}.{ext}", "w") as fh:
-            fh.write(table)
+    with open(f"{prefix}.HallOfFame.tsv") as src, \
+            open(f"{moved}.HallOfFame.tsv", "w") as dst:
+        dst.write(src.read())
+    null = read_null_table(prefix)
+    null.loc["null", "aic"] += 6.0
+    null.to_csv(f"{moved}.Null-Model.tsv", sep="\t")
     with pytest.raises(ValueError, match="same genetic distances"):
         comparison_tables({"resistance": runs["resistance"],
                            "samc": (net, runner, moved)})
@@ -123,6 +125,53 @@ def test_run_both_models_layout(tmp_path):
     for ext in ("modelComparison", "familySummary", "jointImportance"):
         assert os.path.exists(os.path.join(out, f"nmt.{ext}.tsv"))
 
+    # The pairwise tables: genetic distances as in the input, and model
+    # distances as in the written matrices (SAMC: mean of both directions)
+    gen = pd.read_csv(os.path.join(DATA, "nmt.popGenDistMat.txt"),
+                      sep="\t", index_col=0)
+    for model, kind in (("resistance", "ResistanceMatrix"),
+                        ("samc", "CFPTMatrix")):
+        prefix = os.path.join(out, model, "nmt")
+        pw = pd.read_csv(f"{prefix}.pairwise.tsv", sep="\t")
+        assert len(pw) == 14 * 13 // 2
+        np.testing.assert_allclose(
+            pw["genetic_distance"],
+            [gen.loc[a, b] for a, b in zip(pw["site1"], pw["site2"])],
+            rtol=1e-12)
+        M = pd.read_csv(f"{prefix}.Model-Best.{kind}.tsv", sep="\t",
+                        index_col=0)
+        M.columns = M.columns.astype(str)
+        np.testing.assert_allclose(
+            pw["best_model_distance"],
+            [(M.loc[a, b] + M.loc[b, a]) / 2
+             for a, b in zip(pw["site1"], pw["site2"])], rtol=1e-12)
+        # River distance is the distance-only reference model's distance:
+        # MLPE on it gives that model's log-likelihood
+        n = 14
+        iu = np.triu_indices(n, 1)
+        sites = list(dict.fromkeys(list(pw["site1"]) + list(pw["site2"])))
+        pos = {s: i for i, s in enumerate(sites)}
+        X, Y = np.zeros((n, n)), np.zeros((n, n))
+        for a, b, km, g in zip(pw["site1"], pw["site2"], pw["river_km"],
+                               pw["genetic_distance"]):
+            i, j = pos[a], pos[b]
+            X[i, j] = X[j, i] = km
+            Y[i, j] = Y[j, i] = g
+        assert np.all(X[iu] > 0)
+        null = pd.read_csv(f"{prefix}.Null-Model.tsv", sep="\t",
+                           index_col=0, keep_default_na=False,
+                           na_values=[""])
+        assert mlpe.MLPE(Y, X, scale=True)["loglik"].iloc[0] == \
+            pytest.approx(float(null.loc["distance_only", "loglik"]),
+                          abs=1e-6)
+
+    # The interactive report, with both models and their comparison
+    with open(os.path.join(out, "nmt.report.html")) as fh:
+        page = fh.read()
+    for section in ('id="comparison"', 'id="resistance"', 'id="samc"'):
+        assert section in page
+    assert page.count('class="plotly-graph-div"') >= 10
+
     # ensembleResistnet.py finds runs in the model subdirectories; with
     # both models there, --model picks one
     ens = os.path.join(os.path.dirname(script), "ensembleResistnet.py")
@@ -137,3 +186,43 @@ def test_run_both_models_layout(tmp_path):
                                "samc"], capture_output=True, text=True)
     assert p.returncode == 0, p.stderr[-2000:]
     assert os.path.exists(str(tmp_path / "ens.Model-Best.CFPTMatrix.tsv"))
+
+    # Standard runs per km (with max_resistance) are averaged per km: the
+    # ensemble's best model is the run's
+    p = subprocess.run(args + ["-o", str(tmp_path / "ens_km"), "--model",
+                               "resistance"], capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr[-2000:]
+    run_best = pd.read_csv(
+        os.path.join(out, "resistance", "nmt.Model-Best.ResistanceMatrix.tsv"),
+        sep="\t", index_col=0)
+    ens_best = pd.read_csv(str(tmp_path / "ens_km.Model-Best."
+                               "ResistanceMatrix.tsv"), sep="\t", index_col=0)
+    np.testing.assert_allclose(ens_best.loc[run_best.index, run_best.columns],
+                               run_best, rtol=1e-12)
+    # A run per reach (no max_resistance column) is rebuilt per reach, and
+    # runs per km and per reach can't be mixed
+    hof = pd.read_csv(os.path.join(out, "resistance", "nmt.HallOfFame.tsv"),
+                      sep="\t")
+    reach = tmp_path / "reach"
+    reach.mkdir()
+    hof.drop(columns="max_resistance").to_csv(
+        reach / "nmt.HallOfFame.tsv", sep="\t", index=False)
+    p = subprocess.run(args[:5] + [str(reach)] + args[6:]
+                       + ["-o", str(tmp_path / "ens_reach")],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr[-2000:]
+    reach_best = pd.read_csv(str(tmp_path / "ens_reach.Model-Best."
+                                 "ResistanceMatrix.tsv"), sep="\t",
+                             index_col=0)
+    assert not np.allclose(reach_best.loc[run_best.index, run_best.columns],
+                           run_best)
+    mixed = tmp_path / "mixed_units"
+    mixed.mkdir()
+    hof.to_csv(mixed / "a.HallOfFame.tsv", sep="\t", index=False)
+    hof.drop(columns="max_resistance").to_csv(
+        mixed / "b.HallOfFame.tsv", sep="\t", index=False)
+    p = subprocess.run(args[:5] + [str(mixed)] + args[6:]
+                       + ["-o", str(tmp_path / "ens_mixed")],
+                       capture_output=True, text=True)
+    assert p.returncode != 0
+    assert "per km and per reach" in p.stderr + p.stdout

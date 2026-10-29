@@ -164,18 +164,6 @@ def test_write_numpy_matrix():
     assert np.array_equal(read_mat, expected_written_mat)
 
 
-# test path_edge_attributes
-def test_path_edge_attributes(sample_graph):
-    path = list(sample_graph.nodes)[:3]
-    expected_attributes = []
-    for i in range(len(path) - 1):
-        resistance = sample_graph[path[i]][path[i + 1]]['Resistance']
-        expected_attributes.append(resistance)
-
-    result = utils.path_edge_attributes(sample_graph, path, 'Resistance')
-    assert result == expected_attributes
-
-
 def test_read_points_table_success(points_file_path):
     # Test if the function reads the file correctly
     result = utils.read_points_table(points_file_path)

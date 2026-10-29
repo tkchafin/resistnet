@@ -43,14 +43,23 @@ def main():
     # SAMC runs have a direction setting for each variable, and a maximum
     # resistance and flow rate; the two kinds of runs can't be averaged
     samc_cols = [c for c in hofs.columns if c.endswith("_asym")]
-    samc_cols += [c for c in ("max_resistance", "flow") if c in hofs.columns]
+    samc_cols += [c for c in ("flow",) if c in hofs.columns]
     samc = bool(samc_cols)
+    if samc and "max_resistance" in hofs.columns:
+        samc_cols.append("max_resistance")
     if samc and hofs[samc_cols].isna().any().any():
         sys.exit("The inputs mix standard and SAMC (--samc) runs, which "
                  "can't be averaged together; ensemble them separately "
                  "(e.g. with --model resistance or --model samc)")
     if samc:
         print("SAMC runs: building a SAMC ensemble")
+    # Standard runs with resistances per km have a maximum resistance per
+    # km; runs per reach (--per_reach, or earlier versions) don't
+    per_km = not samc and "max_resistance" in hofs.columns
+    if per_km and hofs["max_resistance"].isna().any():
+        sys.exit("The inputs mix standard runs with resistances per km and "
+                 "per reach (--per_reach, or earlier versions), which can't "
+                 "be averaged together; ensemble them separately")
 
     hofs.replace('-', '0.0', inplace=True)
     for col in hofs.columns:
@@ -121,7 +130,8 @@ def main():
             reachid_col=params.reachid_col,
             length_col=params.length_col,
             out=params.out,
-            verbose=True
+            verbose=True,
+            units="km" if per_km else "reach"
         )
 
     # Step 3: Set up ModelRunner
