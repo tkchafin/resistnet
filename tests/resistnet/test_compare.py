@@ -8,7 +8,8 @@ import pytest
 
 import resistnet
 import resistnet.MLPE as mlpe
-from resistnet.compare import comparison_tables, write_comparison
+from resistnet.compare import (comparison_tables, read_null_table,
+                               write_comparison)
 from resistnet.model_optimisation import ModelRunnerTPE
 from resistnet.resistance_network import ResistanceNetwork
 from resistnet.samc_network import ResistanceNetworkSAMC
@@ -78,12 +79,12 @@ def test_comparison_requires_same_data(runs, tmp_path):
     # Families fitted to different genetic distances can't be compared
     net, runner, prefix = runs["samc"]
     moved = str(tmp_path / "nmt")
-    for ext in ("HallOfFame.tsv", "Null-Model.tsv"):
-        table = open(f"{prefix}.{ext}").read()
-        if ext == "Null-Model.tsv":
-            table = table.replace("-386.0", "-380.0")
-        with open(f"{moved}.{ext}", "w") as fh:
-            fh.write(table)
+    with open(f"{prefix}.HallOfFame.tsv") as src, \
+            open(f"{moved}.HallOfFame.tsv", "w") as dst:
+        dst.write(src.read())
+    null = read_null_table(prefix)
+    null.loc["null", "aic"] += 6.0
+    null.to_csv(f"{moved}.Null-Model.tsv", sep="\t")
     with pytest.raises(ValueError, match="same genetic distances"):
         comparison_tables({"resistance": runs["resistance"],
                            "samc": (net, runner, moved)})
