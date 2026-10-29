@@ -1,6 +1,8 @@
-Variable	Weight	Shape	Transformation
-run_mm_cyr	-	-	-
-tmp_dc_cyr	-	-	-
-sgr_dk_rav	-	-	-
-ele_mt_cav	-	-	-
-dor_pc_pva	0.7491172265576264	13.0	3.0
+Variable	Weight	Shape	Transformation	Contribution	Value
+run_mm_cyr	-	-	-	-	-
+tmp_dc_cyr	-	-	-	-	-
+sgr_dk_rav	-	-	-	-	-
+ele_mt_cav	-	-	-	-	-
+dor_pc_pva	0.7540635366427507	1.0	7.0	0.5731288353847835	-
+max_resistance	-	-	-	-	144.60309855972295
+distance	-	-	-	0.42687116461521646	-

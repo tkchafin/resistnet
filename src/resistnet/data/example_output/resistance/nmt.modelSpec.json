@@ -6,115 +6,79 @@
  "models": [
   {
    "type": "standard",
+   "units": "km",
    "variables": {
     "dor_pc_pva": {
      "min": 0.0,
      "max": 600.0,
-     "transform": 3,
-     "shape": 13.0,
-     "tmin": -5.633693692311753,
-     "tmax": -1.0,
-     "weight": 0.7491172265576264
-    }
-   },
-   "composite_min": 0.0,
-   "composite_max": 0.7491172265576264,
-   "rank": 1,
-   "aic": -442.84732501065855,
-   "akaike_weight": 0.7087314049115988
-  },
-  {
-   "type": "standard",
-   "variables": {
-    "sgr_dk_rav": {
-     "min": 0.0,
-     "max": 67.0,
-     "transform": 8,
-     "shape": 47.0,
-     "tmin": 1.0,
-     "tmax": 1.1916546977223066,
-     "weight": 0.7168735914225097
-    },
-    "ele_mt_cav": {
-     "min": 238.0,
-     "max": 373.0,
-     "transform": 8,
-     "shape": 24.0,
-     "tmin": 1.0,
-     "tmax": 1.3407593697995561,
-     "weight": 0.1728702408906284
-    },
-    "dor_pc_pva": {
-     "min": 0.0,
-     "max": 600.0,
-     "transform": 3,
-     "shape": 8.0,
-     "tmin": -3.943029133698201,
-     "tmax": -1.0,
-     "weight": 0.9107849772318786
-    }
-   },
-   "composite_min": 0.06043379873248104,
-   "composite_max": 1.1308449572252104,
-   "rank": 2,
-   "aic": -441.05844821446124,
-   "akaike_weight": 0.2897557191196203
-  },
-  {
-   "type": "standard",
-   "variables": {
-    "run_mm_cyr": {
-     "min": 221.0,
-     "max": 320.0,
-     "transform": 3,
-     "shape": 21.0,
-     "tmin": -7.2114515761545155,
-     "tmax": -1.0,
-     "weight": 0.4817929600563989
-    },
-    "sgr_dk_rav": {
-     "min": 0.0,
-     "max": 67.0,
-     "transform": 1,
-     "shape": 63.0,
-     "tmin": 1.0,
-     "tmax": 9.532265636477703,
-     "weight": 0.10751778409685658
-    },
-    "ele_mt_cav": {
-     "min": 238.0,
-     "max": 373.0,
      "transform": 7,
-     "shape": 25.0,
+     "shape": 1.0,
      "tmin": 1.0,
-     "tmax": 1.3296799539643607,
-     "weight": 0.34593617541938015
+     "tmax": 1.9999546000702375,
+     "weight": 0.7540635366427507
     }
    },
-   "composite_min": 0.24309005686439325,
-   "composite_max": 0.5644877696249182,
-   "rank": 3,
-   "aic": -430.4249254464558,
-   "akaike_weight": 0.001422302213877187
+   "max_resistance": 144.60309855972295,
+   "rank": 1,
+   "aic": -503.52458232415916,
+   "akaike_weight": 0.9810584470392564
   },
   {
    "type": "standard",
+   "units": "km",
    "variables": {
-    "sgr_dk_rav": {
+    "dor_pc_pva": {
      "min": 0.0,
-     "max": 67.0,
-     "transform": 4,
-     "shape": 35.0,
-     "tmin": -8.51477293075286,
-     "tmax": -1.0,
-     "weight": 0.1583614923683556
+     "max": 600.0,
+     "transform": 7,
+     "shape": 1.0,
+     "tmin": 1.0,
+     "tmax": 1.9999546000702375,
+     "weight": 0.6208318644181897
     }
    },
-   "composite_min": 0.0,
-   "composite_max": 0.1583614923683556,
+   "max_resistance": 35.711365666106346,
+   "rank": 2,
+   "aic": -495.62968175503244,
+   "akaike_weight": 0.018938213370098596
+  },
+  {
+   "type": "standard",
+   "units": "km",
+   "variables": {
+    "dor_pc_pva": {
+     "min": 0.0,
+     "max": 600.0,
+     "transform": 7,
+     "shape": 2.0,
+     "tmin": 1.0,
+     "tmax": 1.9932620530009144,
+     "weight": 0.5175399942550907
+    }
+   },
+   "max_resistance": 52.07135656929012,
+   "rank": 3,
+   "aic": -478.34350391040977,
+   "akaike_weight": 3.3395902136550823e-06
+  },
+  {
+   "type": "standard",
+   "units": "km",
+   "variables": {
+    "tmp_dc_cyr": {
+     "min": 125.0,
+     "max": 145.0,
+     "transform": 4,
+     "shape": 4.0,
+     "tmin": -2.4715177646857693,
+     "tmax": -1.0,
+     "weight": 0.5262787001296675
+    }
+   },
+   "max_resistance": 19.690447764955486,
    "rank": 4,
-   "aic": -424.91719019642926,
-   "akaike_weight": 9.057375490372643e-05
+   "aic": -446.6188218538777,
+   "akaike_weight": 4.3128663593044185e-13
   }
  ]
 }
