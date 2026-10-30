@@ -562,7 +562,7 @@ def _line_coords(arrays):
 def fig_flow_profile(run):
     """
     AIC of flow alone at each rate, both directions (signed log scale):
-    the evidence for moving upstream being easier or harder.
+    the evidence for gene flow biased downstream or upstream.
     """
     go = _go()
     t = run.flow_profile.sort_values("rate")
@@ -601,8 +601,8 @@ def fig_flow_profile(run):
     ticks = [r for r in (-1, -0.1, -0.01, -0.001, 0, 0.001, 0.01, 0.1, 1)
              if r == 0 or (low <= abs(r) <= np.abs(rate).max() * 1.0001)]
     top = float(t["delta_aic"].max())
-    for xpos, text in ((x.min(), "← moving upstream easier"),
-                       (x.max(), "moving upstream harder →")):
+    for xpos, text in ((x.min(), "← gene flow downstream"),
+                       (x.max(), "gene flow upstream →")):
         fig.add_annotation(x=xpos, y=top, text=text, showarrow=False,
                            xanchor="left" if xpos < 0 else "right",
                            yanchor="bottom", font=dict(color=TEXT2,
@@ -911,13 +911,19 @@ def _model_section(run):
         parts.append(_table(ref, cols, numeric=set(cols) - {"name"}))
 
     if run.samc and run.flow_profile is not None:
-        parts.append("<h3>Flow: moving upstream easier or harder?</h3><p>"
+        parts.append("<h3>Flow: gene flow biased downstream or "
+                     "upstream?</h3><p>"
                      "The flow-alone reference model at each rate tried "
-                     "when fitting it: negative rates make moving upstream "
-                     "easier, positive rates harder, and rate 0 is distance "
-                     "alone. Because genetic distances are symmetric, the "
-                     "sign says where along the river connectivity is high, "
-                     "not which way genes move.</p>")
+                     "when fitting it: negative rates make the walker's "
+                     "upstream moves easier, positive rates harder, and "
+                     "rate 0 is distance alone. The walker moves like a "
+                     "lineage traced back in time, against gene flow, so a "
+                     "negative rate means gene flow biased downstream (in "
+                     "simulations, with no absorption and the larger of the "
+                     "two passage times). Gradients along the river (e.g. "
+                     "temperature) and barriers the model does not "
+                     "represent can mimic or hide a direction, and gains of "
+                     "a few AIC units are weak evidence.</p>")
         parts.append(_panel(fig_flow_profile(run)))
     parts.append("<h3>Hall of Fame</h3>")
     parts.append(_panel(fig_aic_profile(run)))

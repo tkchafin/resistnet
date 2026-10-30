@@ -84,8 +84,9 @@ def describe(row, variables, network, runner):
         parts.append(f"{v} ({label})")
     flow = float(row["flow"]) if samc and "flow" in row else 0.0
     if flow:
-        parts.append(f"flow {flow:+.3f}/km (upstream "
-                     f"{'harder' if flow > 0 else 'easier'})")
+        # The walker moves like a lineage, against gene flow
+        parts.append(f"flow {flow:+.3f}/km (gene flow "
+                     f"{'upstream' if flow > 0 else 'downstream'})")
     text = " + ".join(parts)
     # Standard model per km: the range of its resistance per km
     if not samc and parts and "max_resistance" in row:

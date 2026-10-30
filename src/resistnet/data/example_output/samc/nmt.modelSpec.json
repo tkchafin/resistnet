@@ -15,17 +15,17 @@
      "shape": 1.0,
      "tmin": 1.0,
      "tmax": 1.9999546000702375,
-     "weight": 0.9906590883899629
+     "weight": 0.8148962010310329
     }
    },
-   "max_resistance": 491.5290252194777,
+   "max_resistance": 762.9104451214515,
    "flow": 0.0,
    "cell_km": 1.0,
    "absorption": "none",
    "pairs": "max",
    "rank": 1,
-   "aic": -412.00171755228644,
-   "akaike_weight": 0.8494840276124365
+   "aic": -412.057371916197,
+   "akaike_weight": 0.8788600086130499
   },
   {
    "type": "samc",
@@ -41,14 +41,14 @@
      "weight": 0.2433063366620759
     }
    },
-   "max_resistance": 28.669345484836853,
+   "max_resistance": 41.68416182765582,
    "flow": -0.0024886143293770787,
    "cell_km": 1.0,
    "absorption": "none",
    "pairs": "max",
    "rank": 2,
-   "aic": -408.4206472023644,
-   "akaike_weight": 0.14175411382359684
+   "aic": -407.9428941963213,
+   "akaike_weight": 0.11232391135208879
   },
   {
    "type": "samc",
@@ -60,7 +60,7 @@
    "pairs": "max",
    "rank": 3,
    "aic": -402.755709149746,
-   "akaike_weight": 0.008344686070734799
+   "akaike_weight": 0.008396326087800337
   },
   {
    "type": "samc",
@@ -76,14 +76,14 @@
      "weight": 0.2248098036888532
     }
    },
-   "max_resistance": 191.703791227179,
+   "max_resistance": 344.5277717214976,
    "flow": -0.09959829127401416,
    "cell_km": 1.0,
    "absorption": "none",
    "pairs": "max",
    "rank": 4,
-   "aic": -396.76394829486475,
-   "akaike_weight": 0.0004171724932318655
+   "aic": -396.76394751098195,
+   "akaike_weight": 0.00041975394706103493
   }
  ]
 }

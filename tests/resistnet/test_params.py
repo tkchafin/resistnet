@@ -85,9 +85,7 @@ def test_samc_defaults():
         assert args.samc
         assert args.sizes is None
         assert args.ne == 100
-        assert args.max_resist is None
-        assert args.max_resist_for("samc") == 500
-        assert args.max_resist_for("resistance") == 1000
+        assert args.max_resist == 1000
         assert args.fix_resist is None
         assert args.max_flow == 0.1
         assert not args.fixFlow
@@ -148,8 +146,8 @@ def test_model_conflicts_with_samc():
 
 
 def test_resistance_limits():
-    # --max_resist applies to both models when given; --per_reach (the
-    # formulation of earlier versions) is gone
+    # One --max_resist for every model (default 1000, ResistanceGA's
+    # max.cont); --per_reach (the formulation of earlier versions) is gone
     testargs = ["prog", "--vars", "var1", "--per_reach"]
     with patch.object(sys, 'argv', testargs):
         with pytest.raises(SystemExit):
@@ -158,5 +156,4 @@ def test_resistance_limits():
                 "both"]
     with patch.object(sys, 'argv', testargs):
         args = parseArgs()
-        assert args.max_resist_for("resistance") == 50
-        assert args.max_resist_for("samc") == 50
+        assert args.max_resist == 50
