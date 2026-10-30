@@ -133,7 +133,7 @@ REFERENCE = os.path.join(os.path.dirname(__file__), "reference")
 
 
 @pytest.mark.parametrize("surface", ["streamkm", "dor_inv_mono",
-                                     "samc_ele_dir_flow"])
+                                     "samc_sgr_flow"])
 def test_mlpe_matches_resistancega_lme4_nmt(surface):
     # ResistanceGA's MLPE.lmm (lme4) and MuMIn, fitted in R to the NMT
     # genetic distances and three model distances (reference/README.md)

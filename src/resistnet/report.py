@@ -108,9 +108,8 @@ def describe(row, variables, samc):
         label = TRANSFORMATIONS[t]
         if t:
             label += f", shape {float(row[f'{v}_shape']):g}"
-        if samc:
-            label += (", directional" if int(row[f"{v}_asym"]) == 1
-                      else ", symmetric")
+        if samc and int(row.get(f"{v}_asym", 0) or 0) == 1:
+            label += ", directional"
         if several:
             label += f", weight {float(row[f'{v}_weight']):.2f}"
         parts.append(f"{v} ({label})")
@@ -118,9 +117,10 @@ def describe(row, variables, samc):
     if flow:
         parts.append(f"flow {flow:+.3f}/km")
     text = " + ".join(parts) or "(no variables)"
-    # Standard model per km: the range of its resistance per km
+    # The range of its resistance per km (SAMC: with the flow term, if any)
     max_r = row.get("max_resistance")
-    if not samc and parts and max_r is not None and pd.notna(max_r):
+    has_var = any(row.get(v) == 1 for v in variables)
+    if has_var and max_r is not None and pd.notna(max_r):
         text += f"; resistance 1-{float(max_r):.3g} per km"
     return text
 
@@ -152,7 +152,6 @@ class RunOutputs:
         self.rvi = _read(f"{prefix}.varImportance.tsv")
         self.maw = _read(f"{prefix}.modavgWeights.tsv", na_values="-")
         self.pairwise = _read(f"{prefix}.pairwise.tsv")
-        self.upstream = _read(f"{prefix}.upstreamChanges.tsv")
         self.flow_profile = _read(f"{prefix}.flowProfile.tsv")
         self.points = _read(f"{prefix}.pointsTable.txt")
         kind = "TransitionEdges" if self.samc else "ResistanceEdges"
@@ -483,11 +482,10 @@ def fig_response(run):
     """
     How the best model's resistance responds to each of its variables (as
     ResistanceGA's Plot.trans): the resistance per km due to that variable
-    (standard model: 1 + (K - 1) x its weight share x its 0-1 value), or
-    its transformed 0-1 value (SAMC), against its
-    raw values over its range in the network, from the model's
-    specification (modelSpec.json); the network's reaches are marked on
-    each curve.
+    (1 + (K - 1) x its weight share x its 0-1 value; the same for the
+    standard model and SAMC), against its raw values over its range in the
+    network, from the model's specification (modelSpec.json); the
+    network's reaches are marked on each curve.
     """
     path = f"{run.prefix}.modelSpec.json"
     if not os.path.exists(path):
@@ -505,7 +503,7 @@ def fig_response(run):
     fig = make_subplots(rows=nrow, cols=ncol, subplot_titles=names,
                         horizontal_spacing=0.1, vertical_spacing=0.22)
     total = sum(var["weight"] for var in variables.values())
-    per_km = run.per_km and "max_resistance" in model and total > 0
+    per_km = "max_resistance" in model and total > 0
     label = "Resistance per km" if per_km else "Transformed value (0-1)"
     colour = COLOURS[run.model]
 
@@ -610,29 +608,6 @@ def fig_flow_profile(run):
                      tickvals=position(ticks).tolist(),
                      ticktext=[f"{r:g}" for r in ticks])
     fig.update_yaxes(title="ΔAIC (lower is better)", rangemode="tozero")
-    return fig
-
-
-def fig_upstream(run):
-    """How each variable changes on a step upstream."""
-    go = _go()
-    t = run.upstream.iloc[::-1]
-    fig = go.Figure()
-    for column, name, colour in (("rises", "rises", COLOURS["resistance"]),
-                                 ("no_change", "no change", MUTED),
-                                 ("falls", "falls", COLOURS["samc"])):
-        fig.add_trace(go.Bar(
-            x=t[column], y=t["variable"], orientation="h", name=name,
-            marker=dict(color=colour, line=dict(color="white", width=1.5)),
-            hovertemplate="%{y}: " + name + " on %{x:.0%} of upstream "
-                          "steps<extra></extra>"))
-    fig.update_layout(**plotly_layout(
-        barmode="stack", height=max(240, 44 * len(t) + 120),
-        title="How each variable changes on a step upstream"))
-    fig.update_layout(legend_traceorder="normal")
-    fig.update_xaxes(title="Share of upstream steps", tickformat=".0%",
-                     range=[0, 1])
-    fig.update_yaxes(gridcolor="rgba(0,0,0,0)")
     return fig
 
 
@@ -859,13 +834,16 @@ HOW_IT_WORKS = {
         "K = 1 is distance alone, and a large K means the variables "
         "dominate."),
     "samc": (
-        "How this model works: a random walker moves between adjacent "
-        "reaches with weights 1/resistance, the resistance going from 1 "
-        "to a fitted maximum K with the weighted variables (directional "
-        "variables make one direction harder), times exp(-rate × km moved "
-        "upstream) with a flow term; at each site it is absorbed with "
-        "probability 1/(2 Ne). The distance between two sites is the "
-        "conditional first passage time, averaged over both directions."),
+        "How this model works: samc's random walker on a lattice of the "
+        "river (points about 1 km apart along each reach, and the nodes "
+        "where reaches meet and where the sites are). It moves between "
+        "neighbouring points with samc's conductance, 1 / (resistance per "
+        "km × distance), the resistance per km being the standard "
+        "model's (1 to a fitted maximum K with the weighted variables), "
+        "times exp(-rate × km moved upstream) with a flow term; at each "
+        "site it is absorbed with probability 1/(2 Ne). The distance "
+        "between two sites is the conditional first passage time, "
+        "averaged over both directions."),
 }
 
 
@@ -978,45 +956,24 @@ def _model_section(run):
                      "a pair of sites. Hover for the pair.</p>")
         parts.append(_panel(fig_pairwise(run)))
     if run.geometry and any(e is not None for e in run.edges.values()):
-        if run.samc:
-            layers = {}
-            for which in ("Average", "Best"):
-                e = run.edges[which]
-                if e is None:
-                    continue
-                e = e.set_index("EDGE_ID")
+        layers = {}
+        for which in ("Average", "Best"):
+            e = run.edges[which]
+            if e is not None and "Resistance" in e:
                 label = "Model average" if which == "Average" else \
                     "Best model"
-                layers[f"{label}: probability of moving downstream"] = \
-                    e["Downstream"]
-                layers[f"{label}: probability of moving upstream"] = \
-                    e["Upstream"]
-            fig = fig_map(run, layers, "Probability", fixed_range=(0, 1))
-            note = ("Probability that a walker leaving each reach moves "
-                    "downstream, or upstream (choose in the menu). Grey: "
-                    "no reach in that direction.")
-        else:
-            layers = {}
-            for which in ("Average", "Best"):
-                e = run.edges[which]
-                if e is not None:
-                    label = "Model average" if which == "Average" else \
-                        "Best model"
-                    layers[f"{label}: resistance"] = \
-                        e.set_index("EDGE_ID")["Resistance"]
-            fig = fig_map(run, layers, "Resistance per km", log=True)
-            note = ("Resistance per km of each reach (1 = distance alone, "
-                    "up to the model's maximum K; colours on a log scale; "
-                    "choose the model average or the best model in the "
-                    "menu).")
+                layers[f"{label}: resistance"] = \
+                    e.set_index("EDGE_ID")["Resistance"]
+        fig = fig_map(run, layers, "Resistance per km", log=True)
+        note = ("Resistance per km of each reach (1 = distance alone, up "
+                "to the model's maximum K; colours on a log scale; choose "
+                "the model average or the best model in the menu).")
+        if run.samc:
+            note += (" The flow term, if any, acts on top of it, the same "
+                     "per km everywhere.")
         parts.append(f"<h3>Map</h3><p>{note} Hover over a reach for its "
                      "value; scroll to zoom.</p>")
         parts.append(_panel(fig))
-    if run.samc and run.upstream is not None:
-        parts.append("<h3>Variables along the river</h3><p>A directional "
-                     "variable that changes the same way on almost every "
-                     "upstream step acts much like the flow term.</p>")
-        parts.append(_panel(fig_upstream(run)))
     return "\n".join(parts)
 
 

@@ -10,10 +10,16 @@ def test_describe():
     row = pd.Series({"a": 1, "a_weight": 0.7, "a_trans": 5, "a_shape": 3.0,
                      "a_asym": 1, "b": 1, "b_weight": 0.3, "b_trans": 0,
                      "b_shape": 1.0, "b_asym": 0, "c": 0, "flow": -0.05})
+    # (SAMC variables are symmetric on the lattice; a directional one, of
+    # an earlier version, is labelled)
     assert describe(row, ["a", "b", "c"], samc=True) == (
         "a (monomolecular, shape 3, directional, weight 0.70) + "
-        "b (linear, symmetric, weight 0.30) + flow -0.050/km")
+        "b (linear, weight 0.30) + flow -0.050/km")
     assert describe(row, ["b"], samc=False) == "b (linear)"
+    # With the maximum resistance per km, its range (both models)
+    row["max_resistance"] = 20.0
+    assert describe(row, ["b"], samc=True) == (
+        "b (linear) + flow -0.050/km; resistance 1-20 per km")
 
 
 def test_sites_with_numpy_scalars(tmp_path):

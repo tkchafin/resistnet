@@ -1,4 +1,4 @@
 family	best_model	best_aic	delta_aic	akaike_weight
-resistance	dor_pc_pva (inverse monomolecular, shape 1); resistance 1-145 per km	-451.4939698069141	0.0	0.9999999994380676
-samc	flow -0.176/km (upstream easier)	-408.723325585251	42.770644221663076	2.66790351082323e-10
-reference	SAMC flow alone (-0.157/km)	-408.9618903345899	42.5320794723242	2.9514201721733105e-10
+resistance	dor_pc_pva (inverse monomolecular, shape 1); resistance 1-145 per km	-451.4939698069141	0.0	0.9999461723062771
+samc	flow -0.222/km (upstream easier)	-431.4751822468322	20.018787560081876	2.8097168538847313e-05
+reference	SAMC flow alone (-0.231/km)	-431.7134951465901	19.78047466032399	2.5730525184130457e-05

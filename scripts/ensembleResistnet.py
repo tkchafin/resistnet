@@ -116,6 +116,7 @@ def main():
             reachid_col=params.reachid_col,
             length_col=params.length_col,
             ne=params.ne,
+            cell_km=params.cell_km,
             out=params.out,
             verbose=True
         )
@@ -258,7 +259,7 @@ class ParseArgs:
                  "awsum=", "list=", "threads=", "edge_agg=", "varFile=",
                  "report_all", "noPlot", "only_best",
                  "only_keep", "coords=", "seed=", "use_full", "sizes=",
-                 "ne=", "model="]
+                 "ne=", "model=", "cell_km="]
             )
 
         except getopt.GetoptError as err:
@@ -306,6 +307,7 @@ class ParseArgs:
         self.use_full = False
         self.sizes = None
         self.ne = 100
+        self.cell_km = 1.0
         self.model = None
 
     def check_mandatory_options(self):
@@ -371,6 +373,8 @@ class ParseArgs:
                 self.sizes = arg
             elif opt == "ne":
                 self.ne = float(arg)
+            elif opt == "cell_km":
+                self.cell_km = float(arg)
             elif opt == "model":
                 if arg not in ("resistance", "samc"):
                     self.display_help("--model must be resistance or samc")
@@ -441,6 +445,8 @@ class ParseArgs:
             "--sizes: Effective population sizes (tsv: sample, size)\n"
             "--ne: Effective population size for all sites without\n"
             "      --sizes [default=100]\n"
+            "--cell_km: Distance between neighbouring states of the\n"
+            "      lattice (km) [default=1]\n"
         )
 
         print()

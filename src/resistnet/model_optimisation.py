@@ -455,6 +455,10 @@ class ModelRunner:
             worker_args[
                 'edge_site_indices'
                 ] = self.resistance_network._edge_site_indices
+            worker_args['lattice'] = self.resistance_network._lattice
+            worker_args['site_states'] = self.resistance_network._site_states
+            worker_args['R_lat'] = self.resistance_network._R_lat
+            worker_args['cell_km'] = self.resistance_network.cell_km
 
         fd, self._worker_args_file = tempfile.mkstemp(
             prefix="resistnet_worker_", suffix=".pkl")
@@ -798,11 +802,14 @@ class ModelRunnerTPE(ModelRunner):
 
             # Directional effect (SAMC only): 1 = moving towards higher
             # (transformed) values is harder, 0 = symmetric; the reversed
-            # transformations give the opposite direction
+            # transformations give the opposite direction. Not on the
+            # lattice (directional False), where only the flow term is
             if self.num_attributes == 5:
+                directional = getattr(self.resistance_network,
+                                      "directional", True)
                 self.space[f"{var_name}_asym"] = hp.choice(
                     f"{var_name}_asym",
-                    [0] if self.fixAsym else [0, 1]
+                    [0] if self.fixAsym or not directional else [0, 1]
                 )
 
         if self.per_km:
@@ -819,7 +826,7 @@ class ModelRunnerTPE(ModelRunner):
                 )
 
         if self.num_attributes == 5:
-            # Maximum resistance of the composite surface (SAMC only)
+            # Maximum resistance per km (SAMC)
             net = self.resistance_network
             if net.fix_resist is not None:
                 self.space["max_resistance"] = hp.choice(

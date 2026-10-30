@@ -19,6 +19,7 @@ def main():
             ne=params.ne,
             max_resistance=params.max_resistance,
             flow=params.flow,
+            cell_km=params.cell_km,
             infer_origin=params.infer_origin
         )
     else:
@@ -48,7 +49,7 @@ class ParseArgs:
                 sys.argv[1:], 'ho:i:n:s:r:l:c:z:',
                 ["help", "out=", "in=", "network=", "reps=", "samples=",
                  "len_col=", "id_col=", "seed=", "samc", "ne=",
-                 "max_resistance=", "flow=", "infer_origin="]
+                 "max_resistance=", "flow=", "infer_origin=", "cell_km="]
             )
         except getopt.GetoptError as err:
             print(err)
@@ -69,6 +70,7 @@ class ParseArgs:
         self.ne = 100.0
         self.max_resistance = 100.0
         self.flow = 0.0
+        self.cell_km = 1.0
         self.infer_origin = "NEXT_DOWN"
 
         # First pass to see if help menu was called
@@ -106,6 +108,8 @@ class ParseArgs:
                 self.max_resistance = float(arg)
             elif opt == "flow":
                 self.flow = float(arg)
+            elif opt == "cell_km":
+                self.cell_km = float(arg)
             elif opt == "infer_origin":
                 self.infer_origin = arg
             else:
@@ -140,11 +144,13 @@ Arguments:
 
 SAMC (directional) simulations:
     --samc: Simulate conditional first passage times (mean of the two
-        directions) under a SAMC model, instead of effective resistances;
-        the input table may have an ASYM column (1 = directional)
+        directions) under a SAMC model on the lattice, instead of
+        effective resistances
     --ne: Effective population size at every site (default=100)
     --flow: Flow rate per km (positive = moving upstream harder;
         default=0, no flow term)
+    --cell_km: Distance between neighbouring states of the lattice
+        (km; default=1)
     --infer_origin: Next downstream reach attribute (def=NEXT_DOWN)
 """)
         sys.exit()

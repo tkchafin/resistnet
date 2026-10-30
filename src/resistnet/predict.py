@@ -3,11 +3,10 @@ Applies a fitted model to the reaches of another network (e.g. another
 watershed), using the constants saved with the model ({out}.modelSpec.json;
 see ResistanceNetwork.model_spec()). Every rescaling uses the training
 network's ranges, so a reach with the same values as a training reach gets
-the same result; values outside the training range are clamped to it. For
-SAMC models, the variables' combined value is clamped to its training range
-as well, so reaches beyond it all get the same value; for standard models,
-it is a weighted mean of the variables' 0-1 values, so it is always within
-range.
+the same result; values outside the training range are clamped to it. The
+variables' combined value is a weighted mean of their 0-1 values, so it is
+always within range. Standard and SAMC models share the resistance per km
+of each reach; a SAMC model adds its flow term.
 """
 import json
 
@@ -29,12 +28,19 @@ def load_spec(path):
     """
     with open(path) as fh:
         spec = json.load(fh)
-    # Standard models of earlier versions had resistances per reach
-    if any(m.get("type") == "standard" and m.get("units") != "km"
-           for m in spec.get("models", [])):
-        raise ValueError(
-            f"{path} has standard models of an earlier version (resistances "
-            "per reach), which are no longer supported; refit them")
+    # Standard models of earlier versions had resistances per reach, and
+    # SAMC models of earlier versions moved between reaches
+    for m in spec.get("models", []):
+        if m.get("type") == "standard" and m.get("units") != "km":
+            raise ValueError(
+                f"{path} has standard models of an earlier version "
+                "(resistances per reach), which are no longer supported; "
+                "refit them")
+        if m.get("type") == "samc" and "cell_km" not in m:
+            raise ValueError(
+                f"{path} has SAMC models of an earlier version (moves "
+                "between reaches), which are no longer supported; refit "
+                "them")
     return spec
 
 
@@ -50,14 +56,6 @@ def out_of_range(raw, var):
     """Share of values outside the training range of a variable."""
     raw = np.asarray(raw, dtype=float)
     return float(np.mean((raw < var["min"]) | (raw > var["max"])))
-
-
-def _outside(x):
-    """Share of rescaled values outside 0-1 (beyond rounding)."""
-    x = np.asarray(x, dtype=float)
-    if not x.size:
-        return 0.0
-    return float(np.mean((x < -1e-9) | (x > 1.0 + 1e-9)))
 
 
 def variable_values(raw, var):
@@ -129,113 +127,39 @@ def standard_resistance(raw, model):
     return 1.0 + (model["max_resistance"] - 1.0) * x
 
 
-def samc_composite(raw, rows, cols, model):
+def samc_downstream(lengths, model):
     """
-    Combined value of each move between adjacent reaches under a SAMC
-    model, on the training network's 0-1 scale before clamping.
+    Probability of moving downstream from a state inside each reach under a
+    SAMC model: its two neighbours are on the same reach, the same distance
+    away, so only the flow term makes them differ,
+    1 / (1 + exp(-2 x flow x link length)); NaN for reaches too short to
+    have inner states (one link).
 
     Args:
-        raw (DataFrame): Raw values of the model's variables, one row per
-                         reach.
-        rows, cols (array-like): Indices of the reaches moved from and to.
+        lengths (array-like): Length of each reach (km).
         model (dict): A model from a specification (type "samc").
 
     Returns:
-        tuple: Combined values (None if the model has no variables), and
-               whether any variable's link value was outside its training
-               range (and clamped to it), for each move.
+        numpy.ndarray: Probability for each reach.
     """
-    rows, cols = np.asarray(rows), np.asarray(cols)
-    multi = None
-    link_out = np.zeros(len(rows), dtype=bool)
-    for v, var in model["variables"].items():
-        x = variable_values(raw[v], var)
-        if var["asym"]:
-            link = x[cols] - x[rows]
-        else:
-            link = (x[rows] + x[cols]) / 2.0
-        link = _rescale(link, var["link_min"], var["link_max"])
-        link_out |= (link < -1e-9) | (link > 1.0 + 1e-9)
-        link = np.clip(link, 0.0, 1.0) * var["weight"]
-        multi = link if multi is None else multi + link
-    if multi is None:
-        return None, link_out
-    return (_rescale(multi, model["composite_min"], model["composite_max"]),
-            link_out)
-
-
-def _move_weights(composite, upstream_km, model, n):
-    """Movement weights from combined values (see samc_weights())."""
-    if composite is None:
-        weights = np.ones(n)
-    else:
-        x = np.clip(composite, 0.0, 1.0)
-        weights = 1.0 / (1.0 + (model["max_resistance"] - 1.0) * x)
-    if model.get("flow", 0.0):
-        weights = weights * np.exp(-model["flow"]
-                                   * np.asarray(upstream_km, dtype=float))
-    return weights
-
-
-def samc_weights(raw, rows, cols, upstream_km, model):
-    """
-    Movement weight of each move between adjacent reaches under a SAMC
-    model (before normalising over each reach's moves).
-
-    Args:
-        raw (DataFrame): Raw values of the model's variables, one row per
-                         reach.
-        rows, cols (array-like): Indices of the reaches moved from and to.
-        upstream_km (array-like): Distance moved upstream (negative when
-                                  moving downstream), between the reaches'
-                                  midpoints.
-        model (dict): A model from a specification (type "samc").
-
-    Returns:
-        numpy.ndarray: Weight of each move.
-    """
-    composite, _ = samc_composite(raw, rows, cols, model)
-    return _move_weights(composite, upstream_km, model, len(np.asarray(rows)))
-
-
-def reach_links(reaches, reachid_col, next_down_col, length_col):
-    """
-    Moves between adjacent reaches of a reach layer (each reach and its next
-    downstream reach, as in the SAMC model), and the distance moved upstream
-    between the reaches' midpoints.
-
-    Args:
-        reaches (DataFrame): One row per reach.
-        reachid_col, next_down_col, length_col (str): Column names.
-
-    Returns:
-        tuple: rows, cols (reach positions) and km moved upstream.
-    """
-    ids = reaches[reachid_col].to_numpy()
-    pos = {r: i for i, r in enumerate(ids)}
-    length = reaches[length_col].to_numpy(dtype=float)
-    up, down = [], []
-    for i, nd in enumerate(reaches[next_down_col].to_numpy()):
-        if nd in pos:
-            up.append(i)
-            down.append(pos[nd])
-    up, down = np.array(up, dtype=int), np.array(down, dtype=int)
-    km = (length[up] + length[down]) / 2.0
-    rows = np.concatenate([up, down])
-    cols = np.concatenate([down, up])
-    return rows, cols, np.concatenate([-km, km])
+    lengths = np.asarray(lengths, dtype=float)
+    # As the lattice (resistnet.lattice): round(L / cell_km) links, halves
+    # to even as Python's round()
+    pieces = np.maximum(1, np.rint(lengths / model["cell_km"]))
+    link = lengths / pieces
+    p = 1.0 / (1.0 + np.exp(-2.0 * model.get("flow", 0.0) * link))
+    return np.where(pieces > 1, p, np.nan)
 
 
 def predict_reaches(reaches, spec, model=0, reachid_col=None,
-                    next_down_col="NEXT_DOWN", length_col=None):
+                    length_col=None):
     """
     Applies a model to each reach of a reach layer.
 
-    For a standard model, each reach's resistance: per km (from 1), and
-    times the reach's length (reach_resistance). For a SAMC model,
-    the weights of moving to the downstream reach and to the upstream
-    reaches, and the share of moves that go downstream (without
-    absorption); and a table of the moves.
+    Each reach's resistance: per km (from 1), and times the reach's length
+    (reach_resistance). For a SAMC model, also the probability of moving
+    downstream from a state inside the reach (p_downstream; see
+    samc_downstream()).
 
     Args:
         reaches (DataFrame): One row per reach, with the model's variables.
@@ -243,14 +167,11 @@ def predict_reaches(reaches, spec, model=0, reachid_col=None,
         model (int): Index of the model in the specification (0 = best).
         reachid_col, length_col (str): Column names (default: as when the
                                        model was fitted).
-        next_down_col (str): Column giving the next downstream reach (SAMC).
 
     Returns:
-        tuple: Per-reach DataFrame, moves DataFrame (SAMC; else None), and
-               the share of out-of-range values for each variable; under
-               "composite", the share of reaches (standard) or moves (SAMC)
-               whose combined value was outside the training range, and was
-               clamped to it.
+        tuple: Per-reach DataFrame, and the share of reaches with values
+               outside the training range (clamped to it) for each
+               variable.
     """
     m = spec["models"][model]
     reachid_col = reachid_col or spec.get("reachid_col", "HYRIV_ID")
@@ -262,41 +183,15 @@ def predict_reaches(reaches, spec, model=0, reachid_col=None,
     clamped = {v: out_of_range(raw[v], var)
                for v, var in m["variables"].items()}
     out = pd.DataFrame({reachid_col: reaches[reachid_col].to_numpy()})
-    if m["type"] == "standard":
-        x = standard_composite(raw, m)
-        clamped["composite"] = 0.0 if x is None else _outside(x)
-        out["resistance"] = standard_resistance(raw, m)
-        # Also each reach's resistance over its length (its contribution
-        # to the distances between sites)
-        if length_col in reaches:
-            out["reach_resistance"] = out["resistance"].to_numpy() * \
-                reaches[length_col].to_numpy(dtype=float)
-        return out, None, clamped
-
-    rows, cols, upstream = reach_links(reaches, reachid_col, next_down_col,
-                                       length_col)
-    composite, link_out = samc_composite(raw, rows, cols, m)
-    if composite is not None:
-        out_any = (link_out | (composite < -1e-9)
-                   | (composite > 1.0 + 1e-9))
-        clamped["composite"] = float(np.mean(out_any)) if len(rows) else 0.0
-    else:
-        clamped["composite"] = 0.0
-    w = _move_weights(composite, upstream, m, len(rows))
-    n = len(reaches)
-    is_down = upstream < 0
-    w_down = np.bincount(rows[is_down], weights=w[is_down], minlength=n)
-    w_up = np.bincount(rows[~is_down], weights=w[~is_down], minlength=n)
-    has_down = np.bincount(rows[is_down], minlength=n) > 0
-    has_up = np.bincount(rows[~is_down], minlength=n) > 0
-    out["weight_downstream"] = np.where(has_down, w_down, np.nan)
-    out["weight_upstream"] = np.where(has_up, w_up, np.nan)
-    total = w_down + w_up
-    with np.errstate(invalid="ignore", divide="ignore"):
-        out["p_downstream"] = np.where(total > 0, w_down / total, np.nan)
-    ids = reaches[reachid_col].to_numpy()
-    moves = pd.DataFrame({"from": ids[rows], "to": ids[cols],
-                          "direction": np.where(is_down, "downstream",
-                                                "upstream"),
-                          "km_upstream": upstream, "weight": w})
-    return out, moves, clamped
+    out["resistance"] = standard_resistance(raw, m)
+    # Also each reach's resistance over its length (its contribution to the
+    # distances between sites)
+    if length_col in reaches:
+        lengths = reaches[length_col].to_numpy(dtype=float)
+        out["reach_resistance"] = out["resistance"].to_numpy() * lengths
+        if m["type"] == "samc":
+            out["p_downstream"] = samc_downstream(lengths, m)
+    elif m["type"] == "samc":
+        raise ValueError(f"SAMC models need the reach lengths "
+                         f"({length_col})")
+    return out, clamped

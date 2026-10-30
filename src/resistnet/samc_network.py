@@ -12,9 +12,9 @@ from scipy.optimize import minimize_scalar
 from sortedcontainers import SortedDict
 
 import resistnet.utils as utils
-import resistnet.transform as trans
 import resistnet.resist_dist as rd
 import resistnet.CFPT as cfpt_samc
+from resistnet.lattice import Lattice
 from resistnet.resistance_network import ResistanceNetwork
 from resistnet.resistance_network import SimResistanceNetwork
 
@@ -25,6 +25,15 @@ MIN_FLOW = 1e-3
 class ResistanceNetworkSAMC(ResistanceNetwork):
     """
     A class to represent a resistance network and associated data for SAMC
+
+    The SAMC model is samc's (Marx et al. 2020) on a lattice of the river
+    (see resistnet.lattice): states are the network's nodes (the sites are
+    snapped to nodes) and points about cell_km apart along each reach; a
+    walker moves between neighbouring states with samc's conductance,
+    1 / (mean resistance per km x distance), the resistance per km being
+    the standard model's (ResistanceGA's surface, 1 + (K - 1) x the
+    weighted mean of the transformed variables), optionally times a flow
+    term; it is absorbed at each site with probability 1/(2 Ne) per visit.
 
     Attributes:
         network (NetworkX graph): The network graph.
@@ -51,7 +60,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                  agg_opts, pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
                  origin=None, out="out", verbose=True, minimize=False,
-                 ne=100, max_resist=500, fix_resist=None, max_flow=1.0):
+                 ne=100, max_resist=500, fix_resist=None, max_flow=1.0,
+                 cell_km=1.0):
         """
         Constructs all the necessary attributes for the ResistanceNetwork
         object.
@@ -78,13 +88,15 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             minimize (bool): Flag to minimize subgraph. Defaults to False.
             ne (float): Effective population size of every site, used if
                         sizes is None. Defaults to 100.
-            max_resist (float): Upper limit when optimising the resistance
-                        of the most resistant moves, relative to the least
-                        resistant (1). Defaults to 500.
+            max_resist (float): Upper limit when optimising the maximum
+                        resistance per km K (from 1, distance alone).
+                        Defaults to 500.
             fix_resist (float, optional): Fix that maximum resistance
                         instead of optimising it.
             max_flow (float): Upper limit of the flow term's rate (per km;
                         see flow_rate()). Defaults to 1.
+            cell_km (float): Distance between neighbouring states of the
+                        lattice (km). Defaults to 1.
         """
         self.network = network
         self.shapefile = shapefile
@@ -108,6 +120,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self.max_resist = max_resist
         self.fix_resist = fix_resist
         self.max_flow = max_flow
+        self.cell_km = cell_km
+        # Variables can't be directional on the lattice
+        self.directional = False
 
         # Additional attributes for internal use
         self.minimized_subgraph = None
@@ -132,6 +147,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self._R = None
         self._edge_site_indices = None
         self._flow_pos = None
+        self._lattice = None
+        self._site_states = None
+        self._R_lat = None
 
         # Initialization methods
         self.initialize_network()
@@ -147,6 +165,24 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
         # calculate edge-wise absorption
         self.calculate_absorption()
+
+        # The lattice the walker moves on
+        self.build_lattice()
+
+    def build_lattice(self):
+        """
+        Builds the lattice of the network (see resistnet.lattice): the
+        state of each site (its snapped node) and the absorption of each
+        state (1/(2 Ne) at the sites).
+        """
+        self._lattice = Lattice(self._K, list(self._edge_order),
+                                self.reachid_col, self.length_col,
+                                self.cell_km)
+        sites = list(self._points_snapped.keys())
+        self._site_states = self._lattice.states(sites)
+        self._R_lat = np.zeros(self._lattice.n)
+        for site, state in zip(sites, self._site_states):
+            self._R_lat[state] = 1 / (2 * self._sizes[site])
 
     def initialize_network(self):
         """
@@ -604,12 +640,10 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             individual (list): Model specification, with self.num_attributes
                                values (selection, weight, transformation,
                                shape, direction) per variable, optionally
-                               followed by the maximum resistance and the
-                               flow rate (see flow_rate()). Direction is 0
-                               (symmetric) or 1 (moving towards higher
-                               transformed values is harder; a decreasing
-                               transformation reverses this for the raw
-                               values, see effective_directions()).
+                               followed by the maximum resistance per km
+                               and the flow rate (see flow_rate()).
+                               Direction must be 0: variables can't be
+                               directional on the lattice.
 
         Returns:
             tuple: A tuple containing the fitness value and the results of the
@@ -620,7 +654,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
 
         _, res = rd.conditionalFirstPassTime(
-            Q, self._edge_site_indices, self._gendist, self._R.ravel())
+            Q, self._site_states, self._gendist, self._R_lat)
         if res is None:
             return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
 
@@ -636,9 +670,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
     def surface_parameters(self, individual):
         """
         Counts the surface parameters estimated for a model (see
-        ResistanceNetwork.surface_parameters), plus the direction setting of
-        each selected variable unless fixAsym, the maximum resistance if it
-        was optimised, and the flow rate if the model has a flow term.
+        ResistanceNetwork.surface_parameters): transformations, shapes and
+        relative weights, the maximum resistance per km if it was
+        optimised, and the flow rate if the model has a flow term.
 
         Args:
             individual (list): Model specification, as for evaluate().
@@ -651,8 +685,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             1 for s in individual[0:n_var:self.num_attributes] if s == 1
         )
         k = super().surface_parameters(individual[:n_var])
-        if not getattr(self, "fixAsym", False):
-            k += n_sel
         # The maximum resistance, if it was optimised
         if len(individual) > n_var and self.fix_resist is None and n_sel:
             k += 1
@@ -666,7 +698,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         in the individual, or 0 (no flow term).
 
         Each move's weight is multiplied by exp(-rate * distance moved
-        upstream in km, between reach midpoints; see flow_positions()), so a
+        upstream in km, between neighbouring states of the lattice), so a
         positive rate makes moving upstream harder and a negative rate makes
         it easier. The rate is per km, so it is not rescaled to the network.
 
@@ -683,9 +715,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
     def max_resistance(self, individual):
         """
-        The maximum resistance for a model: the value following the variable
-        attributes in the individual if present (when it is optimised),
-        otherwise fix_resist, or 100 (capped at max_resist).
+        The maximum resistance per km K of a model: the value following the
+        variable attributes in the individual if present (when it is
+        optimised), otherwise fix_resist, or 100 (capped at max_resist).
 
         Args:
             individual (list): Model specification, as for evaluate().
@@ -704,10 +736,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         """
         Evaluates the reference models: distance-only and population effects
         only (see ResistanceNetwork.evaluate_null_model), and two SAMC
-        models: distance alone (equal movement weights between all adjacent
-        reaches; only the MLPE parameters are counted in AIC) and flow alone
-        (the same, plus the flow term, with its rate fitted; see
-        flow_rate()).
+        models: distance alone (resistance 1 per km everywhere; only the
+        MLPE parameters are counted in AIC) and flow alone (the same, plus
+        the flow term, with its rate fitted; see flow_rate()).
 
         Args:
             oname (str, optional): The output name for saving the results.
@@ -745,8 +776,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
     def write_flow_profile(self, oname):
         """
-        Writes {oname}.flowProfile.tsv: the AIC of flow alone (equal
-        movement weights plus the flow term) at each rate evaluated when
+        Writes {oname}.flowProfile.tsv: the AIC of flow alone (resistance 1
+        per km plus the flow term) at each rate evaluated when
         fitting it, in both directions (rate 0: distance alone), and its
         difference from the best rate.
 
@@ -765,18 +796,13 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
     def _flow_alone(self, rate):
         """
-        MLPE results for the model with equal movement weights and a flow
-        term with the given rate (None if the fit failed).
+        MLPE results for the model with resistance 1 per km and a flow term
+        with the given rate (None if the fit failed).
         """
-        W = abs(self._adj).astype(float)
-        if rate != 0:
-            rows, cols = W.nonzero()
-            upstream = self._flow_pos[cols] - self._flow_pos[rows]
-            W = sp.csr_matrix(
-                (np.exp(-rate * upstream), (rows, cols)), shape=W.shape)
-        Q = cfpt_samc.transition_matrix(W, self._R.ravel())
+        W = self._lattice.weights(rate=rate)
+        Q = cfpt_samc.transition_matrix(W, self._R_lat)
         _, res = rd.conditionalFirstPassTime(
-            Q, self._edge_site_indices, self._gendist, self._R.ravel())
+            Q, self._site_states, self._gendist, self._R_lat)
         return res
 
     def _fit_flow_alone(self):
@@ -821,116 +847,77 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
         Returns:
             tuple: The CFPT matrix among sites (row = origin, column =
-                   destination), and the probabilities of moving downstream
-                   and upstream from each reach (columns of an array ordered
-                   as self._edge_order).
+                   destination), and for each reach (rows ordered as
+                   self._edge_order) its resistance per km and the
+                   probabilities of moving downstream and upstream from a
+                   state inside it (see Lattice.reach_moves(); NaN for
+                   reaches of one link).
         """
         Q = self._transition_matrix(model)
         if Q is None:
             return None, None
-        cfpt = cfpt_samc.CFPT(Q, self._edge_site_indices, self._R.ravel())
-        return cfpt, self._transition_vectors(Q)
-
-    def _transition_vectors(self, Q):
-        """
-        Probability of moving downstream and upstream from each reach.
-
-        Args:
-            Q (scipy.sparse matrix): Transient transition matrix.
-
-        Returns:
-            numpy.ndarray: Array with columns (downstream, upstream); NaN
-                           where a reach has no neighbour in that direction.
-        """
-        adj = self._adj.tocsr()
-        Q = sp.csr_matrix(Q)
-        down = np.asarray(Q.multiply(adj == 1).sum(axis=1)).ravel()
-        up = np.asarray(Q.multiply(adj == -1).sum(axis=1)).ravel()
-        down[np.asarray((adj == 1).sum(axis=1)).ravel() == 0] = np.nan
-        up[np.asarray((adj == -1).sum(axis=1)).ravel() == 0] = np.nan
-        return np.column_stack((down, up))
+        cfpt = cfpt_samc.CFPT(Q, self._site_states, self._R_lat)
+        rho = self.resistance_surface(model)
+        rho = (np.ones(len(self._edge_order)) if rho is None
+               else rho.to_numpy(dtype=float))
+        moves = self._lattice.reach_moves(self.flow_rate(model))
+        return cfpt, np.column_stack((rho, moves))
 
     def _transition_matrix(self, individual):
         """
         Builds the transient transition matrix Q for a model: movement
-        weights from the composite surface, with absorption at the sites.
+        weights on the lattice (see _movement_weights()), with absorption
+        at the sites.
 
         Args:
             individual (list): Model specification, as for evaluate().
 
         Returns:
-            scipy.sparse.csr_matrix: Q, or None if no variable is selected.
-        """
-        multi = self._build_composite_surface(individual)
-        if multi is None:
-            return None
-        return cfpt_samc.transition_matrix(multi, self._R)
-
-    def _build_composite_surface(self, individual):
-        """
-        Builds the composite movement weights between adjacent reaches.
-
-        For each selected variable (transformed and rescaled to 0-1), the
-        resistance of moving from reach i to j is the mean of the two reaches'
-        values or, if the variable is directional, the difference (value at
-        j - value at i), so that moving towards higher (transformed) values
-        is harder. These are rescaled to 0-1 and summed by weight. The
-        composite is rescaled to resistances from 1 to the maximum
-        resistance (see max_resistance()), and inverted to give the
-        movement weights (conductances). A flow term (see
-        flow_rate()) then multiplies each weight by a factor depending on
-        the distance moved upstream; with no variables selected, the weights
-        are 1 before the flow term.
-
-        Args:
-            individual (list): Model specification, as for evaluate().
-
-        Returns:
-            scipy.sparse.csr_matrix: Movement weights, non-zero for adjacent
-                                     reaches; None if no variable is selected
+            scipy.sparse.csr_matrix: Q, or None if no variable is selected
                                      and there is no flow term.
         """
-        n_att = self.num_attributes
-        rows, cols = self._adj.nonzero()
-        multi = None
-        for i, variable in enumerate(self._predictors.columns):
-            if individual[i * n_att] != 1:
-                continue
-            var = self.transform(
-                self._predictors[variable],
-                individual[i * n_att + 2],
-                individual[i * n_att + 3]
-            )
-            var = trans.rescaleCols(var, 0, 1).to_numpy(dtype=float)
-            if individual[i * n_att + 4] == 1:
-                link = var[cols] - var[rows]
-            else:
-                link = (var[rows] + var[cols]) / 2.0
-            link = _rescale01(link) * individual[i * n_att + 1]
-            multi = link if multi is None else multi + link
+        W = self._movement_weights(individual)
+        if W is None:
+            return None
+        return cfpt_samc.transition_matrix(W, self._R_lat)
 
+    def _movement_weights(self, individual):
+        """
+        Movement weights between neighbouring states of the lattice: samc's
+        conductance, 2 / ((r_i + r_j) x distance), from the resistance per
+        km of each reach (see resistance_surface(): 1 + (K - 1) x the
+        weighted mean of the transformed variables, as the standard model;
+        1 without variables), times the flow term if any (see
+        flow_rate()).
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            scipy.sparse.csr_matrix: Movement weights, or None if no variable
+                                     is selected and there is no flow term.
+        """
+        n_att = self.num_attributes
+        for i, v in enumerate(self._predictors.columns):
+            if individual[i * n_att] == 1 and individual[i * n_att + 4] == 1:
+                raise ValueError(
+                    f"{v} is directional: variables can't be directional "
+                    "on the lattice (only the flow term is)")
+        rho = self.resistance_surface(individual)
         rate = self.flow_rate(individual)
-        if multi is None:
-            if rate == 0:
-                return None
-            weights = np.ones(len(rows))
-        else:
-            max_r = self.max_resistance(individual)
-            resistance = 1.0 + (max_r - 1.0) * _rescale01(multi)
-            weights = 1.0 / resistance
-        if rate != 0:
-            upstream = self._flow_pos[cols] - self._flow_pos[rows]
-            weights = weights * np.exp(-rate * upstream)
-        return sp.csr_matrix((weights, (rows, cols)), shape=self._adj.shape)
+        if rho is None and rate == 0:
+            return None
+        return self._lattice.weights(
+            None if rho is None else rho.to_numpy(dtype=float), rate)
 
     def model_spec(self, individual):
         """
-        Everything needed to compute a model's movement weights for the
-        reaches of another network (see resistnet.predict): for each
-        selected variable, as for ResistanceNetwork.model_spec() plus its
-        direction setting, the range of its link values, and its effective
-        direction (see effective_directions()); and the range of the
-        composite surface, the maximum resistance and the flow rate.
+        Everything needed to compute a model's resistances for the reaches
+        of another network (see resistnet.predict): as for the standard
+        model (each selected variable's range, transformation, shape,
+        weight and range after the transformation, and the maximum
+        resistance per km), plus the flow rate and the lattice's distance
+        between states.
 
         Args:
             individual (list): Model specification, as for evaluate().
@@ -938,66 +925,23 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         Returns:
             dict: The model specification (JSON-serialisable).
         """
-        n_att = self.num_attributes
-        rows, cols = self._adj.nonzero()
-        directions = self.effective_directions(individual)
-        spec = {"type": "samc", "variables": {}}
-        multi = None
-        for i, v in enumerate(self._predictors.columns):
-            if individual[i * n_att] != 1:
-                continue
-            var = self._variable_spec(v, individual[i * n_att + 2],
-                                      individual[i * n_att + 3])
-            var["weight"] = float(individual[i * n_att + 1])
-            var["asym"] = int(individual[i * n_att + 4] == 1)
-            x = self._spec_values(v, var)
-            link = (x[cols] - x[rows] if var["asym"]
-                    else (x[rows] + x[cols]) / 2.0)
-            var["link_min"] = float(link.min())
-            var["link_max"] = float(link.max())
-            if v in directions:
-                var["higher_harder"] = directions[v]
-            spec["variables"][v] = var
-            link = _rescale01(link) * var["weight"]
-            multi = link if multi is None else multi + link
-        if multi is not None:
-            spec["composite_min"] = float(multi.min())
-            spec["composite_max"] = float(multi.max())
-            spec["max_resistance"] = self.max_resistance(individual)
+        spec = super().model_spec(individual)
+        spec["type"] = "samc"
         spec["flow"] = self.flow_rate(individual)
+        spec["cell_km"] = float(self.cell_km)
         return spec
 
     def effective_directions(self, individual):
         """
-        The effective direction of each directional variable in its raw
-        values: the share of moves between reaches with different values on
-        which moving towards the higher value is harder (by that variable).
-        The direction setting applies to the transformed values, so a
-        decreasing transformation reverses it, and a humped one (Ricker)
-        gives a mix.
+        Variables can't be directional on the lattice, so there are none.
 
         Args:
             individual (list): Model specification, as for evaluate().
 
         Returns:
-            dict: Share for each selected directional variable.
+            dict: Empty.
         """
-        n_att = self.num_attributes
-        rows, cols = self._adj.nonzero()
-        out = {}
-        for i, v in enumerate(self._predictors.columns):
-            if individual[i * n_att] != 1 or individual[i * n_att + 4] != 1:
-                continue
-            raw = self._predictors[v].to_numpy(dtype=float)
-            x = self.transform(self._predictors[v], individual[i * n_att + 2],
-                               individual[i * n_att + 3]).to_numpy(dtype=float)
-            rises = np.sign(raw[cols] - raw[rows])
-            moved = rises != 0
-            if not moved.any():
-                continue
-            harder = np.sign(x[cols] - x[rows])[moved] == rises[moved]
-            out[v] = float(np.mean(harder))
-        return out
+        return {}
 
     def plot_inferred_origin(self, oname):
         # Extract the positions of the nodes in the graph
@@ -1113,15 +1057,17 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
     def output_and_plot_model(self, oname, mat_r, edge_r, plot=True):
         """
-        Outputs model results to files and optionally plots the transition
-        probabilities and pairwise model.
+        Outputs model results to files and optionally plots the reaches'
+        resistances and transition probabilities, and the pairwise model.
 
         Args:
             oname (str): The base name for output files.
             mat_r (numpy.ndarray): CFPT matrix among sites (row = origin,
                                    column = destination).
-            edge_r (numpy.ndarray): Probabilities of moving downstream and
-                                    upstream from each reach (columns).
+            edge_r (numpy.ndarray): For each reach, its resistance per km
+                                    and the probabilities of moving
+                                    downstream and upstream (columns; see
+                                    model_output()).
             plot (bool, optional): Boolean to control whether to generate plots
                                    Defaults to True.
         """
@@ -1130,8 +1076,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         edge_r = np.asarray(edge_r)
         edf = pd.DataFrame({
             "EDGE_ID": self._edge_order,
-            "Downstream": edge_r[:, 0],
-            "Upstream": edge_r[:, 1]
+            "Resistance": edge_r[:, 0],
+            "Downstream": edge_r[:, 1],
+            "Upstream": edge_r[:, 2]
         })
         edf.to_csv(f"{oname}.TransitionEdges.tsv", sep="\t", index=False,
                    na_rep="NA")
@@ -1149,38 +1096,35 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
     def plot_resistance_network(self, resistance_values, oname):
         """
-        Plots the probabilities of moving downstream and upstream from each
-        reach.
+        Plots each reach's resistance per km (log scale) and the probability
+        of moving downstream from its middle state.
 
         Args:
             resistance_values (DataFrame): A DataFrame with 'EDGE_ID',
-                'Downstream' and 'Upstream' columns.
+                'Resistance', 'Downstream' and 'Upstream' columns.
             oname (str): The output name for the saved plot file.
         """
+        from matplotlib.colors import LogNorm
         _, edgeDF = momepy.nx_to_gdf(self._K)
         edgeDF['EDGE_ID'] = edgeDF[self.reachid_col].astype(int)
         geoDF = edgeDF.merge(resistance_values, on="EDGE_ID")
 
         sns.set(style="ticks")
         fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-        for a, col in zip(ax, ["Downstream", "Upstream"]):
-            geoDF.plot(ax=a, column=col, cmap="RdYlGn", legend=True)
-            a.set_title(f"Probability of moving {col.lower()}")
-        fig.suptitle("Stream network transition probabilities")
+        r = geoDF["Resistance"]
+        norm = (LogNorm(vmin=r.min(), vmax=r.max())
+                if (r > 0).all() and r.max() > r.min() else None)
+        geoDF.plot(ax=ax[0], column="Resistance", cmap="RdYlGn_r",
+                   legend=True, norm=norm)
+        ax[0].set_title("Resistance per km")
+        geoDF.plot(ax=ax[1], column="Downstream", cmap="RdYlGn",
+                   legend=True, vmin=0, vmax=1)
+        ax[1].set_title("Probability of moving downstream")
+        fig.suptitle("Stream network resistance and transition "
+                     "probabilities")
         plt.savefig(f"{oname}.streamsByTransition.pdf")
         plt.clf()
         plt.close()
-
-
-def _rescale01(x):
-    """
-    Rescales an array to 0-1 (all zeros if it is constant).
-    """
-    x = np.asarray(x, dtype=float)
-    span = x.max() - x.min()
-    if span == 0:
-        return np.zeros_like(x)
-    return (x - x.min()) / span
 
 
 class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
@@ -1222,6 +1166,10 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         flow_pos (numpy.ndarray): Position of each reach along the flow (see
                                   flow_positions()).
         max_flow (float): Upper limit of the flow rate.
+        lattice (Lattice): The lattice the walker moves on.
+        site_states (list): Lattice state of each site.
+        R_lat (numpy.ndarray): Absorption of each lattice state.
+        cell_km (float): Distance between neighbouring states.
     """
     def __init__(self, network, pop_agg, reachid_col, length_col,
                  variables, agg_opts, fitmetric, fixWeight, fixShape,
@@ -1229,7 +1177,8 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
                  points_snapped, points_labels, predictors, edge_order,
                  gendist, adj, origin, R, allSymmetric, edge_site_indices,
                  fixAsym=False, max_resist=500, fix_resist=None,
-                 flow_pos=None, max_flow=1.0):
+                 flow_pos=None, max_flow=1.0, lattice=None,
+                 site_states=None, R_lat=None, cell_km=1.0):
 
         self.network = network
         self.pop_agg = pop_agg
@@ -1251,6 +1200,8 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self.max_resist = max_resist
         self.fix_resist = fix_resist
         self.max_flow = max_flow
+        self.cell_km = cell_km
+        self.directional = False
 
         self._inc = inc
         self._origin = origin
@@ -1267,13 +1218,17 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self._R = R
         self._edge_site_indices = edge_site_indices
         self._flow_pos = flow_pos
+        self._lattice = lattice
+        self._site_states = site_states
+        self._R_lat = R_lat
 
 
 class SimResistanceNetworkSAMC(SimResistanceNetwork):
     """
     Simulates validation datasets under a SAMC model: the conditional first
     passage times among random sites, averaged over the two directions (as
-    fitted), with movement weights built exactly as when fitting models.
+    fitted), with movement weights built exactly as when fitting models (on
+    the lattice; see ResistanceNetworkSAMC).
 
     Args:
         network (str): Path of the pickled network.
@@ -1284,22 +1239,25 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
         seed (int, optional): Random seed for reproducibility.
         ne (float, optional): Effective population size at every site
                               (absorption 1/(2 Ne)). Defaults to 100.
-        max_resistance (float, optional): Maximum resistance of the
-                                          composite surface. Defaults to 100.
+        max_resistance (float, optional): Maximum resistance per km.
+                                          Defaults to 100.
         flow (float, optional): Rate of the flow term, per km (0 = no flow
                                 term; see ResistanceNetworkSAMC.flow_rate()).
         infer_origin (str, optional): Attribute giving each reach's next
                                       downstream reach. Defaults to NEXT_DOWN.
+        cell_km (float, optional): Distance between neighbouring states of
+                                   the lattice (km). Defaults to 1.
     """
     def __init__(self, network, reachid_col, length_col, verbose=False,
                  seed=None, ne=100, max_resistance=100.0, flow=0.0,
-                 infer_origin="NEXT_DOWN"):
+                 infer_origin="NEXT_DOWN", cell_km=1.0):
         super().__init__(network, reachid_col, length_col, verbose=verbose,
                          seed=seed)
         self.ne = ne
         self.sim_max_resistance = float(max_resistance)
         self.sim_flow = float(flow)
         self.infer_origin = infer_origin
+        self.cell_km = cell_km
 
     def simulated_distances(self, vars, base):
         """
@@ -1309,10 +1267,9 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
 
         Args:
             vars (DataFrame): Model specification, as for
-                              simulate_resistance(), with an optional ASYM
-                              column (1 = directional; default 0). With no
-                              variables, movement weights are equal (plus
-                              the flow term, if any).
+                              simulate_resistance(). With no variables, the
+                              resistance is 1 per km (plus the flow term, if
+                              any).
             base (str): Output prefix of the replicate.
 
         Returns:
@@ -1331,7 +1288,8 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
                 reachid_col=self.reachid_col, length_col=self.length_col,
                 infer_origin=self.infer_origin, ne=self.ne,
                 max_flow=max(1.0, abs(self.sim_flow)),
-                out=os.path.join(tmp, "sim"), verbose=False)
+                cell_km=self.cell_km, out=os.path.join(tmp, "sim"),
+                verbose=False)
 
         individual = []
         for v in net._predictors.columns:
@@ -1341,15 +1299,15 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
                 continue
             spec = spec.iloc[0]
             individual += [1, float(spec["WEIGHT"]), int(spec["TRANSFORM"]),
-                           float(spec["SHAPE"]), int(spec.get("ASYM", 0))]
+                           float(spec["SHAPE"]), 0]
         individual += [self.sim_max_resistance, self.sim_flow]
 
-        R = net._R.ravel()
+        R = net._R_lat
         Q = net._transition_matrix(individual)
         if Q is None:
-            # No variable and no flow term: equal movement weights
-            Q = cfpt_samc.transition_matrix(abs(net._adj).astype(float), R)
-        T = cfpt_samc.CFPT(Q, net._edge_site_indices, R)
+            # No variable and no flow term: distance alone
+            Q = cfpt_samc.transition_matrix(net._lattice.weights(), R)
+        T = cfpt_samc.CFPT(Q, net._site_states, R)
         utils.write_matrix(f"{base}.CFPTMatrix.tsv", T,
                            list(net._points_labels.values()))
 

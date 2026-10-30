@@ -175,10 +175,9 @@ class parseArgs:
         parser.add_argument(
             '--max_resist', type=float, default=None,
             help=(
-                'Upper limit for the maximum resistance (relative to a '
-                'minimum of 1), which is optimised: per km for the standard '
-                "model (default 1000, as ResistanceGA's max.cont), and of "
-                'the composite surface for SAMC (default 500)'
+                'Upper limit for the maximum resistance per km (relative to '
+                'a minimum of 1), which is optimised: default 1000 for the '
+                "standard model (as ResistanceGA's max.cont), 500 for SAMC"
             )
         )
         parser.add_argument(
@@ -187,7 +186,9 @@ class parseArgs:
         )
         parser.add_argument(
             '--fixAsym', action='store_true',
-            help='SAMC: do not consider directional effects of variables'
+            help=('SAMC: do not consider directional effects of variables '
+                  '(always the case on the lattice, where only the flow '
+                  'term is directional; kept for compatibility)')
         )
         parser.add_argument(
             '--max_flow', type=float, default=1.0,
@@ -199,6 +200,11 @@ class parseArgs:
         parser.add_argument(
             '--fixFlow', action='store_true',
             help='SAMC: leave out the flow (upstream vs downstream) term'
+        )
+        parser.add_argument(
+            '--cell_km', type=float, default=1.0,
+            help=('SAMC: distance between neighbouring states of the '
+                  "lattice the walker moves on (km; samc's cell size)")
         )
 
         # Multi-model inference options
@@ -233,6 +239,8 @@ class parseArgs:
         # The smallest flow rate searched (samc_network.MIN_FLOW)
         if self.max_flow <= 0.001:
             parser.error("--max_flow must be greater than 0.001")
+        if self.cell_km <= 0:
+            parser.error("--cell_km must be positive")
 
         # 'delta' refers to the MLPE output column delta_aic_null
         if self.fitmetric == 'delta':
@@ -263,8 +271,8 @@ class parseArgs:
     def max_resist_for(self, model):
         """
         The upper limit of the maximum resistance for a model: --max_resist,
-        or by default 1000 for the standard model (per km, as ResistanceGA's
-        max.cont) and 500 for SAMC (of the composite surface).
+        or by default 1000 for the standard model (as ResistanceGA's
+        max.cont) and 500 for SAMC (both per km).
 
         Args:
             model (str): "resistance" or "samc".

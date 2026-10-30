@@ -3,17 +3,30 @@
 Computed with independent implementations, so that tests check ResistNet
 against them rather than against its own earlier output.
 
-- `nmt_samc_*.tsv`: conditional first passage times among the 14 sites
-  (row = origin, column = destination), from `samc::cond_passage` in R
-  (samc 3.2.1), for three SAMC models on `nmt.gpkg` (see
-  `test_samc_network.py::R_SAMC_MODELS`). They also agree with a 60-digit
-  decimal solution (dense Gaussian elimination) to 2e-13.
+- `samc_raster_*.tsv`: samc's own SAMC (samc 3.2.1), built by samc from
+  rasters: a small river of five reaches (`test_lattice.py`) drawn one
+  cell wide on a 12 x 16 raster, with each reach's resistance per km and a
+  confluence cell taking the mean of the reaches meeting there
+  (`samc_raster_resistance.tsv`), absorption at five sites
+  (`samc_raster_absorption.tsv`, `samc_raster_sites.tsv`), 4-neighbours and
+  conductance 1/mean(x). `samc_raster.R` writes samc's transient matrix
+  (`samc_raster_Q.tsv`, each location's row and column first) and the
+  conditional passage times among the sites (`samc_raster_cfpt.tsv`).
+  `python test_lattice.py` writes the input rasters. The lattice
+  (`resistnet/lattice.py`) must give the same matrix and passage times.
+- `nmt_samc_lattice_*.tsv`: conditional first passage times among the 14
+  sites (row = origin, column = destination), from `samc::cond_passage`
+  (samc 3.2.1, `samc(data = P)`), for three SAMC models on the lattice of
+  `nmt.gpkg` (see `test_samc_network.py::R_SAMC_MODELS`):
+  `nmt_samc_lattice.py` exports their transition matrices and
+  `nmt_samc_cond_passage.R` runs samc.
 - `nmt_mlpe_Y.tsv`: the NMT genetic distances (linearised FST,
   `nmt.popGenDistMat.txt`), in the network's site order. `nmt_mlpe_X_*.tsv`: model distances among the
   sites: river distance in km (`streamkm`), the standard model with
   degree of regulation (`dor_pc_pva`, inverse monomolecular, shape 1;
-  `dor_inv_mono`), and the symmetrised passage times of the
-  `ele_dir_flow` SAMC model.
+  `dor_inv_mono`), and the symmetrised passage times of the `sgr_flow`
+  SAMC model on the lattice (`samc_sgr_flow`, from
+  `nmt_samc_lattice.py`).
 - `nmt_mlpe_lme4.tsv`: ResistanceGA's `MLPE.lmm` fitted to Y and each X
   (lme4, ML; AIC counts the four MLPE parameters only) and the marginal
   R2 from `MuMIn::r.squaredGLMM` (`nmt_mlpe_lme4.R` made it).

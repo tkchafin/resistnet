@@ -156,6 +156,7 @@ def build_network(params, model, prefix):
             max_resist=params.max_resist_for("samc"),
             fix_resist=params.fix_resist,
             max_flow=params.max_flow,
+            cell_km=params.cell_km,
             out=prefix,
             verbose=True
         )
