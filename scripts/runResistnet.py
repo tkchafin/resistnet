@@ -39,7 +39,7 @@ def main():
             else:
                 print("Standard model: resistance per km, from 1 to a "
                       "maximum optimised up to "
-                      f"{params.max_resist_for('resistance'):g}")
+                      f"{params.max_resist:g}")
 
         # Step 1: Initialise network
         network = build_network(params, model, prefix)
@@ -153,7 +153,7 @@ def build_network(params, model, prefix):
             length_col=params.length_col,
             infer_origin=params.infer_origin,
             ne=params.ne,
-            max_resist=params.max_resist_for("samc"),
+            max_resist=params.max_resist,
             fix_resist=params.fix_resist,
             max_flow=params.max_flow,
             cell_km=params.cell_km,
@@ -173,7 +173,7 @@ def build_network(params, model, prefix):
         length_col=params.length_col,
         out=prefix,
         verbose=True,
-        max_resist=params.max_resist_for("resistance"),
+        max_resist=params.max_resist,
         fix_resist=params.fix_resist
     )
 

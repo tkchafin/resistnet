@@ -61,7 +61,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                  agg_opts, pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
                  origin=None, out="out", verbose=True, minimize=False,
-                 ne=100, max_resist=500, fix_resist=None, max_flow=0.1,
+                 ne=100, max_resist=1000, fix_resist=None, max_flow=0.1,
                  cell_km=1.0, absorption="none", pairs="max"):
         """
         Constructs all the necessary attributes for the ResistanceNetwork
@@ -91,7 +91,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                         sizes is None. Defaults to 100.
             max_resist (float): Upper limit when optimising the maximum
                         resistance per km K (from 1, distance alone).
-                        Defaults to 500.
+                        Defaults to 1000, as the standard model.
             fix_resist (float, optional): Fix that maximum resistance
                         instead of optimising it.
             max_flow (float): Upper limit of the flow term's rate (per km;
@@ -1211,7 +1211,7 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
                  min_weight, max_shape, inc, point_coords, points_names,
                  points_snapped, points_labels, predictors, edge_order,
                  gendist, adj, origin, R, allSymmetric, edge_site_indices,
-                 fixAsym=False, max_resist=500, fix_resist=None,
+                 fixAsym=False, max_resist=1000, fix_resist=None,
                  flow_pos=None, max_flow=0.1, lattice=None,
                  site_states=None, R_lat=None, cell_km=1.0,
                  absorption="none", pairs="max"):
