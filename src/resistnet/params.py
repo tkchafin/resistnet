@@ -191,7 +191,7 @@ class parseArgs:
                   'term is directional; kept for compatibility)')
         )
         parser.add_argument(
-            '--max_flow', type=float, default=1.0,
+            '--max_flow', type=float, default=0.1,
             help=(
                 'SAMC: upper limit for the rate of the flow (upstream vs '
                 'downstream) term, per km'
@@ -200,6 +200,18 @@ class parseArgs:
         parser.add_argument(
             '--fixFlow', action='store_true',
             help='SAMC: leave out the flow (upstream vs downstream) term'
+        )
+        parser.add_argument(
+            '--samc_absorption', type=str, choices=['none', 'sites'],
+            default='none',
+            help=('SAMC: no absorption (passage times are hitting times), '
+                  'or absorption 1/(2 Ne) at each site per visit')
+        )
+        parser.add_argument(
+            '--samc_pairs', type=str, choices=['max', 'mean'],
+            default='max',
+            help=('SAMC: how the passage times of the two directions '
+                  'between two sites are combined')
         )
         parser.add_argument(
             '--cell_km', type=float, default=1.0,

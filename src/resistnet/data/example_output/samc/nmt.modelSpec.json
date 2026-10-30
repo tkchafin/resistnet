@@ -7,43 +7,60 @@
   {
    "type": "samc",
    "units": "km",
-   "variables": {},
-   "flow": -0.2215836862391514,
+   "variables": {
+    "sgr_dk_rav": {
+     "min": 0.0,
+     "max": 67.0,
+     "transform": 8,
+     "shape": 1.0,
+     "tmin": 1.0,
+     "tmax": 1.9999546000702375,
+     "weight": 0.9906590883899629
+    }
+   },
+   "max_resistance": 491.5290252194777,
+   "flow": 0.0,
    "cell_km": 1.0,
+   "absorption": "none",
+   "pairs": "max",
    "rank": 1,
-   "aic": -431.4751822468322,
-   "akaike_weight": 0.8128999658837006
-  },
-  {
-   "type": "samc",
-   "units": "km",
-   "variables": {},
-   "flow": -0.19503445666271185,
-   "cell_km": 1.0,
-   "rank": 2,
-   "aic": -427.99365884990704,
-   "akaike_weight": 0.14257188951489125
+   "aic": -412.00171755228644,
+   "akaike_weight": 0.8494840276124365
   },
   {
    "type": "samc",
    "units": "km",
    "variables": {
-    "ele_mt_cav": {
-     "min": 238.0,
-     "max": 376.0,
-     "transform": 0,
-     "shape": 0.0,
-     "tmin": 0.0,
-     "tmax": 10.0,
-     "weight": 0.9274402838628211
+    "tmp_dc_cyr": {
+     "min": 125.0,
+     "max": 145.0,
+     "transform": 4,
+     "shape": 3.0,
+     "tmin": -2.103638323514327,
+     "tmax": -1.0,
+     "weight": 0.2433063366620759
     }
    },
-   "max_resistance": 15.398592154605874,
-   "flow": -0.23325720217348414,
+   "max_resistance": 28.669345484836853,
+   "flow": -0.0024886143293770787,
    "cell_km": 1.0,
+   "absorption": "none",
+   "pairs": "max",
+   "rank": 2,
+   "aic": -408.4206472023644,
+   "akaike_weight": 0.14175411382359684
+  },
+  {
+   "type": "samc",
+   "units": "km",
+   "variables": {},
+   "flow": -0.08173865733261018,
+   "cell_km": 1.0,
+   "absorption": "none",
+   "pairs": "max",
    "rank": 3,
-   "aic": -425.6606815079816,
-   "akaike_weight": 0.04440524927474486
+   "aic": -402.755709149746,
+   "akaike_weight": 0.008344686070734799
   },
   {
    "type": "samc",
@@ -52,37 +69,21 @@
     "run_mm_cyr": {
      "min": 217.0,
      "max": 320.0,
-     "transform": 7,
-     "shape": 1.0,
-     "tmin": 1.0,
-     "tmax": 1.9999546000702375,
-     "weight": 0.4507217665264751
-    },
-    "sgr_dk_rav": {
-     "min": 0.0,
-     "max": 67.0,
      "transform": 1,
-     "shape": 7.0,
+     "shape": 8.0,
      "tmin": 1.0,
-     "tmax": 3.396510364417758,
-     "weight": 0.6436594936409707
-    },
-    "dor_pc_pva": {
-     "min": 0.0,
-     "max": 600.0,
-     "transform": 2,
-     "shape": 1.0,
-     "tmin": 1.0,
-     "tmax": 1.3666708771989708,
-     "weight": 0.787209225526545
+     "tmax": 3.943000740780758,
+     "weight": 0.2248098036888532
     }
    },
-   "max_resistance": 7.090534619717936,
-   "flow": -0.24745284289410824,
+   "max_resistance": 191.703791227179,
+   "flow": -0.09959829127401416,
    "cell_km": 1.0,
+   "absorption": "none",
+   "pairs": "max",
    "rank": 4,
-   "aic": -413.88112155195483,
-   "akaike_weight": 0.00012289532666338794
+   "aic": -396.76394829486475,
+   "akaike_weight": 0.0004171724932318655
   }
  ]
 }

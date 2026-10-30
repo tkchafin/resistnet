@@ -33,7 +33,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
     1 / (mean resistance per km x distance), the resistance per km being
     the standard model's (ResistanceGA's surface, 1 + (K - 1) x the
     weighted mean of the transformed variables), optionally times a flow
-    term; it is absorbed at each site with probability 1/(2 Ne) per visit.
+    term. The distance between two sites combines the conditional passage
+    times of the two directions (absorption and pairs: see __init__).
 
     Attributes:
         network (NetworkX graph): The network graph.
@@ -60,8 +61,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                  agg_opts, pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
                  origin=None, out="out", verbose=True, minimize=False,
-                 ne=100, max_resist=500, fix_resist=None, max_flow=1.0,
-                 cell_km=1.0):
+                 ne=100, max_resist=500, fix_resist=None, max_flow=0.1,
+                 cell_km=1.0, absorption="none", pairs="max"):
         """
         Constructs all the necessary attributes for the ResistanceNetwork
         object.
@@ -94,9 +95,24 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             fix_resist (float, optional): Fix that maximum resistance
                         instead of optimising it.
             max_flow (float): Upper limit of the flow term's rate (per km;
-                        see flow_rate()). Defaults to 1.
+                        see flow_rate()). Defaults to 0.1: in simulations,
+                        gene flow biased by up to 0.05 per km gave rates
+                        within 0.03, and larger rates appeared only as
+                        artefacts.
             cell_km (float): Distance between neighbouring states of the
                         lattice (km). Defaults to 1.
+            absorption (str): "none" (default): no absorption, so the
+                        passage times are hitting times; "sites": a walker
+                        at a site is absorbed with probability 1/(2 Ne) per
+                        visit.
+            pairs (str): How the passage times of the two directions
+                        between two sites are combined: "max" (default) or
+                        "mean". With absorption "none" and pairs "max", the
+                        flow term recovered the direction of gene flow in
+                        simulations, the walker moving like a lineage traced
+                        back in time (a negative rate = gene flow biased
+                        downstream); with absorption at the sites or the
+                        mean, it did not.
         """
         self.network = network
         self.shapefile = shapefile
@@ -121,6 +137,12 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self.fix_resist = fix_resist
         self.max_flow = max_flow
         self.cell_km = cell_km
+        if absorption not in ("none", "sites"):
+            raise ValueError("absorption must be 'none' or 'sites'")
+        if pairs not in ("mean", "max"):
+            raise ValueError("pairs must be 'mean' or 'max'")
+        self.absorption = absorption
+        self.pairs = pairs
         # Variables can't be directional on the lattice
         self.directional = False
 
@@ -173,7 +195,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         """
         Builds the lattice of the network (see resistnet.lattice): the
         state of each site (its snapped node) and the absorption of each
-        state (1/(2 Ne) at the sites).
+        state (1/(2 Ne) at the sites with absorption "sites"; none
+        otherwise).
         """
         self._lattice = Lattice(self._K, list(self._edge_order),
                                 self.reachid_col, self.length_col,
@@ -181,8 +204,17 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         sites = list(self._points_snapped.keys())
         self._site_states = self._lattice.states(sites)
         self._R_lat = np.zeros(self._lattice.n)
-        for site, state in zip(sites, self._site_states):
-            self._R_lat[state] = 1 / (2 * self._sizes[site])
+        if self.absorption == "sites":
+            for site, state in zip(sites, self._site_states):
+                self._R_lat[state] = 1 / (2 * self._sizes[site])
+
+    def pair_distance(self, T):
+        """
+        The symmetric distance between sites from their passage times (row
+        = origin, column = destination): the mean or maximum of the two
+        directions (pairs).
+        """
+        return rd.combine_directions(T, self.pairs)
 
     def initialize_network(self):
         """
@@ -632,9 +664,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         Evaluates the fitness of a given model represented by an individual.
 
         The model's transition matrix is used to compute conditional first
-        passage times (CFPT) among sites, and the mean of the two directions
-        between each pair of sites is fitted to the genetic distances with
-        MLPE.
+        passage times (CFPT) among sites, and the two directions between
+        each pair of sites, combined (see pair_distance()), are fitted to
+        the genetic distances with MLPE.
 
         Args:
             individual (list): Model specification, with self.num_attributes
@@ -654,7 +686,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
 
         _, res = rd.conditionalFirstPassTime(
-            Q, self._site_states, self._gendist, self._R_lat)
+            Q, self._site_states, self._gendist, self._R_lat, self.pairs)
         if res is None:
             return (float('-inf'), [np.nan, np.nan, np.nan, np.nan])
 
@@ -802,7 +834,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         W = self._lattice.weights(rate=rate)
         Q = cfpt_samc.transition_matrix(W, self._R_lat)
         _, res = rd.conditionalFirstPassTime(
-            Q, self._site_states, self._gendist, self._R_lat)
+            Q, self._site_states, self._gendist, self._R_lat, self.pairs)
         return res
 
     def _fit_flow_alone(self):
@@ -929,6 +961,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         spec["type"] = "samc"
         spec["flow"] = self.flow_rate(individual)
         spec["cell_km"] = float(self.cell_km)
+        spec["absorption"] = self.absorption
+        spec["pairs"] = self.pairs
         return spec
 
     def effective_directions(self, individual):
@@ -1092,7 +1126,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             # Plot pairwise model if genetic distance data is available
             if self._gendist is not None:
                 self.plot_pairwise_model(
-                    (mat_r + mat_r.T) / 2.0, oname, partition=False)
+                    self.pair_distance(mat_r), oname, partition=False)
 
     def plot_resistance_network(self, resistance_values, oname):
         """
@@ -1170,6 +1204,7 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         site_states (list): Lattice state of each site.
         R_lat (numpy.ndarray): Absorption of each lattice state.
         cell_km (float): Distance between neighbouring states.
+        absorption, pairs (str): As for ResistanceNetworkSAMC.
     """
     def __init__(self, network, pop_agg, reachid_col, length_col,
                  variables, agg_opts, fitmetric, fixWeight, fixShape,
@@ -1177,8 +1212,9 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
                  points_snapped, points_labels, predictors, edge_order,
                  gendist, adj, origin, R, allSymmetric, edge_site_indices,
                  fixAsym=False, max_resist=500, fix_resist=None,
-                 flow_pos=None, max_flow=1.0, lattice=None,
-                 site_states=None, R_lat=None, cell_km=1.0):
+                 flow_pos=None, max_flow=0.1, lattice=None,
+                 site_states=None, R_lat=None, cell_km=1.0,
+                 absorption="none", pairs="max"):
 
         self.network = network
         self.pop_agg = pop_agg
@@ -1201,6 +1237,8 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self.fix_resist = fix_resist
         self.max_flow = max_flow
         self.cell_km = cell_km
+        self.absorption = absorption
+        self.pairs = pairs
         self.directional = False
 
         self._inc = inc
@@ -1226,8 +1264,8 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
 class SimResistanceNetworkSAMC(SimResistanceNetwork):
     """
     Simulates validation datasets under a SAMC model: the conditional first
-    passage times among random sites, averaged over the two directions (as
-    fitted), with movement weights built exactly as when fitting models (on
+    passage times among random sites, the two directions combined as when
+    fitting, with movement weights built exactly as when fitting models (on
     the lattice; see ResistanceNetworkSAMC).
 
     Args:
@@ -1247,10 +1285,12 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
                                       downstream reach. Defaults to NEXT_DOWN.
         cell_km (float, optional): Distance between neighbouring states of
                                    the lattice (km). Defaults to 1.
+        absorption, pairs (str, optional): As for ResistanceNetworkSAMC.
     """
     def __init__(self, network, reachid_col, length_col, verbose=False,
                  seed=None, ne=100, max_resistance=100.0, flow=0.0,
-                 infer_origin="NEXT_DOWN", cell_km=1.0):
+                 infer_origin="NEXT_DOWN", cell_km=1.0, absorption="none",
+                 pairs="max"):
         super().__init__(network, reachid_col, length_col, verbose=verbose,
                          seed=seed)
         self.ne = ne
@@ -1258,12 +1298,15 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
         self.sim_flow = float(flow)
         self.infer_origin = infer_origin
         self.cell_km = cell_km
+        self.absorption = absorption
+        self.pairs = pairs
 
     def simulated_distances(self, vars, base):
         """
-        Mean conditional first passage times (over both directions) among
-        the sampled points. The passage times themselves are written to
-        {base}.CFPTMatrix.tsv (row = origin, column = destination).
+        Conditional first passage times among the sampled points, the two
+        directions combined as when fitting (see pair_distance()). The
+        passage times themselves are written to {base}.CFPTMatrix.tsv (row
+        = origin, column = destination).
 
         Args:
             vars (DataFrame): Model specification, as for
@@ -1288,7 +1331,8 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
                 reachid_col=self.reachid_col, length_col=self.length_col,
                 infer_origin=self.infer_origin, ne=self.ne,
                 max_flow=max(1.0, abs(self.sim_flow)),
-                cell_km=self.cell_km, out=os.path.join(tmp, "sim"),
+                cell_km=self.cell_km, absorption=self.absorption,
+                pairs=self.pairs, out=os.path.join(tmp, "sim"),
                 verbose=False)
 
         individual = []
@@ -1316,4 +1360,4 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
             net._points_labels.values())}
         order = [pos[str(lab)] for lab in self._points_labels.values()]
         T = T[np.ix_(order, order)]
-        return (T + T.T) / 2.0
+        return net.pair_distance(T)

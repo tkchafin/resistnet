@@ -157,6 +157,8 @@ def build_network(params, model, prefix):
             fix_resist=params.fix_resist,
             max_flow=params.max_flow,
             cell_km=params.cell_km,
+            absorption=params.samc_absorption,
+            pairs=params.samc_pairs,
             out=prefix,
             verbose=True
         )

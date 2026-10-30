@@ -63,8 +63,8 @@ def write_pairwise_table(network, prefix):
     """
     Writes {prefix}.pairwise.tsv: for every pair of sites, the genetic
     distance, the river distance (km; isolation by distance), and the best
-    and model-averaged models' distances (for SAMC, the mean passage time
-    of the two directions, as fitted).
+    and model-averaged models' distances (for SAMC, the passage times of
+    the two directions combined as fitted).
 
     Args:
         network: The fitted network (with genetic distances).
@@ -87,7 +87,9 @@ def write_pairwise_table(network, prefix):
         M.columns = M.columns.astype(str)
         M = M.loc[labels, labels].to_numpy(dtype=float)
         if samc:
-            M = (M + M.T) / 2.0
+            M = (network.pair_distance(M) if hasattr(network,
+                                                     "pair_distance")
+                 else (M + M.T) / 2.0)
         table[f"{which.lower()}_model_distance"] = M[iu]
     table.to_csv(f"{prefix}.pairwise.tsv", sep="\t", index=False)
 
@@ -840,10 +842,12 @@ HOW_IT_WORKS = {
         "neighbouring points with samc's conductance, 1 / (resistance per "
         "km × distance), the resistance per km being the standard "
         "model's (1 to a fitted maximum K with the weighted variables), "
-        "times exp(-rate × km moved upstream) with a flow term; at each "
-        "site it is absorbed with probability 1/(2 Ne). The distance "
-        "between two sites is the conditional first passage time, "
-        "averaged over both directions."),
+        "times exp(-rate × km moved upstream) with a flow term (by "
+        "default nothing absorbs it). The distance between two sites "
+        "combines the passage times of the two directions (by default, "
+        "the larger). In simulations, the walker moved like a lineage "
+        "traced back in time: a negative flow rate meant gene flow biased "
+        "downstream."),
 }
 
 

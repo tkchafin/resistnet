@@ -87,8 +87,9 @@ usage: runResistnet.py [-h] [-g INMAT] [-s SHAPEFILE] [-c COORDS] [-n NETWORK]
                        [--sizes SIZES] [--ne NE] [--infer_origin INFER_ORIGIN]
                        [--max_resist MAX_RESIST] [--fix_resist FIX_RESIST]
                        [--fixAsym] [--max_flow MAX_FLOW] [--fixFlow]
-                       [--cell_km CELL_KM] [-a AWSUM] [--use_full]
-                       [--report_all]
+                       [--samc_absorption {none,sites}]
+                       [--samc_pairs {max,mean}] [--cell_km CELL_KM]
+                       [-a AWSUM] [--use_full] [--report_all]
 
 Optimise resistance networks using Tree-structured Parzen Estimators (TPE)
 
@@ -178,9 +179,16 @@ options:
                         term is directional; kept for compatibility) (default:
                         False)
   --max_flow MAX_FLOW   SAMC: upper limit for the rate of the flow (upstream
-                        vs downstream) term, per km (default: 1.0)
+                        vs downstream) term, per km (default: 0.1)
   --fixFlow             SAMC: leave out the flow (upstream vs downstream) term
                         (default: False)
+  --samc_absorption {none,sites}
+                        SAMC: no absorption (passage times are hitting times),
+                        or absorption 1/(2 Ne) at each site per visit
+                        (default: none)
+  --samc_pairs {max,mean}
+                        SAMC: how the passage times of the two directions
+                        between two sites are combined (default: max)
   --cell_km CELL_KM     SAMC: distance between neighbouring states of the
                         lattice the walker moves on (km; samc's cell size)
                         (default: 1.0)
@@ -430,13 +438,13 @@ Effective resistance (circuit theory) is symmetric: moving from A to B costs the
 * samc's states are raster cells of equal size. Here they are the points of a lattice of the river: the nodes of the network (where reaches meet, and the sites, which are snapped to nodes) and points splitting each reach into pieces of about `--cell_km` (default 1 km), so that every step covers about the same distance. The network includes the reach downstream of the outlet (found using the `--infer_origin` attribute, `NEXT_DOWN` by default) and one reach beyond each terminal sample site.
 * Each reach's resistance per km is the standard model's (ResistanceGA's surface: 1 + (K - 1) x the weighted mean of the transformed variables, K optimised from 1 to `--max_resist`, default 500, or fixed with `--fix_resist`; see [The standard model](#standard)). Points inside a reach take its resistance; a node takes the length-weighted mean over the half-pieces of river around it, as a raster cell over a confluence would.
 * As in samc, a walker moves between neighbouring points with conductance 1 / (mean resistance of the two points x the distance between them), normalised over its neighbours and scaled by 1 - absorption. Reaches meeting at a node are all neighbours through it.
-* At each step, a walker at a site is absorbed with probability 1/(2 Ne), the probability that two lineages coalesce. Effective population sizes can be provided per sample with `--sizes` (a tsv with columns `sample` and `size`); otherwise all sites have Ne = `--ne` (default 100).
-* A *flow* term, which samc does not have, can make moving upstream harder or easier: each move's weight is multiplied by exp(-rate x km moved upstream). A positive rate makes moving upstream harder, a negative rate easier. The rate is per km and is not rescaled to the network, so it means the same in any watershed. Whether the flow term is included, its direction and its rate (from 0.001 to `--max_flow` per km, default 1) are optimised, unless `--fixFlow` is used (no flow term). A model can consist of the flow term alone. Variables cannot be directional (on the lattice, a reach's points share its values; `--fixAsym` is kept for compatibility).
-* The distance from site i to site j is the conditional first passage time (CFPT): the expected number of steps to reach j, given that it is reached before absorption elsewhere (as `samc::cond_passage` in R). The mean of the two directions is fitted to the genetic distances with MLPE.
+* By default nothing absorbs the walker (`--samc_absorption none`), so the passage times are hitting times. With `--samc_absorption sites`, a walker at a site is absorbed with probability 1/(2 Ne) per step, the probability that two lineages coalesce; effective population sizes can be provided per sample with `--sizes` (a tsv with columns `sample` and `size`), otherwise all sites have Ne = `--ne` (default 100).
+* A *flow* term can make moving upstream harder or easier: each move's weight is multiplied by exp(-rate x km moved upstream). A positive rate makes the walker's upstream moves harder, a negative rate easier. samc's transition functions can depend on the order of the two cells, so this is a samc model with position along the river as the variable. The rate is per km and is not rescaled to the network, so it means the same in any watershed. Whether the flow term is included, its direction and its rate (from 0.001 to `--max_flow` per km, default 0.1) are optimised, unless `--fixFlow` is used (no flow term). A model can consist of the flow term alone. Variables cannot be directional (on the lattice, a reach's points share its values; `--fixAsym` is kept for compatibility).
+* The distance from site i to site j is the conditional first passage time (CFPT): the expected number of steps to reach j, given that it is reached before absorption elsewhere (as `samc::cond_passage` in R). The two directions between a pair of sites are combined (`--samc_pairs`: their maximum, the default, or their mean) and fitted to the genetic distances with MLPE.
 
 This translation is checked against samc itself: for a small river drawn on a raster, samc's transition matrix and passage times, built by samc from the raster, equal the lattice's (`tests/resistnet/test_lattice.py`).
 
-**The sign of the flow rate is not the direction of gene flow.** Genetic distances are symmetric, and in simulations with known gene flow (a stepping-stone model on the example network, with migration biased downstream or upstream), the flow rate fitted to the passage times did not reliably recover the direction of gene flow: it could have either sign, depending on the amount of absorption, and could find a direction where there was none. Read the flow term as where along the river connectivity is high or low, not as which way genes move.
+**Reading the flow rate.** Genetic distances are symmetric, so a direction can only show through how distances vary along the river. We tested this with simulations of known gene flow (msprime stepping-stone models on the example network and the SMB Black River network, 400 SNPs, migration biased downstream or upstream by up to 0.05 per km, with and without a barrier). With the defaults (no absorption, maximum of the two directions), the fitted rate had the sign *opposite* to the bias of gene flow in 29 of 32 biased datasets, never the same sign, and found a direction in 5 of 24 datasets without bias: **the walker moves like a lineage traced back in time, so a negative rate means gene flow biased downstream.** The rate is attenuated (about a fifth to a tenth of the bias) and, with a barrier that the model does not represent, the direction was missed in half of the biased datasets. With absorption at the sites or the mean of the two directions (the formulation of earlier versions), the fitted direction did not follow the truth (directions were found in most datasets without bias). Treat the flow term as suggestive, and represent known barriers in the model.
 
 The AIC counts the MLPE parameters, the transformation and shape of each selected variable, their relative weights, the maximum resistance per km, and the flow rate (if the model has a flow term). In addition to the outputs described above, SAMC runs produce:
 
@@ -464,7 +472,7 @@ runResistnet.py \
     -i 50 -r 4 -t 4 --seed 1234 -o nmt_samc
 ```
 
-In this short run, the best SAMC model is a flow term alone (-0.22 per km, i.e. moving upstream easier; AIC -431.5), about the same as the reference model of flow alone (-431.7, with its rate fitted) and much better than SAMC distance alone (-385.3). A longer run (600 iterations x 8 chains, `--sizes`; it stopped after 384 iterations without improvement) finds air temperature (`tmp_dc_cyr`, reverse Ricker, resistance 1-231 per km) with flow (-0.21 per km; AIC -485.3), better than the standard model's best (-452.3 in the same search; see below). The two models fit the same genetic distances with the same MLPE, so their AICs can be compared directly.
+In this short run, the best SAMC model is stream gradient (`sgr_dk_rav`; AIC -412.0), better than the reference model of flow alone (-0.100 per km, the limit, i.e. gene flow biased downstream; -402.8) and SAMC distance alone (-387.9). A longer run (600 iterations x 8 chains) finds degree of regulation (`dor_pc_pva`, inverse monomolecular, resistance 1-14.6 per km) without a flow term (AIC -424.0), less good than the standard model's best (-452.3 in the same search; see below). The two models fit the same genetic distances with the same MLPE, so their AICs can be compared directly.
 
 ### Interactive report <a name="html_report"></a>
 
@@ -494,11 +502,11 @@ For example, adding `--model both` to the command in the [Example Dataset](#exam
 ```
 family      best_model                                                           best_aic   delta_aic  akaike_weight
 resistance  dor_pc_pva (inverse monomolecular, shape 1); resistance 1-145 per km     -451.49    0.00       1.00
-samc        flow -0.222/km (upstream easier)                                     -431.48    20.02      2.8e-05
-reference   SAMC flow alone (-0.231/km)                                          -431.71    19.78      2.6e-05
+samc        sgr_dk_rav (reverse-inverse monomolecular, shape 1)                  -412.00    39.49      1.6e-09
+reference   SAMC flow alone (-0.100/km)                                          -402.76    48.73      1.3e-11
 ```
 
-This short run ranks the standard model first; the SAMC search found only the flow term in 50 iterations (about the same as flow alone). With 600 iterations x 8 chains (seed 1234), the standard model's best is elevation with degree of regulation (resistance 1-995 per km; AIC -452.3; degree of regulation alone is 0.8 behind), and SAMC's best is air temperature with flow (-0.211/km; -485.3), 33 AIC better. Compare the two models only after runs long enough for both searches to settle. AIC ranks fits, not mechanisms (path resistance vs a walker's passage time), and near-ties of a few AIC units should not be over-read, since the parameter counts for the maximum resistance and flow are conventions.
+This short run ranks the standard model first. With 600 iterations x 8 chains (seed 1234), the standard model's best is elevation with degree of regulation (resistance 1-995 per km; AIC -452.3; degree of regulation alone is 0.8 behind), and SAMC's best is degree of regulation without flow (-424.0), 28 AIC worse. Compare the two models only after runs long enough for both searches to settle. AIC ranks fits, not mechanisms (path resistance vs a walker's passage time), and near-ties of a few AIC units should not be over-read, since the parameter counts for the maximum resistance and flow are conventions.
 
 
 ## Tutorials <a name="tutorials"></a>
@@ -582,7 +590,7 @@ simResistnet.py -n src/resistnet/data/nmt.network -c HYRIV_ID -s 50 -r 10 -o sim
 
 This will produce a number of outputs named `*.ResistanceMatrix.tsv` and `*.coords`, which can be supplied directly as inputs to `runResistnet.py` via `-g` and `-c` (with the same network and `--reachid_col`), for example to test if `ResistNet` model optimisation can recover the specified model in your network, given different sample sizes.
 
-With `--samc`, the distances are instead the conditional first passage times of a SAMC model (see [Directional models](#samc)), averaged over the two directions as when fitting, and rescaled to 0-1; the passage times themselves (row = origin, column = destination) are written to `*.CFPTMatrix.tsv`. `--max_resistance`, `--flow`, `--ne` and `--cell_km` set the maximum resistance per km, the flow rate (per km), the effective population size at every site and the lattice's distance between states. With no variables (a header line only), the resistance is 1 per km, so e.g. `--flow 0.05` simulates flow alone. For example:
+With `--samc`, the distances are instead the conditional first passage times of a SAMC model (see [Directional models](#samc)), the two directions combined as when fitting, and rescaled to 0-1; the passage times themselves (row = origin, column = destination) are written to `*.CFPTMatrix.tsv`. `--max_resistance`, `--flow`, `--ne` and `--cell_km` set the maximum resistance per km, the flow rate (per km), the effective population size at every site and the lattice's distance between states. With no variables (a header line only), the resistance is 1 per km, so e.g. `--flow 0.05` simulates flow alone. For example:
 
 ```
 simResistnet.py -n src/resistnet/data/nmt.network -c HYRIV_ID -s 20 -r 10 \

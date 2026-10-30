@@ -459,6 +459,8 @@ class ModelRunner:
             worker_args['site_states'] = self.resistance_network._site_states
             worker_args['R_lat'] = self.resistance_network._R_lat
             worker_args['cell_km'] = self.resistance_network.cell_km
+            worker_args['absorption'] = self.resistance_network.absorption
+            worker_args['pairs'] = self.resistance_network.pairs
 
         fd, self._worker_args_file = tempfile.mkstemp(
             prefix="resistnet_worker_", suffix=".pkl")

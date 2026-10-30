@@ -102,16 +102,20 @@ def test_outlet_reaches_linked(samc_net, tmp_path):
     assert (lat.b[lat.a == outlet] >= len(lat.nodes)).sum() == 2
 
 
-def test_lattice_sites_and_absorption(samc_net):
-    # Each site is the state of its snapped node, absorbed with
-    # probability 1/(2 Ne) per visit; nothing else absorbs
+def test_lattice_sites_and_absorption(samc_net, ref_net):
+    # Each site is the state of its snapped node. By default nothing
+    # absorbs (passage times are hitting times); with absorption "sites",
+    # a walker at a site is absorbed with probability 1/(2 Ne) per visit,
+    # and nothing else absorbs
     lat = samc_net._lattice
     sites = list(samc_net._points_snapped.keys())
     assert samc_net._site_states == lat.states(sites)
-    R = samc_net._R_lat
+    assert samc_net.absorption == "none" and samc_net.pairs == "max"
+    assert np.count_nonzero(samc_net._R_lat) == 0
+    R = ref_net._R_lat
     np.testing.assert_allclose(
-        R[samc_net._site_states],
-        [1 / (2 * samc_net._sizes[s]) for s in sites])
+        R[ref_net._site_states],
+        [1 / (2 * ref_net._sizes[s]) for s in ref_net._points_snapped])
     assert np.count_nonzero(R) == len(sites)
     # About one state per km of river (plus the nodes)
     km = sum(d[samc_net.length_col] for _, _, d in
@@ -164,6 +168,25 @@ def test_resistance_is_the_standard_models(samc_net):
                                1 / lat.length, rtol=1e-12)
     # Without a maximum resistance in the model, the default is used
     assert samc_net.max_resistance(ind) == 100.0
+
+
+def test_combining_directions(samc_net, ref_net):
+    # The distance between two sites combines the passage times of the two
+    # directions: their maximum (default) or their mean
+    import resistnet.resist_dist as rd
+    T = np.array([[0.0, 3.0, 5.0], [1.0, 0.0, 2.0], [4.0, 6.0, 0.0]])
+    np.testing.assert_array_equal(samc_net.pair_distance(T),
+                                  np.maximum(T, T.T))
+    np.testing.assert_array_equal(ref_net.pair_distance(T), (T + T.T) / 2)
+    with pytest.raises(ValueError):
+        rd.combine_directions(T, "min")
+    # The settings are part of the model's specification
+    spec = samc_net.model_spec(model({"run_mm_cyr": (1.0, 0, 1)}) + [5.0])
+    assert spec["absorption"] == "none" and spec["pairs"] == "max"
+    with pytest.raises(ValueError):
+        ResistanceNetworkSAMC.__init__(
+            ResistanceNetworkSAMC.__new__(ResistanceNetworkSAMC), None,
+            None, None, None, [], None, {}, absorption="everywhere")
 
 
 def test_directional_variables_refused(samc_net):
@@ -290,7 +313,7 @@ def test_uniform_ne(tmp_path):
         coords=os.path.join(data, "nmt.pointCoords.txt"),
         variables=VARIABLES[:1], inmat=None,
         agg_opts={VARIABLES[0]: "ARITH"}, out=str(tmp_path / "ne"),
-        verbose=False, ne=50, cell_km=2.0
+        verbose=False, ne=50, cell_km=2.0, absorption="sites"
     )
     R = net._R_lat
     np.testing.assert_allclose(R[net._site_states], 1 / (2 * 50))
@@ -319,9 +342,10 @@ def test_null_models(samc_net):
     assert table.loc["samc_flow", "aic"] == pytest.approx(2 * 5 - 2 * res[0])
     assert (table.loc["samc_flow", "loglik"]
             >= table.loc["samc_distance", "loglik"])
+    # (within the precision of the bounded search on a flat profile)
     for r in [rate * 0.8, rate * 1.25]:
         _, res = samc_net.evaluate(model({}) + [1.0, r])
-        assert res[0] <= table.loc["samc_flow", "loglik"] + 1e-6
+        assert res[0] <= table.loc["samc_flow", "loglik"] + 1e-2
 
 
 def test_upstream_changes(samc_net):
@@ -477,7 +501,7 @@ def _ref_net(out):
         coords=os.path.join(data, "nmt.pointCoords.txt"), variables=v,
         inmat=os.path.join(data, "nmt.popGenDistMat.txt"),
         agg_opts={x: "ARITH" for x in v}, out=os.path.join(str(out), "ref"),
-        verbose=False)
+        verbose=False, absorption="sites", pairs="mean")
 
 
 @pytest.fixture(scope="module")
@@ -559,7 +583,8 @@ def test_simulate_samc_recovers_flow(tmp_path):
 
 def test_simulate_samc_matches_fitted_model(tmp_path):
     # The simulated distances are those of the same model as fitted: the
-    # mean passage times of both directions, ordered by sample
+    # passage times of both directions combined (by default, the larger),
+    # ordered by sample
     from resistnet.CFPT import CFPT
     spec = pd.DataFrame({"VAR": ["ele_mt_cav", "sgr_dk_rav"],
                          "WEIGHT": [1.0, 0.5], "TRANSFORM": [0, 5],
@@ -577,7 +602,7 @@ def test_simulate_samc_matches_fitted_model(tmp_path):
         ind += [1, s["WEIGHT"], s["TRANSFORM"], s["SHAPE"], 0]
     T = CFPT(net._transition_matrix(ind + [20.0, -0.02]),
              net._site_states, net._R_lat)
-    fitted = pd.DataFrame((T + T.T) / 2,
+    fitted = pd.DataFrame(np.maximum(T, T.T),
                           index=list(net._points_labels.values()),
                           columns=list(net._points_labels.values()))
     fitted.index = fitted.index.astype(str)

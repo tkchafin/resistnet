@@ -20,6 +20,8 @@ def main():
             max_resistance=params.max_resistance,
             flow=params.flow,
             cell_km=params.cell_km,
+            absorption=params.samc_absorption,
+            pairs=params.samc_pairs,
             infer_origin=params.infer_origin
         )
     else:
@@ -49,7 +51,8 @@ class ParseArgs:
                 sys.argv[1:], 'ho:i:n:s:r:l:c:z:',
                 ["help", "out=", "in=", "network=", "reps=", "samples=",
                  "len_col=", "id_col=", "seed=", "samc", "ne=",
-                 "max_resistance=", "flow=", "infer_origin=", "cell_km="]
+                 "max_resistance=", "flow=", "infer_origin=", "cell_km=",
+                 "samc_absorption=", "samc_pairs="]
             )
         except getopt.GetoptError as err:
             print(err)
@@ -71,6 +74,8 @@ class ParseArgs:
         self.max_resistance = 100.0
         self.flow = 0.0
         self.cell_km = 1.0
+        self.samc_absorption = "none"
+        self.samc_pairs = "max"
         self.infer_origin = "NEXT_DOWN"
 
         # First pass to see if help menu was called
@@ -110,6 +115,10 @@ class ParseArgs:
                 self.flow = float(arg)
             elif opt == "cell_km":
                 self.cell_km = float(arg)
+            elif opt == "samc_absorption":
+                self.samc_absorption = arg
+            elif opt == "samc_pairs":
+                self.samc_pairs = arg
             elif opt == "infer_origin":
                 self.infer_origin = arg
             else:
@@ -151,6 +160,9 @@ SAMC (directional) simulations:
         default=0, no flow term)
     --cell_km: Distance between neighbouring states of the lattice
         (km; default=1)
+    --samc_absorption: none or sites, as for runResistnet.py
+        (default=none)
+    --samc_pairs: max or mean, as for runResistnet.py (default=max)
     --infer_origin: Next downstream reach attribute (def=NEXT_DOWN)
 """)
         sys.exit()

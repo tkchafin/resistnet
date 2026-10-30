@@ -89,8 +89,10 @@ def test_samc_defaults():
         assert args.max_resist_for("samc") == 500
         assert args.max_resist_for("resistance") == 1000
         assert args.fix_resist is None
-        assert args.max_flow == 1.0
+        assert args.max_flow == 0.1
         assert not args.fixFlow
+        assert args.samc_absorption == "none"
+        assert args.samc_pairs == "max"
         assert not args.fixAsym
 
 
