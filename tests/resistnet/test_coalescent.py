@@ -74,6 +74,57 @@ def test_matches_lundgren_ralph_code():
     np.testing.assert_allclose(model.hcalc(rates, GAMMA), co.upper(C))
 
 
+class _Replay:
+    """Random numbers read from files (see reference/lundgren_ralph_mh.R),
+    in place of a numpy Generator."""
+
+    def __init__(self, normals, uniforms):
+        self.z, self.u = normals, uniforms
+        self.i = self.j = 0
+
+    def normal(self, loc, scale, size):
+        x = self.z[self.i:self.i + size]
+        self.i += size
+        return loc + scale * x
+
+    def random(self):
+        self.j += 1
+        return self.u[self.j - 1]
+
+
+@pytest.mark.skipif(
+    not os.path.exists(os.path.join(REFERENCE, "lundgren_ralph_mh.tsv")),
+    reason="reference/lundgren_ralph_mh.R not run yet (needs their code)")
+def test_mh_matches_lundgren_ralph_code():
+    # Their findG.MH (run in R) and mh() given the same random numbers take
+    # the same steps: proposals, acceptances, and the proposal standard
+    # deviations' adaptation (x 1.2 at iterations 100 and 200 here)
+    ref = pd.read_csv(os.path.join(REFERENCE, "lundgren_ralph_mh.tsv"),
+                      sep="\t")
+    z, u = [np.loadtxt(os.path.join(REFERENCE, f))
+            for f in ("lundgren_ralph_mh_normals.txt",
+                      "lundgren_ralph_mh_uniforms.txt")]
+    edges, rates = _edges()
+    # Their rates are in G_adj@x order (by column, then row): give each
+    # rate the normal theirs drew for it
+    o = np.lexsort(([e[0] for e in edges], [e[1] for e in edges]))
+    z = z.reshape(-1, 16)
+    z[:, :10] = z[:, :10][:, np.argsort(o)]
+    rng = _Replay(z.ravel(), u)
+    out = co.mh(co.Model(edges, 6, const_coal=False), _divergences(),
+                len(ref), start=(rates, GAMMA), rng=rng)
+    g = ref[[f"g_{x}_{y}" for x, y in edges]].to_numpy()
+    gam = ref[[f"gam_{i}" for i in range(6)]].to_numpy()
+    np.testing.assert_allclose(out["g"], g, rtol=1e-10)
+    np.testing.assert_allclose(out["gam"], gam, rtol=1e-10)
+    np.testing.assert_allclose(out["lp"], ref["lp"], rtol=1e-10)
+    for k in ("reject_g", "reject_gam"):
+        np.testing.assert_array_equal(out[k], ref[k])
+    np.testing.assert_allclose(out["sdG"], ref["sd_g"], rtol=1e-12)
+    np.testing.assert_allclose(out["sdgam"], ref["sd_gam"], rtol=1e-12)
+    assert 0 < ref["reject_g"].sum() < len(ref) - 1
+
+
 def test_divergence():
     # Between groups: the share of loci at which two haplotypes differ,
     # averaged over all pairs; within: over pairs of distinct haplotypes
@@ -118,6 +169,13 @@ if __name__ == "__main__":
                fmt="%.17g")
     np.savetxt(os.path.join(REFERENCE, "lundgren_ralph_inputs.tsv"),
                _divergences(), delimiter="\t", fmt="%.17g")
+    # Random numbers for reference/lundgren_ralph_mh.R: 250 iterations of
+    # proposals (10 rates, then 6 coalescence rates) and acceptances
+    rng = np.random.default_rng(2019)
+    np.savetxt(os.path.join(REFERENCE, "lundgren_ralph_mh_normals.txt"),
+               rng.standard_normal(250 * 16), fmt="%.6f")
+    np.savetxt(os.path.join(REFERENCE, "lundgren_ralph_mh_uniforms.txt"),
+               rng.random(500), fmt="%.6f")
 
 
 def _coal_net(tmp_path, cell_km, density=1000.0, variables=("dor_pc_pva",)):
