@@ -57,6 +57,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         parse_input_gen_mat(): Parses the input genetic distance matrix.
     """
 
+    # Names of the reference models (evaluate_null_model())
+    null_prefix = "samc"
+
     def __init__(self, network, shapefile, sizes, coords, variables, inmat,
                  agg_opts, pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
@@ -787,8 +790,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         rate, res = self._fit_flow_alone()
         rows = []
         for name, r, k, flow in [
-            ("samc_distance", self._flow_alone(0.0), 0, np.nan),
-            ("samc_flow", res, 1, rate),
+            (f"{self.null_prefix}_distance", self._flow_alone(0.0), 0,
+             np.nan),
+            (f"{self.null_prefix}_flow", res, 1, rate),
         ]:
             r = r.iloc[0]
             rows.append(pd.DataFrame({

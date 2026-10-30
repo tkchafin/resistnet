@@ -31,6 +31,8 @@ REFERENCES = {
     "distance_only": ("reference", "distance only (km; standard model)", 4),
     "samc_distance": ("reference", "SAMC distance alone", 4),
     "samc_flow": ("reference", "SAMC flow alone", 5),
+    "coal_distance": ("reference", "coalescent distance alone", 4),
+    "coal_flow": ("reference", "coalescent flow alone", 5),
 }
 
 
@@ -163,7 +165,7 @@ def comparison_tables(runs, tol=1e-6):
                 refs[ref] = table.loc[ref]
     for ref, r in refs.items():
         family, model, k = REFERENCES[ref]
-        if ref == "samc_flow":
+        if ref in ("samc_flow", "coal_flow"):
             model += f" ({float(r['flow']):+.3f}/km)"
         rows.append({"family": family, "model": model, "k": k,
                      "loglik": float(r["loglik"]), "aic": float(r["aic"])})

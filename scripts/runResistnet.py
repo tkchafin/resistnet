@@ -6,6 +6,7 @@ from datetime import datetime
 from resistnet.params import parseArgs
 from resistnet.resistance_network import ResistanceNetwork
 from resistnet.samc_network import ResistanceNetworkSAMC
+from resistnet.coalescent_network import ResistanceNetworkCoalescent
 from resistnet.model_optimisation import ModelRunnerTPE
 from resistnet.compare import write_comparison
 from resistnet.report import build_report
@@ -97,8 +98,10 @@ def main():
     if len(runs) > 1 and params.inmat:
         write_comparison(runs, os.path.join(params.out, name))
 
-    # Step 4: Interactive report of the run
-    build_report(params.out)
+    # Step 4: Interactive report of the run (of the standard and SAMC
+    # models; the coalescent model's outputs are not in it yet)
+    if any(m in runs for m in ("resistance", "samc")):
+        build_report(params.out)
 
     # # Step 2: Initialise ModelRunner
     # runner = ModelRunnerGA(
@@ -138,8 +141,29 @@ def main():
 
 def build_network(params, model, prefix):
     """
-    Builds the network for a model ("resistance" or "samc").
+    Builds the network for a model ("resistance", "samc" or "coalescent").
     """
+    if model == "coalescent":
+        return ResistanceNetworkCoalescent(
+            network=params.network,
+            shapefile=params.shapefile,
+            sizes=params.sizes,
+            coords=params.coords,
+            variables=params.variables,
+            agg_opts=params.agg_opts,
+            inmat=params.inmat,
+            reachid_col=params.reachid_col,
+            length_col=params.length_col,
+            infer_origin=params.infer_origin,
+            ne=params.ne,
+            max_resist=params.max_resist_for("coalescent"),
+            fix_resist=params.fix_resist,
+            max_flow=params.max_flow,
+            cell_km=params.coal_cell_km,
+            density=params.coal_density,
+            out=prefix,
+            verbose=True
+        )
     if model == "samc":
         return ResistanceNetworkSAMC(
             network=params.network,

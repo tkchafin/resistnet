@@ -143,7 +143,8 @@ class parseArgs:
 
         # Model and SAMC model options
         parser.add_argument(
-            '--model', type=str, choices=['resistance', 'samc', 'both'],
+            '--model', type=str,
+            choices=['resistance', 'samc', 'coalescent', 'both'],
             default=None,
             help=(
                 'Model to fit: resistance (sums of reach resistances along '
@@ -212,6 +213,16 @@ class parseArgs:
             default='max',
             help=('SAMC: how the passage times of the two directions '
                   'between two sites are combined')
+        )
+        parser.add_argument(
+            '--coal_cell_km', type=float, default=5.0,
+            help=('Coalescent model: distance between neighbouring points '
+                  'of its lattice (km)')
+        )
+        parser.add_argument(
+            '--coal_density', type=float, default=1000.0,
+            help=('Coalescent model: population per km of river, setting '
+                  'the coalescence rates relative to the movement rates')
         )
         parser.add_argument(
             '--cell_km', type=float, default=1.0,
@@ -287,7 +298,7 @@ class parseArgs:
         max.cont) and 500 for SAMC (both per km).
 
         Args:
-            model (str): "resistance" or "samc".
+            model (str): "resistance", "samc" or "coalescent".
 
         Returns:
             float: The upper limit.

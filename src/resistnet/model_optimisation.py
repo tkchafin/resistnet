@@ -19,6 +19,8 @@ from resistnet.resistance_network import ResistanceNetwork
 from resistnet.resistance_network import ResistanceNetworkWorker
 from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.samc_network import ResistanceNetworkSAMCWorker
+from resistnet.coalescent_network import ResistanceNetworkCoalescent
+from resistnet.coalescent_network import ResistanceNetworkCoalescentWorker
 from resistnet.samc_network import MIN_FLOW
 from resistnet.report import write_pairwise_table
 from resistnet.hall_of_fame import HallOfFame
@@ -401,7 +403,9 @@ class ModelRunner:
         # get worker type
         # NOTE: THe order is important here, have to do subclass before
         # parent check (since both will return true)
-        if isinstance(self.resistance_network, ResistanceNetworkSAMC):
+        if isinstance(self.resistance_network, ResistanceNetworkCoalescent):
+            worker_type = "coalescent"
+        elif isinstance(self.resistance_network, ResistanceNetworkSAMC):
             worker_type = "samc"
         elif isinstance(self.resistance_network, ResistanceNetwork):
             worker_type = "base"
@@ -440,7 +444,7 @@ class ModelRunner:
             worker_args['lengths'] = getattr(net, "_lengths", None)
             worker_args['max_resist'] = getattr(net, "max_resist", 1000)
             worker_args['fix_resist'] = getattr(net, "fix_resist", None)
-        if worker_type == "samc":
+        if worker_type in ("samc", "coalescent"):
             worker_args['adj'] = self.resistance_network._adj
             worker_args['origin'] = self.resistance_network._origin
             worker_args['R'] = self.resistance_network._R
@@ -461,6 +465,8 @@ class ModelRunner:
             worker_args['cell_km'] = self.resistance_network.cell_km
             worker_args['absorption'] = self.resistance_network.absorption
             worker_args['pairs'] = self.resistance_network.pairs
+        if worker_type == "coalescent":
+            worker_args['density'] = self.resistance_network.density
 
         fd, self._worker_args_file = tempfile.mkstemp(
             prefix="resistnet_worker_", suffix=".pkl")
@@ -510,6 +516,8 @@ class ModelRunner:
                 worker = ResistanceNetworkWorker(**worker_args)
             elif worker_type == "samc":
                 worker = ResistanceNetworkSAMCWorker(**worker_args)
+            elif worker_type == "coalescent":
+                worker = ResistanceNetworkCoalescentWorker(**worker_args)
             else:
                 raise ValueError("Worker type not implemented")
         except Exception:
