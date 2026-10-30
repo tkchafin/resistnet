@@ -12,8 +12,9 @@
     4. [Optimisation Parameters](#opt_params)
     5. [The Standard Model](#standard)
     6. [Directional Models (SAMC)](#samc)
-    7. [Interactive Report](#html_report)
-    8. [Comparing the Two Models](#compare)
+    7. [The Coalescent Model](#coalescent)
+    8. [Interactive Report](#html_report)
+    9. [Comparing the Two Models](#compare)
 3. [Tutorials](#tutorials)
     1. [Example Dataset](#example)
     2. [Utility Scripts](#scripts)
@@ -83,12 +84,13 @@ usage: runResistnet.py [-h] [-g INMAT] [-s SHAPEFILE] [-c COORDS] [-n NETWORK]
                        [-S NSTART] [-C NCAND] [-G GAMMA]
                        [-f {aic,loglik,r2m,delta}] [--fixWeight] [--fixShape]
                        [--max_shape MAX_SHAPE] [--min_weight MIN_WEIGHT]
-                       [--model {resistance,samc,both}] [--samc]
+                       [--model {resistance,samc,coalescent,both}] [--samc]
                        [--sizes SIZES] [--ne NE] [--infer_origin INFER_ORIGIN]
                        [--max_resist MAX_RESIST] [--fix_resist FIX_RESIST]
                        [--fixAsym] [--max_flow MAX_FLOW] [--fixFlow]
                        [--samc_absorption {none,sites}]
-                       [--samc_pairs {max,mean}] [--cell_km CELL_KM]
+                       [--samc_pairs {max,mean}] [--coal_cell_km COAL_CELL_KM]
+                       [--coal_density COAL_DENSITY] [--cell_km CELL_KM]
                        [-a AWSUM] [--use_full] [--report_all]
 
 Optimise resistance networks using Tree-structured Parzen Estimators (TPE)
@@ -150,7 +152,7 @@ options:
                         log-uniformly) (default: 15)
   --min_weight MIN_WEIGHT
                         Minimum weight parameter (default: 0.0)
-  --model {resistance,samc,both}
+  --model {resistance,samc,coalescent,both}
                         Model to fit: resistance (sums of reach resistances
                         along the paths between sites; default), samc (spatial
                         absorbing Markov chain: conditional first passage
@@ -189,6 +191,13 @@ options:
   --samc_pairs {max,mean}
                         SAMC: how the passage times of the two directions
                         between two sites are combined (default: max)
+  --coal_cell_km COAL_CELL_KM
+                        Coalescent model: distance between neighbouring points
+                        of its lattice (km) (default: 5.0)
+  --coal_density COAL_DENSITY
+                        Coalescent model: population per km of river, setting
+                        the coalescence rates relative to the movement rates
+                        (default: 1000.0)
   --cell_km CELL_KM     SAMC: distance between neighbouring states of the
                         lattice the walker moves on (km; samc's cell size)
                         (default: 1.0)
@@ -473,6 +482,24 @@ runResistnet.py \
 ```
 
 In this short run, the best SAMC model is stream gradient (`sgr_dk_rav`; AIC -412.0), better than the reference model of flow alone (-0.100 per km, the limit, i.e. gene flow biased downstream; -402.8) and SAMC distance alone (-387.9). A longer run (600 iterations x 8 chains) finds degree of regulation (`dor_pc_pva`, inverse monomolecular, resistance 1-14.6 per km) without a flow term (AIC -424.0), less good than the standard model's best (-452.3 in the same search; see below). The two models fit the same genetic distances with the same MLPE, so their AICs can be compared directly.
+
+### The coalescent model <a name="coalescent"></a>
+
+With `--model coalescent`, the genetic distances are predicted from mean coalescence times, as in [Lundgren & Ralph (2019)](https://doi.org/10.1111/1755-0998.13035) ("Are populations like a circuit? Comparing isolation by resistance to a new coalescent-based method"): two lineages, one sampled at each site, move back in time among the demes of a graph until they meet and coalesce. Their mean coalescence time C solves a linear system (their equation 7) given the lineages' movement rates (which can differ between the two directions of an edge) and the coalescence rates of the demes. Resistance distance (the standard model) is the special case of this model when movement is symmetric and the landscape regular; with biased gene flow they differ, and resistance-based inference can be misled.
+
+On the river, ResistNet uses:
+
+* the lattice of the SAMC model (`--coal_cell_km`, default 5 km, as the coalescence times need a system the size of the number of pairs of points);
+* movement rates from the standard model's resistance per km (ResistanceGA's surface): the rate of a lineage at point x moving to its neighbour y is samc's conductance, 2 / ((r_x + r_y) x link length), divided by the length of river around x, a finite-volume version of a diffusion along the river, so that results don't depend on the lattice's spacing;
+* coalescence rates 1 / (density x length of river around each point), the population living there (`--coal_density`, default 1000 per km: on the example data, fits do not change from 100 per km up);
+* the flow term of the SAMC model, multiplying each move by exp(-rate x km moved upstream). The lineages move back in time, so **a negative rate means gene flow biased downstream**;
+* linearised F<sub>ST</sub> between sites from the coalescence times (Slatkin 1991), (C<sub>ij</sub> - C<sub>w</sub>) / C<sub>w</sub>, with C<sub>w</sub> the mean of the two within-site times, fitted with MLPE as the other models, so that their AICs can be compared.
+
+The variables, transformations, weights and maximum resistance per km are searched as for the standard model, together with the flow term (as for SAMC). The Hall of Fame, model averaging and outputs are as for SAMC, with `Model-Best.CoalescenceMatrix.tsv` (the predicted linearised F<sub>ST</sub>) instead of the passage times, and the reference models `coal_distance` (resistance 1 per km) and `coal_flow` (the same plus the flow term) in `Null-Model.tsv`. The interactive report does not cover this model yet.
+
+Checks: the coalescence times equal msprime's own numerical mean coalescence times (to its tolerance), and Lundgren & Ralph's equation 7 holds to 1e-12; with symmetric movement and high gene flow, the model fits the example data as the standard model's distance alone; and fitted to linearised F<sub>ST</sub> computed exactly from an independent simulation code (a stepping-stone model on a 10 km lattice of the example network or of the SMB Black River network, gene flow biased by -0.05 to +0.05 per km), it reproduces the truth (correlation 1 on the truth's own lattice; 0.99995 with the defaults), finds no direction without bias, and recovers the bias's sign and size (rate = -bias / 2) at every value. On the example data, flow alone gives -0.020 per km (gene flow biased downstream; AIC -419.8, against -386.7 for distance alone). A caveat for any directional model: variation in population density or movement along the river that the model does not represent can look like a direction.
+
+Lundgren & Ralph's own method (free movement rates on each directed edge and coalescence rates per deme, fitted to mean pairwise divergence, within sites included, by Metropolis-Hastings sampling) is in `resistnet.coalescent` (`run_mcmc`), from the published equations; on genomes simulated with msprime on a six-deme river graph it recovered the movement rates up to a common factor and the direction of the asymmetries (13 of 15 over three replicates).
 
 ### Interactive report <a name="html_report"></a>
 
