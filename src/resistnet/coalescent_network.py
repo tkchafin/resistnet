@@ -1,20 +1,22 @@
 """
 The coalescent model on a river network: Lundgren & Ralph's (2019)
-coalescence times (resistnet.coalescent) on the lattice of the river used
-for SAMC (resistnet.lattice), with movement from the standard model's
-resistance surface.
+coalescence times (resistnet.coalescent) on a lattice of the river
+(resistnet.lattice.SegmentLattice: points at confluences, tips, the outlet
+and the sites, and about cell_km apart in between), with movement from the
+standard model's resistance surface.
 
 Lineages move back in time between neighbouring points of the lattice.
-The rate of a lineage at point x jumping to its neighbour y is samc's
-conductance, 2 / ((r_x + r_y) x link length) (r: resistance per km, the
-standard model's surface, 1 + (K - 1) x the weighted mean of the
-transformed variables), times exp(-rate x km moved upstream) with a flow
-term, divided by the length of river around x (half its links): a finite
-volume version of a diffusion, so that results do not depend on the
-lattice's spacing once it is fine. Two lineages at the same point coalesce
-at rate 1 / (density x length of river around it) (the population living
-there, density per km). The mean coalescence times C solve Lundgren &
-Ralph's equation 7, and the genetic distance between two sites is
+The rate of a lineage at point x jumping to its neighbour y is the link's
+conductance, 1 / (its resistance: resistance per km in series over the
+river it covers; r: the standard model's surface, 1 + (K - 1) x the
+weighted mean of the transformed variables), times exp(-rate x km moved
+upstream) with a flow term, divided by the length of river around x (half
+its links): a finite volume version of a diffusion, so that results do not
+depend on the lattice's spacing once it is fine. Two lineages at the same
+point coalesce at rate 1 / (density x length of river around it) (the
+population living there, density per km). The mean coalescence times C
+solve Lundgren & Ralph's equation 7, and the genetic distance between two
+sites is
 linearised FST from them (Slatkin 1991), (C_ij - Cw) / Cw with Cw the mean
 of the two within-site times, fitted with MLPE as the other models.
 
@@ -26,6 +28,7 @@ import numpy as np
 import resistnet.MLPE as mlpe
 import resistnet.utils as utils
 import resistnet.coalescent as co
+from resistnet.lattice import SegmentLattice
 from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.samc_network import ResistanceNetworkSAMCWorker
 
@@ -149,6 +152,19 @@ class ResistanceNetworkCoalescent(CoalescentMethods, ResistanceNetworkSAMC):
             raise ValueError("density must be positive")
         self.density = float(density)
         super().__init__(*args, cell_km=cell_km, **kwargs)
+
+    def build_lattice(self):
+        """
+        The segment lattice of the network (see
+        resistnet.lattice.SegmentLattice), with the sites as points (no
+        absorption: the coalescence rates are the model's).
+        """
+        sites = list(self._points_snapped.keys())
+        self._lattice = SegmentLattice(self._K, list(self._edge_order),
+                                       self.reachid_col, self.length_col,
+                                       self.cell_km, keep_nodes=sites)
+        self._site_states = self._lattice.states(sites)
+        self._R_lat = np.zeros(self._lattice.n)
 
     def model_spec(self, individual):
         """As ResistanceNetworkSAMC.model_spec(), for the coalescent model

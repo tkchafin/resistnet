@@ -180,3 +180,141 @@ class Lattice:
         inner = np.array([len(s) > 0 for s in self.reach_states])
         down = np.where(inner, down, np.nan)
         return np.column_stack((down, 1.0 - down))
+
+
+class SegmentLattice:
+    """
+    A coarser lattice for the coalescent model: points only where reaches
+    meet (confluences), at the network's tips, outlet and sites, and about
+    cell_km apart along each stretch of river between them, whatever the
+    reaches' boundaries. A link's resistance is the sum over the reaches it
+    overlaps of their resistance per km times the overlap (resistances in
+    series), and its conductance the inverse; with resistance 1 per km,
+    1 / link length, as Lattice.
+
+    Attributes:
+        As Lattice (n, pos, a, b, length, upstream, reach_link, cell_km),
+        plus overlap (scipy.sparse.csr_matrix): km of each reach (columns,
+        edge order) covered by each link (rows, as a and b).
+    """
+
+    def __init__(self, K, edge_order, reachid_col, length_col, cell_km=5.0,
+                 keep_nodes=()):
+        """
+        Args:
+            K, edge_order, reachid_col, length_col: As for Lattice.
+            cell_km (float): Target distance between neighbouring points.
+            keep_nodes (iterable): Nodes that must be points (the sites).
+        """
+        if cell_km <= 0:
+            raise ValueError("cell_km must be positive")
+        self.cell_km = float(cell_km)
+        reach_ix = {e: i for i, e in enumerate(edge_order)}
+        outlets = [v for v in K.nodes if K.out_degree(v) == 0]
+        if len(outlets) != 1:
+            raise ValueError(f"The network has {len(outlets)} outlets; "
+                             "the lattice needs one")
+        keep = set(keep_nodes)
+        anchors = [v for v in K.nodes
+                   if K.in_degree(v) != 1 or K.out_degree(v) != 1
+                   or v in keep]
+        self._ix = {v: i for i, v in enumerate(anchors)}
+        # Distance of every node to the outlet
+        down = {u: (v, float(d[length_col])) for u, v, d in K.edges(data=True)}
+        dist = {outlets[0]: 0.0}
+        for v in K.nodes:
+            chain = [v]
+            while chain[-1] not in dist:
+                chain.append(down[chain[-1]][0])
+            for s in reversed(chain[:-1]):
+                dist[s] = dist[down[s][0]] + down[s][1]
+        P = [dist[v] for v in anchors]
+        a, b, length, rows, cols, vals = [], [], [], [], [], []
+        self.reach_link = np.full(len(edge_order), np.nan)
+        link = 0
+        for u in anchors:
+            if u not in down:
+                continue
+            # The stretch from u down to the next anchor
+            reaches, cur = [], u
+            while True:
+                v, L = down[cur]
+                reaches.append((reach_ix[K.edges[cur, v][reachid_col]], L))
+                cur = v
+                if cur in self._ix:
+                    break
+            ends = np.cumsum([L for _, L in reaches])
+            starts = ends - np.array([L for _, L in reaches])
+            total = ends[-1]
+            pieces = max(1, int(round(total / self.cell_km)))
+            cuts = np.linspace(0.0, total, pieces + 1)
+            prev = self._ix[u]
+            for k in range(1, pieces + 1):
+                if k < pieces:
+                    P.append(dist[u] - cuts[k])
+                    nxt = len(P) - 1
+                else:
+                    nxt = self._ix[cur]
+                lo, hi = cuts[k - 1], cuts[k]
+                for (e, _), s0, s1 in zip(reaches, starts, ends):
+                    over = min(hi, s1) - max(lo, s0)
+                    if over > 0:
+                        rows.append(link)
+                        cols.append(e)
+                        vals.append(over)
+                    mid = (s0 + s1) / 2
+                    if lo <= mid <= hi:
+                        self.reach_link[e] = hi - lo
+                a.append(prev)
+                b.append(nxt)
+                length.append(hi - lo)
+                prev = nxt
+                link += 1
+        a, b = np.array(a, dtype=int), np.array(b, dtype=int)
+        length = np.array(length, dtype=float)
+        cover = sp.csr_matrix((vals, (rows, cols)),
+                              shape=(link, len(edge_order)))
+        self.n = len(P)
+        self.pos = np.array(P, dtype=float)
+        self.a = np.r_[a, b]
+        self.b = np.r_[b, a]
+        self.length = np.r_[length, length]
+        self.overlap = sp.vstack([cover, cover]).tocsr()
+        self.upstream = self.pos[self.b] - self.pos[self.a]
+
+    def states(self, nodes):
+        """Point index of each of the given network nodes (which must be
+        confluences, tips, the outlet or keep_nodes)."""
+        return [self._ix[v] for v in nodes]
+
+    def weights(self, reach_r=None, rate=0.0):
+        """
+        Movement weights between neighbouring points: 1 / the link's
+        resistance (resistances per km in series over the river it covers),
+        times exp(-rate x km moved upstream) with a flow term.
+
+        Args:
+            reach_r (array-like, optional): Resistance per km of each reach
+                                            (default: 1, distance alone).
+            rate (float): Flow rate per km (0: none).
+
+        Returns:
+            scipy.sparse.csr_matrix: Weights (row = from, column = to).
+        """
+        if reach_r is None:
+            resist = self.length
+        else:
+            resist = self.overlap @ np.asarray(reach_r, dtype=float)
+        w = 1.0 / resist
+        if rate != 0:
+            w = w * np.exp(-rate * self.upstream)
+        return sp.csr_matrix((w, (self.a, self.b)), shape=(self.n, self.n))
+
+    def reach_moves(self, rate=0.0):
+        """
+        Probability of moving downstream and upstream from a point inside
+        each reach's stretch, away from its ends (see Lattice.reach_moves),
+        with the length of the link covering the reach's middle.
+        """
+        down = 1.0 / (1.0 + np.exp(-2.0 * rate * self.reach_link))
+        return np.column_stack((down, 1.0 - down))

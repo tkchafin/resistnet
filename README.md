@@ -489,8 +489,8 @@ With `--model coalescent`, the genetic distances are predicted from mean coalesc
 
 On the river, ResistNet uses:
 
-* the lattice of the SAMC model (`--coal_cell_km`, default 5 km, as the coalescence times need a system the size of the number of pairs of points);
-* movement rates from the standard model's resistance per km (ResistanceGA's surface): the rate of a lineage at point x moving to its neighbour y is samc's conductance, 2 / ((r_x + r_y) x link length), divided by the length of river around x, a finite-volume version of a diffusion along the river, so that results don't depend on the lattice's spacing;
+* a lattice of the river with points at confluences, tips, the outlet and the sites, and about `--coal_cell_km` apart in between (default 5 km), whatever the reaches' boundaries (the coalescence times need a system the size of the number of pairs of points, so the points are kept few);
+* movement rates from the standard model's resistance per km (ResistanceGA's surface): the rate of a lineage at point x moving to its neighbour y is the link's conductance (1 / the reaches' resistances per km in series over the river it covers), divided by the length of river around x, a finite-volume version of a diffusion along the river, so that results don't depend on the lattice's spacing;
 * coalescence rates 1 / (density x length of river around each point), the population living there (`--coal_density`, default 1000 per km: on the example data, fits do not change from 100 per km up);
 * the flow term of the SAMC model, multiplying each move by exp(-rate x km moved upstream). The lineages move back in time, so **a negative rate means gene flow biased downstream**;
 * linearised F<sub>ST</sub> between sites from the coalescence times (Slatkin 1991), (C<sub>ij</sub> - C<sub>w</sub>) / C<sub>w</sub>, with C<sub>w</sub> the mean of the two within-site times, fitted with MLPE as the other models, so that their AICs can be compared.

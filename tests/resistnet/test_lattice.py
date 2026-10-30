@@ -168,3 +168,40 @@ if __name__ == "__main__":
                  columns=["row", "col"]).to_csv(
         os.path.join(REFERENCE, "samc_raster_sites.tsv"), sep="\t",
         index=False)
+
+
+def test_segment_lattice():
+    # Points at confluences, tips, the outlet and kept nodes, and about
+    # cell_km apart in between, whatever the reaches' boundaries; a link's
+    # resistance is the reaches' resistances in series over the river it
+    # covers
+    from resistnet.lattice import SegmentLattice
+    K, order, lat, cells = river()
+    # A degree-2 node in the middle of reach 3 (split it in two reaches)
+    K.remove_edge((6, 5), (6, 11))
+    K.add_edge((6, 5), (6, 8), HYRIV_ID=31, LENGTH_KM=3.0)
+    K.add_edge((6, 8), (6, 11), HYRIV_ID=32, LENGTH_KM=3.0)
+    order2 = [1, 2, 31, 32, 4, 5]
+    seg = SegmentLattice(K, order2, "HYRIV_ID", "LENGTH_KM", cell_km=2.0,
+                         keep_nodes=[(6, 0)])
+    # (6, 8) is not a point; the stretch (6, 5) - (6, 11) has 3 links
+    with pytest.raises(KeyError):
+        seg.states([(6, 8)])
+    assert seg.overlap.sum() / 2 == pytest.approx(5 + 6 + 6 + 5 + 4)
+    np.testing.assert_allclose(np.asarray(seg.overlap.sum(axis=1)).ravel(),
+                               seg.length)
+    # Resistance 1 per km: conductance 1 / length; otherwise in series
+    W = seg.weights().tocsr()
+    np.testing.assert_allclose(np.asarray(W[seg.a, seg.b]).ravel(),
+                               1 / seg.length)
+    r = np.array([2.0, 7.0, 1.0, 4.0, 12.0, 3.0])
+    Wr = seg.weights(r).tocsr()
+    np.testing.assert_allclose(np.asarray(Wr[seg.a, seg.b]).ravel(),
+                               1 / (seg.overlap @ r))
+    # The middle link of that stretch covers 1 km of each new reach
+    mid = [i for i in range(len(seg.a))
+           if seg.overlap[i, 2] > 0 and seg.overlap[i, 3] > 0]
+    assert mid
+    np.testing.assert_allclose(seg.overlap[mid[0], 2], 1.0)
+    np.testing.assert_allclose(seg.overlap[mid[0], 3], 1.0)
+    np.testing.assert_allclose(seg.pos[seg.states([(0, 5)])], 16.0)
