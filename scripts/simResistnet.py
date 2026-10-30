@@ -28,7 +28,6 @@ def main():
             length_col=params.length_col,
             verbose=True,
             seed=params.seed,
-            units="reach" if params.per_reach else "km",
             max_resistance=params.max_resistance
         )
 
@@ -49,7 +48,7 @@ class ParseArgs:
                 sys.argv[1:], 'ho:i:n:s:r:l:c:z:',
                 ["help", "out=", "in=", "network=", "reps=", "samples=",
                  "len_col=", "id_col=", "seed=", "samc", "ne=",
-                 "max_resistance=", "flow=", "infer_origin=", "per_reach"]
+                 "max_resistance=", "flow=", "infer_origin="]
             )
         except getopt.GetoptError as err:
             print(err)
@@ -71,7 +70,6 @@ class ParseArgs:
         self.max_resistance = 100.0
         self.flow = 0.0
         self.infer_origin = "NEXT_DOWN"
-        self.per_reach = False
 
         # First pass to see if help menu was called
         for o, _ in options:
@@ -110,8 +108,6 @@ class ParseArgs:
                 self.flow = float(arg)
             elif opt == "infer_origin":
                 self.infer_origin = arg
-            elif opt == "per_reach":
-                self.per_reach = True
             else:
                 assert False, f"Unhandled option {opt!r}"
 
@@ -141,8 +137,6 @@ Arguments:
     --max_resistance: Maximum resistance: per km (standard model; each
         reach's resistance is 1 + (K - 1) x composite per km, times its
         length) or of the composite (SAMC) (default=100)
-    --per_reach: Standard model: each reach costs its composite value,
-        whatever its length (the formulation of earlier versions)
 
 SAMC (directional) simulations:
     --samc: Simulate conditional first passage times (mean of the two

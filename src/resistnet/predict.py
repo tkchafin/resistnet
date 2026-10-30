@@ -4,10 +4,10 @@ watershed), using the constants saved with the model ({out}.modelSpec.json;
 see ResistanceNetwork.model_spec()). Every rescaling uses the training
 network's ranges, so a reach with the same values as a training reach gets
 the same result; values outside the training range are clamped to it. For
-SAMC models (and standard models of earlier versions, per reach), the
-variables' combined value is clamped to its training range as well, so
-reaches beyond it all get the same value; for standard models per km, it is
-a weighted mean of the variables' 0-1 values, so it is always within range.
+SAMC models, the variables' combined value is clamped to its training range
+as well, so reaches beyond it all get the same value; for standard models,
+it is a weighted mean of the variables' 0-1 values, so it is always within
+range.
 """
 import json
 
@@ -28,7 +28,14 @@ def load_spec(path):
         dict: The specification; its "models" are best first.
     """
     with open(path) as fh:
-        return json.load(fh)
+        spec = json.load(fh)
+    # Standard models of earlier versions had resistances per reach
+    if any(m.get("type") == "standard" and m.get("units") != "km"
+           for m in spec.get("models", [])):
+        raise ValueError(
+            f"{path} has standard models of an earlier version (resistances "
+            "per reach), which are no longer supported; refit them")
+    return spec
 
 
 def _rescale(x, lo, hi):
@@ -78,10 +85,9 @@ def variable_values(raw, var):
 
 def standard_composite(raw, model):
     """
-    Combined value of each reach under a standard (path-sum) model: with
-    units "km", the weighted mean of the variables (each clamped to 0-1, so
-    it is within 0-1); with units "reach" (models of earlier versions), on
-    the training network's 0-1 scale before clamping.
+    Combined value of each reach under a standard (path-sum) model: the
+    weighted mean of the variables (each clamped to 0-1, so it is within
+    0-1).
 
     Args:
         raw (DataFrame): Raw values of the model's variables, one row per
@@ -99,17 +105,14 @@ def standard_composite(raw, model):
         multi = x if multi is None else multi + x
     if multi is None:
         return None
-    if model.get("units", "reach") == "km":
-        return multi / total if total > 0 else multi * 0.0
-    return _rescale(multi, model["composite_min"], model["composite_max"])
+    return multi / total if total > 0 else multi * 0.0
 
 
 def standard_resistance(raw, model):
     """
-    Resistance of each reach under a standard (path-sum) model: with units
-    "km", the resistance per km, 1 + (K - 1) * composite (from 1, distance
-    alone, to the maximum resistance K); with units "reach", the composite
-    (0-1).
+    Resistance per km of each reach under a standard (path-sum) model,
+    1 + (K - 1) * composite (from 1, distance alone, to the maximum
+    resistance K).
 
     Args:
         raw (DataFrame): Raw values of the model's variables, one row per
@@ -120,13 +123,10 @@ def standard_resistance(raw, model):
         numpy.ndarray: Resistance of each reach.
     """
     x = standard_composite(raw, model)
-    km = model.get("units", "reach") == "km"
     if x is None:
-        return np.ones(len(raw)) if km else np.zeros(len(raw))
+        return np.ones(len(raw))
     x = np.clip(x, 0.0, 1.0)
-    if km:
-        return 1.0 + (model["max_resistance"] - 1.0) * x
-    return x
+    return 1.0 + (model["max_resistance"] - 1.0) * x
 
 
 def samc_composite(raw, rows, cols, model):
@@ -232,8 +232,7 @@ def predict_reaches(reaches, spec, model=0, reachid_col=None,
     Applies a model to each reach of a reach layer.
 
     For a standard model, each reach's resistance: per km (from 1), and
-    times the reach's length (reach_resistance), or for models of earlier
-    versions (units "reach"), its composite value (0-1). For a SAMC model,
+    times the reach's length (reach_resistance). For a SAMC model,
     the weights of moving to the downstream reach and to the upstream
     reaches, and the share of moves that go downstream (without
     absorption); and a table of the moves.
@@ -267,9 +266,9 @@ def predict_reaches(reaches, spec, model=0, reachid_col=None,
         x = standard_composite(raw, m)
         clamped["composite"] = 0.0 if x is None else _outside(x)
         out["resistance"] = standard_resistance(raw, m)
-        # Per km: also each reach's resistance over its length (its
-        # contribution to the distances between sites)
-        if m.get("units", "reach") == "km" and length_col in reaches:
+        # Also each reach's resistance over its length (its contribution
+        # to the distances between sites)
+        if length_col in reaches:
             out["reach_resistance"] = out["resistance"].to_numpy() * \
                 reaches[length_col].to_numpy(dtype=float)
         return out, None, clamped

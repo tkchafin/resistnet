@@ -1,6 +1,7 @@
 import os
 
 import pandas as pd
+import pytest
 
 from resistnet.report import RunOutputs, describe
 
@@ -18,10 +19,11 @@ def test_describe():
 def test_sites_with_numpy_scalars(tmp_path):
     # Site nodes can be written with numpy's scalar reprs
     prefix = str(tmp_path / "x")
-    pd.DataFrame({"fitness": [1.0], "a": [1], "a_weight": [1.0],
-                  "a_trans": [0], "a_shape": [1.0], "aic": [-1.0],
-                  "r2m": [0.5], "akaike_weight": [1.0], "keep": [True]}
-                 ).to_csv(f"{prefix}.HallOfFame.tsv", sep="\t", index=False)
+    hof = pd.DataFrame({"fitness": [1.0], "a": [1], "a_weight": [1.0],
+                        "a_trans": [0], "a_shape": [1.0],
+                        "max_resistance": [10.0], "aic": [-1.0],
+                        "r2m": [0.5], "akaike_weight": [1.0], "keep": [True]})
+    hof.to_csv(f"{prefix}.HallOfFame.tsv", sep="\t", index=False)
     pd.DataFrame({
         "Label": ["s1", "s2"],
         "Node": ["(-96.5, 38.25)",
@@ -32,6 +34,12 @@ def test_sites_with_numpy_scalars(tmp_path):
     assert list(sites["lon"]) == [-96.5, -95.03541666666736]
     assert list(sites["lat"]) == [38.25, 36.98125]
     assert os.path.exists(f"{prefix}.HallOfFame.tsv")
+    # Standard runs of earlier versions (per reach: no max_resistance) are
+    # refused
+    hof.drop(columns="max_resistance").to_csv(
+        f"{prefix}.HallOfFame.tsv", sep="\t", index=False)
+    with pytest.raises(ValueError, match="earlier version"):
+        RunOutputs(prefix, "resistance")
 
 
 def test_describe_per_km():

@@ -158,14 +158,6 @@ class parseArgs:
             help='Same as --model samc'
         )
         parser.add_argument(
-            '--per_reach', action='store_true',
-            help=(
-                'Standard model: each reach costs its composite value '
-                'whatever its length (the formulation of earlier versions), '
-                'instead of a resistance per km times its length'
-            )
-        )
-        parser.add_argument(
             '--sizes', type=str,
             help=(
                 'SAMC: tsv with columns sample, size (effective population '
