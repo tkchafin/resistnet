@@ -36,7 +36,8 @@ requirements:
   - pyogrio
   - nlopt
   - mantel
-  # with autostreamtree.network (river network functions)
+  # with autostreamtree.network (river network functions) and
+  # autostreamtree.coalescent (the coalescent model's distances)
   - autostreamtree
 
 #build:

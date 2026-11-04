@@ -358,18 +358,21 @@ class HallOfFame:
         """
         Adds each model's AIC difference from the reference models, positive
         when the model fits better (as for delta_aic_null): delta_aic_distance
-        (from distance alone: the SAMC model with equal movement weights,
-        samc_distance, or for the standard model distance_only) and
-        delta_aic_flow (from flow alone, samc_flow; SAMC only).
+        (from distance alone: the SAMC or coalescent model with resistance 1
+        per km, samc_distance or coal_distance, or for the standard model
+        distance_only) and delta_aic_flow (from flow alone, samc_flow or
+        coal_flow; SAMC and coalescent models only).
 
         Args:
             table (DataFrame): Reference models, with an "aic" column (see
                                evaluate_null_model()).
         """
-        distance = ("samc_distance" if "samc_distance" in table.index
+        prefix = next((p for p in ("samc", "coal")
+                       if f"{p}_distance" in table.index), None)
+        distance = (f"{prefix}_distance" if prefix is not None
                     else "distance_only")
         for col, name in [("delta_aic_distance", distance),
-                          ("delta_aic_flow", "samc_flow")]:
+                          ("delta_aic_flow", f"{prefix}_flow")]:
             if name in table.index:
                 self.data[col] = (float(table.loc[name, "aic"])
                                   - self.data["aic"].astype(float))
