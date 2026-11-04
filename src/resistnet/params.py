@@ -151,8 +151,8 @@ class parseArgs:
                 'the paths between sites; default), samc (spatial absorbing '
                 'Markov chain: conditional first passage times among sites, '
                 'allowing directional effects), coalescent (Lundgren & '
-                "Ralph's mean coalescence times among sites, from "
-                'autoStreamTree, allowing directional effects), or both '
+                "Ralph's mean coalescence times among sites, allowing "
+                'directional effects), or both '
                 '(resistance and samc, fitted separately, then ranked '
                 'together)'
             )

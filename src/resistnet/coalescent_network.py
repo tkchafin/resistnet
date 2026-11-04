@@ -1,7 +1,7 @@
 """
 The coalescent model on a river network: Lundgren & Ralph's (2019)
-coalescence times on a lattice of the river, computed by autoStreamTree
-(autostreamtree.coalescent.RiverCoalescent), with movement from the
+coalescence times on a lattice of the river
+(resistnet.coalescent.RiverCoalescent), with movement from the
 standard model's resistance surface.
 
 Lineages move back in time between neighbouring points of the lattice
@@ -24,10 +24,10 @@ With a flow term, lineages traced back in time move upstream more easily
 when the rate is negative, i.e. gene flow is biased downstream.
 """
 import numpy as np
-from autostreamtree.coalescent import RiverCoalescent
 
 import resistnet.MLPE as mlpe
 import resistnet.utils as utils
+from resistnet.coalescent import RiverCoalescent
 from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.samc_network import ResistanceNetworkSAMCWorker
 
@@ -75,7 +75,7 @@ class CoalescentMethods:
         The predicted linearised FST among sites, and for each reach its
         resistance per km and the probabilities of a lineage moving
         downstream and upstream inside it (see
-        autostreamtree.coalescent.SegmentLattice.reach_moves()).
+        resistnet.coalescent.SegmentLattice.reach_moves()).
         """
         movement = self._surface_and_flow(model)
         if movement is None:
@@ -116,7 +116,7 @@ class ResistanceNetworkCoalescent(CoalescentMethods, ResistanceNetworkSAMC):
     def build_lattice(self):
         """
         The coalescent model of the network (see
-        autostreamtree.coalescent.RiverCoalescent: its lattice, with the
+        resistnet.coalescent.RiverCoalescent: its lattice, with the
         sites as points, and the density; no absorption: the coalescence
         rates are the model's).
         """
