@@ -24,6 +24,10 @@ REACHES = {
 }
 # Sites (nodes) and their effective sizes (absorption 1 / (2 Ne))
 SITES = {(6, 0): 50, (0, 5): 80, (11, 11): 30, (6, 15): 100, (6, 5): 60}
+# A directional variable (each reach's value) and the strength of its
+# potential (U = STRENGTH x its values at the states)
+DIRECTIONAL = {1: 0.2, 2: 0.9, 3: 0.4, 4: 0.0, 5: 0.7}
+STRENGTH = 1.5
 
 
 def river():
@@ -59,6 +63,17 @@ def raster_inputs():
     return res, ab
 
 
+def potential_raster():
+    """The directional potential of each cell (see DIRECTIONAL); NA off
+    the river."""
+    K, order, lat, cells = river()
+    U = STRENGTH * lat.state_values([DIRECTIONAL[e] for e in order])
+    out = np.full((NROW, NCOL), np.nan)
+    for s, (i, j) in cells.items():
+        out[i, j] = U[s]
+    return out
+
+
 def _write(x, name):
     pd.DataFrame(x).to_csv(os.path.join(REFERENCE, name), sep="\t",
                            header=False, index=False, na_rep="NA")
@@ -89,10 +104,12 @@ def test_lattice_structure():
 
 
 def test_raster_inputs_unchanged():
-    # The rasters samc_raster.R read are those of this river
+    # The rasters samc_raster.R and samc_raster_dir.R read are those of
+    # this river
     res, ab = raster_inputs()
     for x, name in [(res, "samc_raster_resistance.tsv"),
-                    (ab, "samc_raster_absorption.tsv")]:
+                    (ab, "samc_raster_absorption.tsv"),
+                    (potential_raster(), "samc_raster_potential.tsv")]:
         ref = pd.read_csv(os.path.join(REFERENCE, name), sep="\t",
                           header=None).to_numpy(dtype=float)
         np.testing.assert_array_equal(np.isnan(ref), np.isnan(x))
@@ -125,6 +142,95 @@ def test_lattice_matches_samc_raster():
                         sep="\t", header=None).to_numpy(dtype=float)
     off = ~np.eye(len(sites), dtype=bool)
     np.testing.assert_allclose(T[off], T_ref[off], rtol=1e-10)
+
+
+def test_lattice_matches_samc_raster_directional():
+    # samc's model with a transition function of the order of the two
+    # cells, exp(-(x_to - x_from)), on a raster of the directional
+    # potential (samc 3.2.1, see reference/samc_raster_dir.R), equals the
+    # lattice's with that potential and resistance 1 per km
+    K, order, lat, cells = river()
+    U = STRENGTH * lat.state_values([DIRECTIONAL[e] for e in order])
+    W = lat.weights(potential=U)
+    R = np.zeros(lat.n)
+    sites = lat.states(list(SITES))
+    R[sites] = [1 / (2 * ne) for ne in SITES.values()]
+    Q = cfpt.transition_matrix(W, R).toarray()
+
+    ref = pd.read_csv(os.path.join(REFERENCE, "samc_raster_dir_Q.tsv"),
+                      sep="\t", header=None).to_numpy(dtype=float)
+    where = {(int(i) - 1, int(j) - 1): k
+             for k, (i, j) in enumerate(ref[:, :2])}
+    perm = [where[cells[s]] for s in range(lat.n)]
+    np.testing.assert_allclose(Q, ref[:, 2:][np.ix_(perm, perm)],
+                               rtol=1e-12, atol=1e-15)
+    # Not symmetric: the potential makes the two directions differ
+    assert not np.allclose(Q, Q.T)
+
+    T = cfpt.CFPT(Q, sites, R)
+    T_ref = pd.read_csv(
+        os.path.join(REFERENCE, "samc_raster_dir_cfpt.tsv"), sep="\t",
+        header=None).to_numpy(dtype=float)
+    off = ~np.eye(len(sites), dtype=bool)
+    np.testing.assert_allclose(T[off], T_ref[off], rtol=1e-10)
+
+
+def test_state_values():
+    # Each reach's value at its middle, each node's the mean over the
+    # half-links around it (all 1 km here), linear in between
+    K, order, lat, cells = river()
+    X = [DIRECTIONAL[e] for e in order]
+    x = lat.state_values(X)
+    up, down = lat.states([(6, 5), (6, 11)])
+    np.testing.assert_allclose(x[up], (0.2 + 0.9 + 0.4) / 3)
+    np.testing.assert_allclose(x[down], (0.4 + 0.0 + 0.7) / 3)
+    np.testing.assert_allclose(x[lat.states([(0, 5)])], 0.9)
+    # Reach 3, (6, 5) to (6, 11): 5 inner states, 1 to 5 km from (6, 5)
+    inner = lat.reach_states[order.index(3)]
+    want = [x[up] + (0.4 - x[up]) * k / 3 for k in (1, 2, 3)]
+    want += [0.4 + (x[down] - 0.4) * k / 3 for k in (1, 2)]
+    np.testing.assert_allclose(x[inner], want)
+    # Constant values stay constant
+    np.testing.assert_allclose(lat.state_values(np.full(5, 0.3)), 0.3)
+
+
+def test_potential_is_flow_term():
+    # The flow term is the potential rate x distance to the outlet
+    K, order, lat, cells = river()
+    r = [REACHES[e][2] for e in order]
+    for rate in (0.3, -0.2):
+        np.testing.assert_allclose(
+            lat.weights(r, potential=rate * lat.pos).toarray(),
+            lat.weights(r, rate).toarray(), rtol=1e-12)
+        np.testing.assert_allclose(lat.reach_moves(0.0, rate * lat.pos),
+                                   lat.reach_moves(rate), rtol=1e-12)
+    # A potential multiplies each move by exp(-(U_to - U_from))
+    U = STRENGTH * lat.state_values([DIRECTIONAL[e] for e in order])
+    W0 = lat.weights(r).toarray()
+    Wu = lat.weights(r, potential=U).toarray()
+    for x, y in zip(lat.a, lat.b):
+        assert Wu[x, y] == pytest.approx(W0[x, y] * np.exp(-(U[y] - U[x])))
+
+
+def test_reach_moves_potential():
+    # With a potential (and flow), the moves inside a reach are the mean
+    # over its inner states of those of the transition matrix (resistance
+    # 1 per km: the neighbouring nodes do not differ)
+    K, order, lat, cells = river()
+    U = STRENGTH * lat.state_values([DIRECTIONAL[e] for e in order])
+    rate = 0.1
+    Q = cfpt.transition_matrix(lat.weights(rate=rate, potential=U),
+                               np.zeros(lat.n)).tocsr()
+    moves = lat.reach_moves(rate, U)
+    for e, states in enumerate(lat.reach_states):
+        u, v = lat.reach_ends[e]
+        chain = [u] + list(states) + [v]
+        down = [Q[chain[k], chain[k + 1]]
+                for k in range(1, len(chain) - 1)]
+        assert moves[e, 0] == pytest.approx(np.mean(down), rel=1e-12)
+        assert moves[e, 1] == pytest.approx(1 - np.mean(down), rel=1e-12)
+    # The variable's changes make moves differ between reaches
+    assert np.ptp(moves[:, 0]) > 0.05
 
 
 def test_weights_flow_and_distance():
@@ -160,10 +266,12 @@ def test_one_outlet_required():
 
 
 if __name__ == "__main__":
-    # Writes the rasters and sites read by reference/samc_raster.R
+    # Writes the rasters and sites read by reference/samc_raster.R and
+    # samc_raster_dir.R
     res, ab = raster_inputs()
     _write(res, "samc_raster_resistance.tsv")
     _write(ab, "samc_raster_absorption.tsv")
+    _write(potential_raster(), "samc_raster_potential.tsv")
     pd.DataFrame([(i + 1, j + 1) for i, j in SITES],
                  columns=["row", "col"]).to_csv(
         os.path.join(REFERENCE, "samc_raster_sites.tsv"), sep="\t",

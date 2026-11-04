@@ -60,6 +60,13 @@ def main():
                   "range of the network the model was fitted to; their "
                   "values were clamped to that range")
 
+    directional = spec["models"][args.model - 1].get("directional")
+    if directional:
+        print(f"NOTE: the model's directional variables "
+              f"({', '.join(directional)}) act through changes between "
+              "neighbouring reaches, which the reach layer does not "
+              "connect: the outputs give the resistance of its symmetric "
+              "variables only, and no p_downstream")
     for col in table.columns[1:]:
         reaches[col] = table[col].to_numpy()
     reaches.to_file(f"{args.out}.predicted.gpkg", driver="GPKG")

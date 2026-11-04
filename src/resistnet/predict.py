@@ -159,7 +159,10 @@ def predict_reaches(reaches, spec, model=0, reachid_col=None,
     Each reach's resistance: per km (from 1), and times the reach's length
     (reach_resistance). For a SAMC model, also the probability of moving
     downstream from a state inside the reach (p_downstream; see
-    samc_downstream()).
+    samc_downstream()), unless it has directional variables: their effects
+    depend on the neighbouring reaches' values, which a reach layer does
+    not connect, so p_downstream is not given (the resistance is that of
+    the symmetric variables, as when fitting).
 
     Args:
         reaches (DataFrame): One row per reach, with the model's variables.
@@ -189,7 +192,7 @@ def predict_reaches(reaches, spec, model=0, reachid_col=None,
     if length_col in reaches:
         lengths = reaches[length_col].to_numpy(dtype=float)
         out["reach_resistance"] = out["resistance"].to_numpy() * lengths
-        if m["type"] == "samc":
+        if m["type"] == "samc" and not m.get("directional"):
             out["p_downstream"] = samc_downstream(lengths, m)
     elif m["type"] == "samc":
         raise ValueError(f"SAMC models need the reach lengths "

@@ -34,11 +34,13 @@ REF_TMP_DIR_TO_SITE5 = [
 ]
 
 
-def model(spec):
-    """spec: {variable: (weight, transformation, shape)} (not directional)"""
+def model(spec, directional=()):
+    """spec: {variable: (weight, transformation, shape)}; the variables in
+    directional are directional"""
     ind = []
     for v in VARIABLES:
-        ind += [1, *spec[v], 0] if v in spec else [0, 1.0, 0, 1, 0]
+        ind += ([1, *spec[v], int(v in directional)] if v in spec
+                else [0, 1.0, 0, 1, 0])
     return ind
 
 
@@ -189,12 +191,59 @@ def test_combining_directions(samc_net, ref_net):
             None, None, None, [], None, {}, absorption="everywhere")
 
 
-def test_directional_variables_refused(samc_net):
-    ind = model({"run_mm_cyr": (1.0, 0, 1)})
-    ind[4] = 1
-    with pytest.raises(ValueError, match="directional"):
-        samc_net._movement_weights(ind + [10.0, 0.0])
-    assert samc_net.effective_directions(ind) == {}
+def test_directional_variables(samc_net):
+    # A directional variable multiplies each move by exp(-(U_to - U_from)),
+    # U = weight x max_flow x span x its transformed values at the states;
+    # it is not part of the resistance surface
+    lat = samc_net._lattice
+    sym = {"sgr_dk_rav": (0.4, 0, 1)}
+    ind = model({**sym, "run_mm_cyr": (0.5, 5, 3)},
+                directional=["run_mm_cyr"]) + [30.0, 0.02]
+    x = samc_net.transform(samc_net._predictors["run_mm_cyr"], 5, 3)
+    U = 0.5 * samc_net.max_flow * lat.span * lat.state_values(
+        x.to_numpy(dtype=float))
+    np.testing.assert_allclose(samc_net.directional_potential(ind), U)
+    rho = samc_net.resistance_surface(model(sym) + [30.0]).to_numpy()
+    np.testing.assert_allclose(
+        samc_net.resistance_surface(ind).to_numpy(), rho)
+    np.testing.assert_allclose(
+        samc_net._movement_weights(ind).toarray(),
+        lat.weights(rho, 0.02, potential=U).toarray(), rtol=1e-12)
+    # Directional alone: distance plus the variable's effect
+    alone = model({"run_mm_cyr": (0.5, 5, 3)},
+                  directional=["run_mm_cyr"]) + [30.0, 0.0]
+    assert samc_net.resistance_surface(alone) is None
+    np.testing.assert_allclose(
+        samc_net._movement_weights(alone).toarray(),
+        lat.weights(potential=U).toarray(), rtol=1e-12)
+    fitness, _ = samc_net.evaluate(alone)
+    assert np.isfinite(fitness)
+    # Effective direction in the raw values: an increasing transformation
+    # (monomolecular) keeps it, a decreasing one (reversed) reverses it
+    # (on nearly every move: a node takes the mean of the transformed
+    # values around it, which can rank differently from the mean of the
+    # raw values; the labels allow 5%)
+    assert samc_net.effective_directions(ind)["run_mm_cyr"] >= 0.95
+    rev = model({"run_mm_cyr": (0.5, 6, 3)}, directional=["run_mm_cyr"])
+    assert samc_net.effective_directions(rev)["run_mm_cyr"] <= 0.05
+    lin = model({"run_mm_cyr": (0.5, 0, 1)}, directional=["run_mm_cyr"])
+    assert samc_net.effective_directions(lin) == {"run_mm_cyr": 1.0}
+    assert samc_net.effective_directions(model(sym)) == {}
+    # The moves inside each reach now differ between reaches
+    _, edges = samc_net.model_output(alone)
+    has = ~np.isnan(edges[:, 1])
+    assert np.ptp(edges[has, 1]) > 0.01
+    np.testing.assert_allclose(edges[has, 1] + edges[has, 2], 1)
+    np.testing.assert_allclose(edges[:, 0], 1.0)
+    # The specification: the symmetric variables as for the standard
+    # model, the directional ones apart, with their strength
+    spec = samc_net.model_spec(ind)
+    assert list(spec["variables"]) == ["sgr_dk_rav"]
+    d = spec["directional"]["run_mm_cyr"]
+    assert d["strength"] == pytest.approx(0.5 * samc_net.max_flow)
+    assert d["transform"] == 5 and d["higher_harder"] >= 0.95
+    assert spec["span_km"] == pytest.approx(lat.span)
+    assert "directional" not in samc_net.model_spec(model(sym) + [30.0])
 
 
 def test_evaluate_and_output(samc_net):
@@ -222,14 +271,15 @@ def test_evaluate_and_output(samc_net):
 
 
 def test_search_space(samc_net):
-    # Variables are never directional on the lattice; the flow term is
+    # Variables can be directional (not with fixAsym), and so can the flow
+    # term
     runner = ModelRunnerTPE(samc_net, seed=1, verbose=False)
     runner.set_tpe_parameters(max_shape=10)
     runner.initialize_space()
     from hyperopt.pyll.stochastic import sample
     rng = np.random.default_rng(1)
     draws = [sample(runner.space, rng=rng) for _ in range(300)]
-    assert {d["run_mm_cyr_asym"] for d in draws} == {0}
+    assert {d["run_mm_cyr_asym"] for d in draws} == {0, 1}
     assert {d["flow_dir"] for d in draws} == {-1, 0, 1}
     rates = [d["flow_rate"] for d in draws]
     assert min(rates) >= 1e-3 and max(rates) <= samc_net.max_flow
@@ -237,6 +287,10 @@ def test_search_space(samc_net):
     runner.initialize_space()
     draws = [sample(runner.space, rng=rng) for _ in range(50)]
     assert {d["flow_dir"] for d in draws} == {0}
+    runner.set_tpe_parameters(max_shape=10, fixAsym=True)
+    runner.initialize_space()
+    draws = [sample(runner.space, rng=rng) for _ in range(50)]
+    assert {d["run_mm_cyr_asym"] for d in draws} == {0}
 
 
 def test_surface_parameters(samc_net):
@@ -253,6 +307,15 @@ def test_surface_parameters(samc_net):
     assert samc_net.surface_parameters(ind + [50.0, -0.1]) == 7
     # Flow alone: only the rate (no maximum resistance without variables)
     assert samc_net.surface_parameters(model({}) + [50.0, 0.1]) == 1
+    # A directional variable: its transformation, shape and strength; the
+    # maximum resistance and relative weights are the symmetric
+    # variables'
+    both = model({"run_mm_cyr": (0.7, 3, 10), "sgr_dk_rav": (0.4, 0, 1)},
+                 directional=["sgr_dk_rav"])
+    assert samc_net.surface_parameters(both + [50.0, 0.0]) == 2 + 3 + 1
+    alone = model({"sgr_dk_rav": (0.4, 0, 1)}, directional=["sgr_dk_rav"])
+    assert samc_net.surface_parameters(alone + [50.0, 0.0]) == 3
+    assert samc_net.surface_parameters(alone + [50.0, 0.1]) == 4
 
 
 def test_run_tpe_samc(samc_net, tmp_path):
@@ -263,7 +326,7 @@ def test_run_tpe_samc(samc_net, tmp_path):
     hof = pd.read_csv(f"{out}.HallOfFame.tsv", sep="\t", na_values="-")
     assert all(f"{v}_asym" in hof.columns for v in VARIABLES)
     for v in VARIABLES:
-        assert hof[f"{v}_asym"].dropna().isin([0]).all()
+        assert hof[f"{v}_asym"].dropna().isin([0, 1]).all()
     assert hof["max_resistance"].between(1, samc_net.max_resist).all()
     assert hof["flow"].abs().le(samc_net.max_flow).all()
     # AIC differences from the reference models (positive = better)
@@ -613,6 +676,60 @@ def test_simulate_samc_matches_fitted_model(tmp_path):
     np.testing.assert_allclose(sim.to_numpy(),
                                fitted.to_numpy() / fitted.to_numpy().max(),
                                rtol=1e-12)
+
+
+def test_simulate_samc_directional(tmp_path):
+    # With an ASYM column, simulated distances are those of the fitted
+    # model with that variable directional (strength WEIGHT x max_flow,
+    # 0.1 by default), and fitting the strength of that variable alone
+    # recovers it
+    from scipy.optimize import minimize_scalar
+    from resistnet.CFPT import CFPT
+    spec = pd.DataFrame({"VAR": ["ele_mt_cav"], "WEIGHT": [0.3],
+                         "TRANSFORM": [0], "SHAPE": [1], "ASYM": [1]})
+    data, base = _simulate_samc(tmp_path, spec, flow=0.0)
+    sim = pd.read_csv(f"{base}.ResistanceMatrix.tsv", sep="\t", index_col=0)
+    net = ResistanceNetworkSAMC(
+        network=os.path.join(data, "nmt.network"), shapefile=None,
+        sizes=None, coords=f"{base}.coords", variables=["ele_mt_cav"],
+        inmat=f"{base}.ResistanceMatrix.tsv",
+        agg_opts={"ele_mt_cav": "ARITH"}, out=str(tmp_path / "fit"),
+        verbose=False)
+    T = CFPT(net._transition_matrix([1, 0.3, 0, 1, 1, 20.0, 0.0]),
+             net._site_states, net._R_lat)
+    fitted = pd.DataFrame(np.maximum(T, T.T),
+                          index=list(net._points_labels.values()),
+                          columns=list(net._points_labels.values()))
+    for df in (fitted, sim):
+        df.index = df.index.astype(str)
+        df.columns = df.columns.astype(str)
+    fitted = fitted.loc[sim.index, sim.columns]
+    np.testing.assert_allclose(sim.to_numpy(),
+                               fitted.to_numpy() / fitted.to_numpy().max(),
+                               rtol=1e-12)
+    opt = minimize_scalar(
+        lambda w: -net.evaluate([1, w, 0, 1, 1, 20.0, 0.0])[1][0],
+        bounds=(0.05, 1.0), method="bounded", options={"xatol": 1e-4})
+    assert opt.x == pytest.approx(0.3, rel=0.01)
+
+
+def test_predict_samc_directional(samc_net):
+    # Applied to a reach layer, a SAMC model with a directional variable
+    # gives the resistance of its symmetric variables, and no
+    # p_downstream (the directional effects need the neighbouring reaches)
+    import geopandas as gpd
+    import resistnet.predict as pr
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    reaches = gpd.read_file(os.path.join(data, "nmt.gpkg"))
+    sym = model({"sgr_dk_rav": (0.4, 0, 1)}) + [30.0, 0.02]
+    both = model({"sgr_dk_rav": (0.4, 0, 1), "run_mm_cyr": (0.5, 5, 3)},
+                 directional=["run_mm_cyr"]) + [30.0, 0.02]
+    out_sym, _ = pr.predict_reaches(
+        reaches, {"models": [samc_net.model_spec(sym)]})
+    out_dir, _ = pr.predict_reaches(
+        reaches, {"models": [samc_net.model_spec(both)]})
+    assert "p_downstream" in out_sym and "p_downstream" not in out_dir
+    np.testing.assert_allclose(out_dir["resistance"], out_sym["resistance"])
 
 
 def test_ensemble_samc(samc_net, tmp_path):

@@ -33,8 +33,10 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
     1 / (mean resistance per km x distance), the resistance per km being
     the standard model's (ResistanceGA's surface, 1 + (K - 1) x the
     weighted mean of the transformed variables), optionally times a flow
-    term. The distance between two sites combines the conditional passage
-    times of the two directions (absorption and pairs: see __init__).
+    term and the effects of directional variables (see
+    directional_potential()). The distance between two sites combines the
+    conditional passage times of the two directions (absorption and pairs:
+    see __init__).
 
     Attributes:
         network (NetworkX graph): The network graph.
@@ -59,6 +61,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
     # Names of the reference models (evaluate_null_model())
     null_prefix = "samc"
+    # Variables can be directional (see directional_potential())
+    directional = True
 
     def __init__(self, network, shapefile, sizes, coords, variables, inmat,
                  agg_opts, pop_agg="ARITH", reachid_col="HYRIV_ID",
@@ -146,8 +150,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             raise ValueError("pairs must be 'mean' or 'max'")
         self.absorption = absorption
         self.pairs = pairs
-        # Variables can't be directional on the lattice
-        self.directional = False
 
         # Additional attributes for internal use
         self.minimized_subgraph = None
@@ -677,8 +679,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                                shape, direction) per variable, optionally
                                followed by the maximum resistance per km
                                and the flow rate (see flow_rate()).
-                               Direction must be 0: variables can't be
-                               directional on the lattice.
+                               Direction 1 makes a variable directional
+                               (see directional_potential()).
 
         Returns:
             tuple: A tuple containing the fitness value and the results of the
@@ -705,9 +707,12 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
     def surface_parameters(self, individual):
         """
         Counts the surface parameters estimated for a model (see
-        ResistanceNetwork.surface_parameters): transformations, shapes and
-        relative weights, the maximum resistance per km if it was
-        optimised, and the flow rate if the model has a flow term.
+        ResistanceNetwork.surface_parameters): a transformation and shape
+        for each selected variable; the relative weights of the symmetric
+        variables (m - 1 for m) and the strength of each directional one
+        (see directional_potential()); the maximum resistance per km if it
+        was optimised and a symmetric variable uses it; and the flow rate
+        if the model has a flow term.
 
         Args:
             individual (list): Model specification, as for evaluate().
@@ -715,13 +720,18 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         Returns:
             int: The number of surface parameters.
         """
-        n_var = len(self._predictors.columns) * self.num_attributes
-        n_sel = sum(
-            1 for s in individual[0:n_var:self.num_attributes] if s == 1
-        )
-        k = super().surface_parameters(individual[:n_var])
+        n_att = self.num_attributes
+        n_var = len(self._predictors.columns) * n_att
+        sel = [i for i in range(0, n_var, n_att) if individual[i] == 1]
+        n_dir = sum(1 for i in sel if individual[i + 4] == 1)
+        n_sym = len(sel) - n_dir
+        k = 0
+        if not getattr(self, "fixShape", False):
+            k += 2 * len(sel)
+        if not getattr(self, "fixWeight", False):
+            k += max(n_sym - 1, 0) + n_dir
         # The maximum resistance, if it was optimised
-        if len(individual) > n_var and self.fix_resist is None and n_sel:
+        if len(individual) > n_var and self.fix_resist is None and n_sym:
             k += 1
         if self.flow_rate(individual) != 0:
             k += 1
@@ -896,7 +906,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         rho = self.resistance_surface(model)
         rho = (np.ones(len(self._edge_order)) if rho is None
                else rho.to_numpy(dtype=float))
-        moves = self._lattice.reach_moves(self.flow_rate(model))
+        moves = self._lattice.reach_moves(self.flow_rate(model),
+                                          self.directional_potential(model))
         return cfpt, np.column_stack((rho, moves))
 
     def _transition_matrix(self, individual):
@@ -922,9 +933,10 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         Movement weights between neighbouring states of the lattice: samc's
         conductance, 2 / ((r_i + r_j) x distance), from the resistance per
         km of each reach (see resistance_surface(): 1 + (K - 1) x the
-        weighted mean of the transformed variables, as the standard model;
-        1 without variables), times the flow term if any (see
-        flow_rate()).
+        weighted mean of the transformed symmetric variables, as the
+        standard model; 1 without them), times the flow term if any (see
+        flow_rate()) and the directional variables' effects (see
+        directional_potential()).
 
         Args:
             individual (list): Model specification, as for evaluate().
@@ -936,7 +948,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         movement = self._surface_and_flow(individual)
         if movement is None:
             return None
-        return self._lattice.weights(*movement)
+        return self._lattice.weights(
+            *movement, potential=self.directional_potential(individual))
 
     def _surface_and_flow(self, individual):
         """
@@ -948,30 +961,118 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
         Returns:
             tuple: Resistance per km of each reach (numpy.ndarray in edge
-                   order; None without variables: 1, distance alone) and
-                   the flow rate, or None if no variable is selected and
-                   there is no flow term.
+                   order; None without symmetric variables: 1, distance
+                   alone) and the flow rate, or None if no variable is
+                   selected and there is no flow term.
         """
-        n_att = self.num_attributes
-        for i, v in enumerate(self._predictors.columns):
-            if individual[i * n_att] == 1 and individual[i * n_att + 4] == 1:
-                raise ValueError(
-                    f"{v} is directional: variables can't be directional "
-                    "on the lattice (only the flow term is)")
+        directional = self._directional_variables(individual)
+        if directional and not self.directional:
+            raise ValueError(
+                f"{directional[0]} is directional: this model's variables "
+                "can't be directional (only the flow term is)")
         rho = self.resistance_surface(individual)
         rate = self.flow_rate(individual)
-        if rho is None and rate == 0:
+        if rho is None and rate == 0 and not directional:
             return None
         return (None if rho is None else rho.to_numpy(dtype=float)), rate
+
+    def _directional_variables(self, individual):
+        """The selected variables with direction 1, in column order."""
+        n_att = self.num_attributes
+        return [v for i, v in enumerate(self._predictors.columns)
+                if individual[i * n_att] == 1
+                and individual[i * n_att + 4] == 1]
+
+    def _symmetric(self, individual):
+        """The model with its directional variables deselected: the
+        variables of its resistance surface."""
+        n_att = self.num_attributes
+        ind = list(individual)
+        for i in range(len(self._predictors.columns)):
+            if ind[i * n_att + 4] == 1:
+                ind[i * n_att] = 0
+        return ind
+
+    def resistance_surface(self, individual):
+        """
+        The resistance surface of a model (see
+        ResistanceNetwork.resistance_surface()), from its symmetric
+        variables only: directional variables act through their changes
+        between neighbouring states (see directional_potential()).
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            pd.Series: Resistance per km of each reach (None if no
+                       symmetric variable is selected).
+        """
+        return super().resistance_surface(self._symmetric(individual))
+
+    def contributions(self, individual):
+        """
+        The shares of the resistance per km (see
+        ResistanceNetwork.contributions()), from the symmetric variables
+        (directional ones are not part of the resistance surface).
+        """
+        return super().contributions(self._symmetric(individual))
+
+    def directional_strength(self, weight):
+        """
+        The strength of a directional variable from its weight: weight x
+        max_flow, a rate per km as the flow term's (see
+        directional_potential()).
+        """
+        return float(weight) * float(self.max_flow)
+
+    def directional_potential(self, individual):
+        """
+        The directional variables' potential at each state of the lattice
+        (see Lattice.weights()): each move's weight is multiplied by
+        exp(-(U_to - U_from)), so that moving towards higher (transformed)
+        values of a directional variable is harder, and the reversed
+        transformations give the opposite direction. For each directional
+        variable, U = strength x span x x, with x its transformed values
+        (0-1) at the states (see Lattice.state_values()), span the distance
+        from the outlet to the furthest state (km) and strength = weight x
+        max_flow (per km). A variable rising steadily from 0 at the outlet
+        to 1 at the furthest state is so the flow term (see flow_rate())
+        with rate = strength. Directional variables are not part of the
+        resistance surface.
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            numpy.ndarray: Potential of each state, or None without
+                           directional variables.
+        """
+        n_att = self.num_attributes
+        U = None
+        for i, v in enumerate(self._predictors.columns):
+            if individual[i * n_att] != 1 or individual[i * n_att + 4] != 1:
+                continue
+            x = self.transform(self._predictors[v],
+                               individual[i * n_att + 2],
+                               individual[i * n_att + 3])
+            u = (self.directional_strength(individual[i * n_att + 1])
+                 * self._lattice.span
+                 * self._lattice.state_values(x.to_numpy(dtype=float)))
+            U = u if U is None else U + u
+        return U
 
     def model_spec(self, individual):
         """
         Everything needed to compute a model's resistances for the reaches
         of another network (see resistnet.predict): as for the standard
-        model (each selected variable's range, transformation, shape,
-        weight and range after the transformation, and the maximum
-        resistance per km), plus the flow rate and the lattice's distance
-        between states.
+        model for its symmetric variables (each one's range,
+        transformation, shape, weight and range after the transformation,
+        and the maximum resistance per km), plus the flow rate, the
+        lattice's distance between states, and for each directional
+        variable its range, transformation, shape, range after the
+        transformation, strength (per km) and effective direction (see
+        effective_directions()), with the network's span (km; see
+        directional_potential()).
 
         Args:
             individual (list): Model specification, as for evaluate().
@@ -979,25 +1080,64 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         Returns:
             dict: The model specification (JSON-serialisable).
         """
-        spec = super().model_spec(individual)
+        spec = super().model_spec(self._symmetric(individual))
         spec["type"] = "samc"
         spec["flow"] = self.flow_rate(individual)
         spec["cell_km"] = float(self.cell_km)
         spec["absorption"] = self.absorption
         spec["pairs"] = self.pairs
+        n_att = self.num_attributes
+        directions = self.effective_directions(individual)
+        directional = {}
+        for i, v in enumerate(self._predictors.columns):
+            if v not in self._directional_variables(individual):
+                continue
+            var = self._variable_spec(v, individual[i * n_att + 2],
+                                      individual[i * n_att + 3])
+            var["strength"] = self.directional_strength(
+                individual[i * n_att + 1])
+            if v in directions:
+                var["higher_harder"] = directions[v]
+            directional[v] = var
+        if directional:
+            spec["directional"] = directional
+            spec["span_km"] = self._lattice.span
         return spec
 
     def effective_directions(self, individual):
         """
-        Variables can't be directional on the lattice, so there are none.
+        The effective direction of each directional variable in its raw
+        values: the share of moves between neighbouring states with
+        different values on which moving towards the higher value is harder
+        (by that variable). The direction applies to the transformed
+        values, so a decreasing transformation reverses it, and a humped
+        one (Ricker) gives a mix.
 
         Args:
             individual (list): Model specification, as for evaluate().
 
         Returns:
-            dict: Empty.
+            dict: Share for each selected directional variable.
         """
-        return {}
+        n_att = self.num_attributes
+        lat = self._lattice
+        out = {}
+        for i, v in enumerate(self._predictors.columns):
+            if v not in self._directional_variables(individual):
+                continue
+            raw = lat.state_values(self._predictors[v].to_numpy(dtype=float))
+            x = lat.state_values(self.transform(
+                self._predictors[v], individual[i * n_att + 2],
+                individual[i * n_att + 3]).to_numpy(dtype=float))
+            change = raw[lat.b] - raw[lat.a]
+            # Changes within rounding of the variable's range are none
+            moved = np.abs(change) > 1e-9 * np.ptp(raw)
+            if not moved.any():
+                continue
+            harder = (np.sign(x[lat.b] - x[lat.a])[moved]
+                      == np.sign(change[moved]))
+            out[v] = float(np.mean(harder))
+        return out
 
     def plot_inferred_origin(self, oname):
         # Extract the positions of the nodes in the graph
@@ -1261,7 +1401,6 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self.cell_km = cell_km
         self.absorption = absorption
         self.pairs = pairs
-        self.directional = False
 
         self._inc = inc
         self._origin = origin
@@ -1308,11 +1447,15 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
         cell_km (float, optional): Distance between neighbouring states of
                                    the lattice (km). Defaults to 1.
         absorption, pairs (str, optional): As for ResistanceNetworkSAMC.
+        max_flow (float, optional): As for ResistanceNetworkSAMC: a
+                                    directional variable's strength is its
+                                    weight x max_flow per km, as when
+                                    fitting. Defaults to 0.1.
     """
     def __init__(self, network, reachid_col, length_col, verbose=False,
                  seed=None, ne=100, max_resistance=100.0, flow=0.0,
                  infer_origin="NEXT_DOWN", cell_km=1.0, absorption="none",
-                 pairs="max"):
+                 pairs="max", max_flow=0.1):
         super().__init__(network, reachid_col, length_col, verbose=verbose,
                          seed=seed)
         self.ne = ne
@@ -1322,6 +1465,7 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
         self.cell_km = cell_km
         self.absorption = absorption
         self.pairs = pairs
+        self.max_flow = max_flow
 
     def simulated_distances(self, vars, base):
         """
@@ -1352,7 +1496,7 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
                 agg_opts={v: agg.get(v, "ARITH") for v in variables},
                 reachid_col=self.reachid_col, length_col=self.length_col,
                 infer_origin=self.infer_origin, ne=self.ne,
-                max_flow=max(1.0, abs(self.sim_flow)),
+                max_flow=self.max_flow,
                 cell_km=self.cell_km, absorption=self.absorption,
                 pairs=self.pairs, out=os.path.join(tmp, "sim"),
                 verbose=False)
@@ -1364,8 +1508,9 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
                 individual += [0, 1.0, 0, 1.0, 0]
                 continue
             spec = spec.iloc[0]
+            asym = int(spec["ASYM"]) if "ASYM" in spec.index else 0
             individual += [1, float(spec["WEIGHT"]), int(spec["TRANSFORM"]),
-                           float(spec["SHAPE"]), 0]
+                           float(spec["SHAPE"]), asym]
         individual += [self.sim_max_resistance, self.sim_flow]
 
         R = net._R_lat

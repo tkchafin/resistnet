@@ -237,6 +237,22 @@ def test_coalescent_network_spacing_and_direction(tmp_path):
     assert "absorption" not in spec
 
 
+def test_coalescent_variables_not_directional(tmp_path):
+    # Only the flow term is directional in the coalescent model: the search
+    # never makes a variable directional, and a directional one is refused
+    from hyperopt.pyll.stochastic import sample
+    from resistnet.model_optimisation import ModelRunnerTPE
+    net = _coal_net(tmp_path, 5.0)
+    with pytest.raises(ValueError, match="directional"):
+        net.evaluate([1, 1.0, 0, 1, 1, 50.0, 0.0])
+    runner = ModelRunnerTPE(net, seed=1, verbose=False)
+    runner.set_tpe_parameters(max_shape=10)
+    runner.initialize_space()
+    rng = np.random.default_rng(1)
+    draws = [sample(runner.space, rng=rng) for _ in range(100)]
+    assert {d["dor_pc_pva_asym"] for d in draws} == {0}
+
+
 def test_run_coalescent_model(tmp_path):
     # runResistnet.py --model coalescent: its outputs, and the coalescent
     # reference models (distance alone, flow alone)

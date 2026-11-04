@@ -11,6 +11,13 @@ distance. Each state has a resistance per km: its reach's, for points
 inside a reach; for a node, the mean over the half-pieces of river around
 it (as a raster cell over a confluence), and links take samc's
 conductance, 2 / ((r_i + r_j) x length).
+
+Directional effects multiply each move's weight by exp(-(U_to - U_from)),
+the change in a potential U between the two states (samc's transition
+functions can depend on the order of the two cells): U = rate x distance
+to the outlet is the flow term, and a directional variable's potential
+follows its values, which change along the river from state to state as
+they would across raster cells (see state_values()).
 """
 import numpy as np
 import scipy.sparse as sp
@@ -34,6 +41,9 @@ class Lattice:
         reach_states (list): For each reach, its inner states, from upstream
                              to downstream.
         reach_link (numpy.ndarray): Length of the links of each reach.
+        reach_ends (numpy.ndarray): Upstream and downstream node (state)
+                                    of each reach.
+        span (float): Distance from the outlet to the furthest state (km).
     """
 
     def __init__(self, K, edge_order, reachid_col, length_col, cell_km=1.0):
@@ -74,8 +84,10 @@ class Lattice:
         a, b, length, link_reach = [], [], [], []
         self.reach_states = [[] for _ in edge_order]
         self.reach_link = np.full(len(edge_order), np.nan)
+        self.reach_ends = np.zeros((len(edge_order), 2), dtype=int)
         for u, v, d in K.edges(data=True):
             e = reach_ix[d[reachid_col]]
+            self.reach_ends[e] = ix[u], ix[v]
             L = float(d[length_col])
             pieces = max(1, int(round(L / self.cell_km)))
             self.reach_link[e] = L / pieces
@@ -98,6 +110,7 @@ class Lattice:
         link_reach = np.array(link_reach, dtype=int)
         self.n = len(P)
         self.pos = np.array(P, dtype=float)
+        self.span = float(self.pos.max())
         self.state_reach = np.array(state_reach, dtype=int)
         self.a = np.r_[a, b]
         self.b = np.r_[b, a]
@@ -110,6 +123,32 @@ class Lattice:
         self._node_halves = (self.a[half], self.link_reach[half],
                              self.length[half] / 2.0)
         self._ix = ix
+        self._interp = self._interpolation()
+
+    def _interpolation(self):
+        """The linear map from reach values to state values (see
+        state_values()), as a sparse matrix (states x reaches)."""
+        n_nodes, n_reach = len(self.nodes), len(self.reach_states)
+        node, reach, w = self._node_halves
+        den = np.bincount(node, weights=w, minlength=n_nodes)
+        nodes = sp.csr_matrix((w / den[node], (node, reach)),
+                              shape=(n_nodes, n_reach))
+        rows = [nodes]
+        own = sp.identity(n_reach, format="csr")
+        inner = [None] * (self.n - n_nodes)
+        for e, states in enumerate(self.reach_states):
+            u, v = self.reach_ends[e]
+            for k, s in enumerate(states):
+                f = (k + 1) / (len(states) + 1)
+                if f <= 0.5:
+                    t = f / 0.5
+                    row = (1 - t) * nodes[u] + t * own[e]
+                else:
+                    t = (f - 0.5) / 0.5
+                    row = (1 - t) * own[e] + t * nodes[v]
+                inner[s - n_nodes] = row
+        rows += inner
+        return sp.vstack(rows).tocsr()
 
     def states(self, nodes):
         """State index of each of the given network nodes."""
@@ -139,16 +178,36 @@ class Lattice:
         r[:len(self.nodes)] = num / den
         return r
 
-    def weights(self, reach_r=None, rate=0.0):
+    def state_values(self, reach_x):
+        """
+        A variable's value at each state, changing along the river from
+        state to state as across raster cells: each reach's value at its
+        middle, each node's the length-weighted mean over the half-links
+        around it (as for resistance), and linear in between. The change
+        between two neighbouring reaches is so spread over the river
+        between their middles.
+
+        Args:
+            reach_x (array-like): Value of each reach (edge order).
+
+        Returns:
+            numpy.ndarray: Value of each state.
+        """
+        return self._interp @ np.asarray(reach_x, dtype=float)
+
+    def weights(self, reach_r=None, rate=0.0, potential=None):
         """
         Movement weights between neighbouring states: samc's conductance,
         2 / ((r_i + r_j) x link length), times exp(-rate x km moved
-        upstream) with a flow term.
+        upstream) with a flow term, and exp(-(U_to - U_from)) with a
+        directional potential U.
 
         Args:
             reach_r (array-like, optional): Resistance per km of each reach
                                             (default: 1, distance alone).
             rate (float): Flow rate per km (0: none).
+            potential (array-like, optional): Directional potential of each
+                                              state (None: none).
 
         Returns:
             scipy.sparse.csr_matrix: Weights (row = from, column = to).
@@ -160,23 +219,42 @@ class Lattice:
         w = 2.0 / ((r[self.a] + r[self.b]) * self.length)
         if rate != 0:
             w = w * np.exp(-rate * self.upstream)
+        if potential is not None:
+            U = np.asarray(potential, dtype=float)
+            w = w * np.exp(-(U[self.b] - U[self.a]))
         return sp.csr_matrix((w, (self.a, self.b)), shape=(self.n, self.n))
 
-    def reach_moves(self, rate=0.0):
+    def reach_moves(self, rate=0.0, potential=None):
         """
         Probability of moving downstream and upstream from a state inside
         each reach, away from its ends: both neighbours are on the reach,
-        with its resistance, one link away, so only the flow term makes
-        them differ: 1 / (1 + exp(-2 x rate x link length)) downstream. NaN
-        for reaches of one link (no inner state).
+        with its resistance, one link away, so only the directional effects
+        make them differ: 1 / (1 + exp(-2 x rate x link length + U_down -
+        U_up)) downstream, averaged over the reach's inner states. NaN for
+        reaches of one link (no inner state).
 
         Args:
             rate (float): Flow rate per km.
+            potential (array-like, optional): Directional potential of each
+                                              state (None: none).
 
         Returns:
             numpy.ndarray: Columns (downstream, upstream), in edge order.
         """
-        down = 1.0 / (1.0 + np.exp(-2.0 * rate * self.reach_link))
+        if potential is None:
+            down = 1.0 / (1.0 + np.exp(-2.0 * rate * self.reach_link))
+        else:
+            U = np.asarray(potential, dtype=float)
+            down = np.full(len(self.reach_states), np.nan)
+            for e, states in enumerate(self.reach_states):
+                if not states:
+                    continue
+                u, v = self.reach_ends[e]
+                chain = [u] + list(states) + [v]
+                bias = np.array([U[chain[k + 1]] - U[chain[k - 1]]
+                                 for k in range(1, len(chain) - 1)])
+                down[e] = np.mean(1.0 / (1.0 + np.exp(
+                    -2.0 * rate * self.reach_link[e] + bias)))
         inner = np.array([len(s) > 0 for s in self.reach_states])
         down = np.where(inner, down, np.nan)
         return np.column_stack((down, 1.0 - down))

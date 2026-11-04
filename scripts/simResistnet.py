@@ -154,7 +154,9 @@ Arguments:
 SAMC (directional) simulations:
     --samc: Simulate conditional first passage times (mean of the two
         directions) under a SAMC model on the lattice, instead of
-        effective resistances
+        effective resistances; the input table may have an ASYM column
+        (1 = directional, with strength WEIGHT x 0.1 per km, as when
+        fitting with the default --max_flow)
     --ne: Effective population size at every site (default=100)
     --flow: Flow rate per km (positive = moving upstream harder;
         default=0, no flow term)
