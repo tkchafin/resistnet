@@ -33,6 +33,8 @@ REFERENCE_NAMES = {
     "distance_only": "Distance only (river km)",
     "samc_distance": "SAMC distance alone",
     "samc_flow": "SAMC flow alone",
+    "coal_distance": "Coalescent distance alone",
+    "coal_flow": "Coalescent flow alone",
 }
 
 
@@ -71,7 +73,9 @@ def write_pairwise_table(network, prefix):
         prefix (str): Output prefix of the run.
     """
     samc = os.path.exists(f"{prefix}.Model-Best.CFPTMatrix.tsv")
-    kind = "CFPTMatrix" if samc else "ResistanceMatrix"
+    coal = os.path.exists(f"{prefix}.Model-Best.CoalescenceMatrix.tsv")
+    kind = ("CFPTMatrix" if samc else "CoalescenceMatrix" if coal
+            else "ResistanceMatrix")
     labels = [str(x) for x in network._points_labels.values()]
     iu = np.triu_indices(len(labels), 1)
     names = np.array(labels)

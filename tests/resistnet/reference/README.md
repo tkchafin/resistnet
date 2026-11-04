@@ -51,3 +51,11 @@ against them rather than against its own earlier output.
   and its range at max = 1 (A), which map them onto ResistNet's
   resistance per km (weights max_i x A_i, and K - 1 = sum(max_i x A_i) /
   number of surfaces).
+- `lundgren_ralph_*`: Lundgren & Ralph's (2019) own R code
+  (gene.flow.inference, github.com/elundgre/gene-flow-inference; no
+  licence, so not copied here: the script takes the path of its `R/`
+  directory) on the six-deme river of `test_coalescent.py`, whose
+  `__main__` writes the inputs (`_edges.tsv`: jump rates; `_gamma.txt`:
+  coalescence rates). `lundgren_ralph.R` writes their `HCalc` coalescence
+  times (`_H.tsv`): `resistnet.coalescent.coalescence_times()` must give
+  the same.

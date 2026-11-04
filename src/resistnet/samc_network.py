@@ -57,6 +57,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         parse_input_gen_mat(): Parses the input genetic distance matrix.
     """
 
+    # Names of the reference models (evaluate_null_model())
+    null_prefix = "samc"
+
     def __init__(self, network, shapefile, sizes, coords, variables, inmat,
                  agg_opts, pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
@@ -787,8 +790,9 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         rate, res = self._fit_flow_alone()
         rows = []
         for name, r, k, flow in [
-            ("samc_distance", self._flow_alone(0.0), 0, np.nan),
-            ("samc_flow", res, 1, rate),
+            (f"{self.null_prefix}_distance", self._flow_alone(0.0), 0,
+             np.nan),
+            (f"{self.null_prefix}_flow", res, 1, rate),
         ]:
             r = r.iloc[0]
             rows.append(pd.DataFrame({
@@ -929,6 +933,25 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             scipy.sparse.csr_matrix: Movement weights, or None if no variable
                                      is selected and there is no flow term.
         """
+        movement = self._surface_and_flow(individual)
+        if movement is None:
+            return None
+        return self._lattice.weights(*movement)
+
+    def _surface_and_flow(self, individual):
+        """
+        The resistance per km of each reach (see resistance_surface()) and
+        the flow rate (see flow_rate()) of a model.
+
+        Args:
+            individual (list): Model specification, as for evaluate().
+
+        Returns:
+            tuple: Resistance per km of each reach (numpy.ndarray in edge
+                   order; None without variables: 1, distance alone) and
+                   the flow rate, or None if no variable is selected and
+                   there is no flow term.
+        """
         n_att = self.num_attributes
         for i, v in enumerate(self._predictors.columns):
             if individual[i * n_att] == 1 and individual[i * n_att + 4] == 1:
@@ -939,8 +962,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         rate = self.flow_rate(individual)
         if rho is None and rate == 0:
             return None
-        return self._lattice.weights(
-            None if rho is None else rho.to_numpy(dtype=float), rate)
+        return (None if rho is None else rho.to_numpy(dtype=float)), rate
 
     def model_spec(self, individual):
         """
