@@ -132,10 +132,15 @@ class RunOutputs:
         self.prefix, self.model = prefix, model
         self.samc = model == "samc"
         self.hof = _read(f"{prefix}.HallOfFame.tsv", na_values="-")
-        # Standard model with resistances per km (else per reach, as in
-        # earlier versions)
-        self.per_km = (not self.samc and self.hof is not None
-                       and "max_resistance" in self.hof.columns)
+        # Standard model: resistances per km (runs of earlier versions,
+        # per reach, have no max_resistance column)
+        self.per_km = not self.samc
+        if (self.per_km and self.hof is not None
+                and "max_resistance" not in self.hof.columns):
+            raise ValueError(
+                f"{prefix}.HallOfFame.tsv is a standard run of an earlier "
+                "version (resistances per reach), which is no longer "
+                "supported; rerun it")
         self.variables = [c[:-6] for c in self.hof.columns
                           if c.endswith("_trans")]
         self.hof["model"] = [describe(r, self.variables, self.samc)
@@ -478,8 +483,8 @@ def fig_response(run):
     """
     How the best model's resistance responds to each of its variables (as
     ResistanceGA's Plot.trans): the resistance per km due to that variable
-    (standard model per km: 1 + (K - 1) x its weight share x its 0-1
-    value), or its transformed 0-1 value (per reach and SAMC), against its
+    (standard model: 1 + (K - 1) x its weight share x its 0-1 value), or
+    its transformed 0-1 value (SAMC), against its
     raw values over its range in the network, from the model's
     specification (modelSpec.json); the network's reaches are marked on
     each curve.
@@ -853,12 +858,6 @@ HOW_IT_WORKS = {
         "distance between cells): distance is always part of the model, "
         "K = 1 is distance alone, and a large K means the variables "
         "dominate."),
-    "reach": (
-        "How this model works: each selected variable is transformed and "
-        "rescaled to 0-1, and their weighted sum, rescaled to 0-1, is each "
-        "reach's resistance, whatever its length (the formulation of "
-        "earlier versions, --per_reach). The distance between two sites is "
-        "the sum along the river between them."),
     "samc": (
         "How this model works: a random walker moves between adjacent "
         "reaches with weights 1/resistance, the resistance going from 1 "
@@ -881,8 +880,8 @@ def _distance_share(run):
 
 
 def _kind(run):
-    """The model's formulation: "samc", "km" or "reach"."""
-    return "samc" if run.samc else "km" if run.per_km else "reach"
+    """The model's formulation: "samc" or "km"."""
+    return "samc" if run.samc else "km"
 
 
 def _model_section(run):
@@ -1005,14 +1004,11 @@ def _model_section(run):
                         "Best model"
                     layers[f"{label}: resistance"] = \
                         e.set_index("EDGE_ID")["Resistance"]
-            fig = fig_map(run, layers, "Resistance per km" if run.per_km
-                          else "Resistance", log=run.per_km)
+            fig = fig_map(run, layers, "Resistance per km", log=True)
             note = ("Resistance per km of each reach (1 = distance alone, "
                     "up to the model's maximum K; colours on a log scale; "
                     "choose the model average or the best model in the "
-                    "menu)." if run.per_km else
-                    "Resistance of each reach (0-1; choose the model "
-                    "average or the best model in the menu).")
+                    "menu).")
         parts.append(f"<h3>Map</h3><p>{note} Hover over a reach for its "
                      "value; scroll to zoom.</p>")
         parts.append(_panel(fig))

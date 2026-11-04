@@ -14,10 +14,8 @@ DATA = os.path.join(os.path.dirname(resistnet.__file__), "data")
 VARIABLES = ["run_mm_cyr", "tmp_dc_cyr", "sgr_dk_rav"]
 
 
-@pytest.fixture(scope="module", params=["km", "reach"])
-def net(request, tmp_path_factory):
-    # Both formulations of the standard model: resistance per km (default)
-    # and per reach (earlier versions)
+@pytest.fixture(scope="module")
+def net(tmp_path_factory):
     out = tmp_path_factory.mktemp("predict")
     return ResistanceNetwork(
         network=os.path.join(DATA, "nmt.network"), shapefile=None,
@@ -25,7 +23,7 @@ def net(request, tmp_path_factory):
         variables=VARIABLES,
         inmat=os.path.join(DATA, "nmt.popGenDistMat.txt"),
         agg_opts={v: "ARITH" for v in VARIABLES}, reachid_col="HYRIV_ID",
-        out=str(out / "net"), verbose=False, units=request.param)
+        out=str(out / "net"), verbose=False)
 
 
 def model(spec, net=None, max_resistance=37.5):
@@ -34,7 +32,7 @@ def model(spec, net=None, max_resistance=37.5):
     ind = []
     for v in VARIABLES:
         ind += [1, *spec[v]] if v in spec else [0, 1.0, 0, 1]
-    if net is not None and net.units == "km":
+    if net is not None:
         ind.append(max_resistance)
     return ind
 
@@ -56,25 +54,35 @@ def test_spec_reproduces_resistances(net, t, s):
                 net)
     spec = net.model_spec(ind)
     assert spec["type"] == "standard"
-    assert spec["units"] == net.units
+    assert spec["units"] == "km"
     expected = net.resistance_surface(ind).to_numpy(dtype=float)
     np.testing.assert_allclose(
         pr.standard_resistance(raw_values(net), spec), expected,
         rtol=1e-12, atol=1e-15)
-    if net.units == "km":
-        # From 1 (distance alone) to the maximum resistance per km
-        assert spec["max_resistance"] == 37.5
-        assert expected.min() >= 1.0 and expected.max() <= 37.5
-        # Times the reaches' lengths: the fitted model's reach resistances
-        reaches = raw_values(net)
-        reaches.insert(0, "HYRIV_ID", reaches.index.to_numpy())
-        reaches["LENGTH_KM"] = net._lengths
-        table, _, _ = pr.predict_reaches(
-            reaches, {"reachid_col": "HYRIV_ID", "models": [spec]})
-        np.testing.assert_allclose(
-            table["reach_resistance"],
-            net.edge_resistances(ind).to_numpy(dtype=float),
-            rtol=1e-12, atol=1e-15)
+    # From 1 (distance alone) to the maximum resistance per km
+    assert spec["max_resistance"] == 37.5
+    assert expected.min() >= 1.0 and expected.max() <= 37.5
+    # Times the reaches' lengths: the fitted model's reach resistances
+    reaches = raw_values(net)
+    reaches.insert(0, "HYRIV_ID", reaches.index.to_numpy())
+    reaches["LENGTH_KM"] = net._lengths
+    table, _, _ = pr.predict_reaches(
+        reaches, {"reachid_col": "HYRIV_ID", "models": [spec]})
+    np.testing.assert_allclose(
+        table["reach_resistance"],
+        net.edge_resistances(ind).to_numpy(dtype=float),
+        rtol=1e-12, atol=1e-15)
+
+
+def test_spec_of_earlier_version_refused(tmp_path):
+    # Standard models of earlier versions (per reach: no units "km") are
+    # no longer supported
+    path = tmp_path / "old.modelSpec.json"
+    path.write_text(json.dumps({"models": [
+        {"type": "standard", "variables": {}, "composite_min": 0.0,
+         "composite_max": 1.0}]}))
+    with pytest.raises(ValueError, match="earlier version"):
+        pr.load_spec(str(path))
 
 
 def test_spec_file_and_reach_prediction(net, tmp_path):
@@ -113,27 +121,15 @@ def test_spec_file_and_reach_prediction(net, tmp_path):
 
 
 def test_composite_clamped_and_reported():
-    # Each variable is within its training range, but their combination
-    # can still fall outside the training composite range (the variables'
-    # minima didn't occur together): it is clamped, and reported
+    # SAMC: each variable is within its training range, but their
+    # combination on a move can still fall outside the training composite
+    # range (the variables' minima didn't occur together): it is clamped,
+    # and reported (here two reaches, one link each way)
     var = {"min": 0.0, "max": 10.0, "transform": 0, "shape": 0.0,
            "tmin": 0.0, "tmax": 10.0, "weight": 1.0}
-    model = {"type": "standard", "variables": {"a": dict(var),
-                                               "b": dict(var)},
-             "composite_min": 0.5, "composite_max": 1.5}
-    spec = {"reachid_col": "HYRIV_ID", "models": [model]}
-    reaches = pd.DataFrame({"HYRIV_ID": [1, 2, 3, 4],
-                            "a": [0.0, 1.0, 10.0, 5.0],
-                            "b": [0.0, 1.0, 5.0, 5.0]})
-    table, moves, clamped = pr.predict_reaches(reaches, spec)
-    assert moves is None
-    assert clamped["a"] == 0 and clamped["b"] == 0
-    # Combined values 0, 0.2, 1.5, 1.0 -> (x - 0.5) / 1, clamped to 0-1
-    np.testing.assert_allclose(table["resistance"], [0, 0, 1, 0.5])
-    assert clamped["composite"] == 0.5
-
-    # SAMC: the same for each move (here two reaches, one link each way)
-    samc = dict(model, type="samc", max_resistance=10.0, flow=0.0)
+    samc = {"type": "samc", "variables": {"a": dict(var), "b": dict(var)},
+            "composite_min": 0.5, "composite_max": 1.5,
+            "max_resistance": 10.0, "flow": 0.0}
     for v in samc["variables"].values():
         v.update(asym=0, link_min=0.0, link_max=1.0)
     reaches = pd.DataFrame({"HYRIV_ID": [1, 2], "NEXT_DOWN": [2, 0],

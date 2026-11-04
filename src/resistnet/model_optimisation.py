@@ -81,12 +81,9 @@ class ModelRunner:
         self.num_attributes = getattr(
             resistance_network, "num_attributes", 4
         )
-        # Standard model with resistances per km: each model also has a
-        # maximum resistance per km (after the variables' attributes)
-        self.per_km = (
-            self.num_attributes == 4
-            and getattr(resistance_network, "units", "reach") == "km"
-        )
+        # Standard model: each model also has a maximum resistance per km
+        # (after the variables' attributes)
+        self.per_km = self.num_attributes == 4
 
         random.seed(self.seed)
         np.random.seed(self.seed)
@@ -440,7 +437,6 @@ class ModelRunner:
         }
         if worker_type == "base":
             net = self.resistance_network
-            worker_args['units'] = getattr(net, "units", "reach")
             worker_args['lengths'] = getattr(net, "_lengths", None)
             worker_args['max_resist'] = getattr(net, "max_resist", 1000)
             worker_args['fix_resist'] = getattr(net, "fix_resist", None)
@@ -810,7 +806,7 @@ class ModelRunnerTPE(ModelRunner):
                 )
 
         if self.per_km:
-            # Maximum resistance per km K (standard model, units "km"),
+            # Maximum resistance per km K (standard model),
             # log-uniform from 1 (distance alone), as SAMC's
             net = self.resistance_network
             if net.fix_resist is not None:

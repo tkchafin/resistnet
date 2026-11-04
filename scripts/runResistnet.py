@@ -33,9 +33,7 @@ def main():
         if len(params.models) > 1:
             print(f"\n=== Fitting the {model} model ===\n")
         if model == "resistance":
-            if params.per_reach:
-                print("Standard model: resistance per reach (--per_reach)")
-            elif params.fix_resist is not None:
+            if params.fix_resist is not None:
                 print("Standard model: resistance per km, from 1 to "
                       f"{params.fix_resist:g} (--fix_resist)")
             else:
@@ -172,7 +170,6 @@ def build_network(params, model, prefix):
         length_col=params.length_col,
         out=prefix,
         verbose=True,
-        units="reach" if params.per_reach else "km",
         max_resist=params.max_resist_for("resistance"),
         fix_resist=params.fix_resist
     )
