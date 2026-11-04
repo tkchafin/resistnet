@@ -19,6 +19,9 @@ def main():
             ne=params.ne,
             max_resistance=params.max_resistance,
             flow=params.flow,
+            cell_km=params.cell_km,
+            absorption=params.samc_absorption,
+            pairs=params.samc_pairs,
             infer_origin=params.infer_origin
         )
     else:
@@ -28,7 +31,6 @@ def main():
             length_col=params.length_col,
             verbose=True,
             seed=params.seed,
-            units="reach" if params.per_reach else "km",
             max_resistance=params.max_resistance
         )
 
@@ -49,7 +51,8 @@ class ParseArgs:
                 sys.argv[1:], 'ho:i:n:s:r:l:c:z:',
                 ["help", "out=", "in=", "network=", "reps=", "samples=",
                  "len_col=", "id_col=", "seed=", "samc", "ne=",
-                 "max_resistance=", "flow=", "infer_origin=", "per_reach"]
+                 "max_resistance=", "flow=", "infer_origin=", "cell_km=",
+                 "samc_absorption=", "samc_pairs="]
             )
         except getopt.GetoptError as err:
             print(err)
@@ -70,8 +73,10 @@ class ParseArgs:
         self.ne = 100.0
         self.max_resistance = 100.0
         self.flow = 0.0
+        self.cell_km = 1.0
+        self.samc_absorption = "none"
+        self.samc_pairs = "max"
         self.infer_origin = "NEXT_DOWN"
-        self.per_reach = False
 
         # First pass to see if help menu was called
         for o, _ in options:
@@ -108,10 +113,14 @@ class ParseArgs:
                 self.max_resistance = float(arg)
             elif opt == "flow":
                 self.flow = float(arg)
+            elif opt == "cell_km":
+                self.cell_km = float(arg)
+            elif opt == "samc_absorption":
+                self.samc_absorption = arg
+            elif opt == "samc_pairs":
+                self.samc_pairs = arg
             elif opt == "infer_origin":
                 self.infer_origin = arg
-            elif opt == "per_reach":
-                self.per_reach = True
             else:
                 assert False, f"Unhandled option {opt!r}"
 
@@ -141,16 +150,19 @@ Arguments:
     --max_resistance: Maximum resistance: per km (standard model; each
         reach's resistance is 1 + (K - 1) x composite per km, times its
         length) or of the composite (SAMC) (default=100)
-    --per_reach: Standard model: each reach costs its composite value,
-        whatever its length (the formulation of earlier versions)
 
 SAMC (directional) simulations:
     --samc: Simulate conditional first passage times (mean of the two
-        directions) under a SAMC model, instead of effective resistances;
-        the input table may have an ASYM column (1 = directional)
+        directions) under a SAMC model on the lattice, instead of
+        effective resistances
     --ne: Effective population size at every site (default=100)
     --flow: Flow rate per km (positive = moving upstream harder;
         default=0, no flow term)
+    --cell_km: Distance between neighbouring states of the lattice
+        (km; default=1)
+    --samc_absorption: none or sites, as for runResistnet.py
+        (default=none)
+    --samc_pairs: max or mean, as for runResistnet.py (default=max)
     --infer_origin: Next downstream reach attribute (def=NEXT_DOWN)
 """)
         sys.exit()

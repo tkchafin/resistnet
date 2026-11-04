@@ -126,7 +126,8 @@ def test_run_both_models_layout(tmp_path):
         assert os.path.exists(os.path.join(out, f"nmt.{ext}.tsv"))
 
     # The pairwise tables: genetic distances as in the input, and model
-    # distances as in the written matrices (SAMC: mean of both directions)
+    # distances as in the written matrices (SAMC: the larger of the two
+    # directions, by default)
     gen = pd.read_csv(os.path.join(DATA, "nmt.popGenDistMat.txt"),
                       sep="\t", index_col=0)
     for model, kind in (("resistance", "ResistanceMatrix"),
@@ -141,9 +142,10 @@ def test_run_both_models_layout(tmp_path):
         M = pd.read_csv(f"{prefix}.Model-Best.{kind}.tsv", sep="\t",
                         index_col=0)
         M.columns = M.columns.astype(str)
+        combine = max if model == "samc" else (lambda x, y: (x + y) / 2)
         np.testing.assert_allclose(
             pw["best_model_distance"],
-            [(M.loc[a, b] + M.loc[b, a]) / 2
+            [combine(M.loc[a, b], M.loc[b, a])
              for a, b in zip(pw["site1"], pw["site2"])], rtol=1e-12)
         # River distance is the distance-only reference model's distance:
         # MLPE on it gives that model's log-likelihood
@@ -199,8 +201,8 @@ def test_run_both_models_layout(tmp_path):
                                "ResistanceMatrix.tsv"), sep="\t", index_col=0)
     np.testing.assert_allclose(ens_best.loc[run_best.index, run_best.columns],
                                run_best, rtol=1e-12)
-    # A run per reach (no max_resistance column) is rebuilt per reach, and
-    # runs per km and per reach can't be mixed
+    # Runs of earlier versions, per reach (no max_resistance column), are
+    # refused
     hof = pd.read_csv(os.path.join(out, "resistance", "nmt.HallOfFame.tsv"),
                       sep="\t")
     reach = tmp_path / "reach"
@@ -210,19 +212,5 @@ def test_run_both_models_layout(tmp_path):
     p = subprocess.run(args[:5] + [str(reach)] + args[6:]
                        + ["-o", str(tmp_path / "ens_reach")],
                        capture_output=True, text=True)
-    assert p.returncode == 0, p.stderr[-2000:]
-    reach_best = pd.read_csv(str(tmp_path / "ens_reach.Model-Best."
-                                 "ResistanceMatrix.tsv"), sep="\t",
-                             index_col=0)
-    assert not np.allclose(reach_best.loc[run_best.index, run_best.columns],
-                           run_best)
-    mixed = tmp_path / "mixed_units"
-    mixed.mkdir()
-    hof.to_csv(mixed / "a.HallOfFame.tsv", sep="\t", index=False)
-    hof.drop(columns="max_resistance").to_csv(
-        mixed / "b.HallOfFame.tsv", sep="\t", index=False)
-    p = subprocess.run(args[:5] + [str(mixed)] + args[6:]
-                       + ["-o", str(tmp_path / "ens_mixed")],
-                       capture_output=True, text=True)
     assert p.returncode != 0
-    assert "per km and per reach" in p.stderr + p.stdout
+    assert "earlier versions" in p.stderr + p.stdout

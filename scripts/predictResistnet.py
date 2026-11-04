@@ -40,11 +40,6 @@ def main():
         help='Reach length attribute (default: as when the model was fitted)'
     )
     parser.add_argument(
-        '--next_down_col', default='NEXT_DOWN',
-        help=('SAMC: attribute giving the next downstream reach ID '
-              '(default: NEXT_DOWN)')
-    )
-    parser.add_argument(
         '-o', '--out', default='predicted',
         help='Output prefix (default: predicted)'
     )
@@ -54,30 +49,22 @@ def main():
     if not 1 <= args.model <= len(spec["models"]):
         sys.exit(f"--model must be from 1 to {len(spec['models'])}")
     reaches = gpd.read_file(args.shapefile)
-    table, moves, clamped = pr.predict_reaches(
+    table, clamped = pr.predict_reaches(
         reaches, spec, args.model - 1, reachid_col=args.reachid_col,
-        next_down_col=args.next_down_col, length_col=args.length_col)
+        length_col=args.length_col)
 
     kind = spec["models"][args.model - 1]["type"]
     for var, share in clamped.items():
-        if share > 0 and var != "composite":
+        if share > 0:
             print(f"WARNING: {share:.1%} of reaches have {var} outside the "
                   "range of the network the model was fitted to; their "
                   "values were clamped to that range")
-    if clamped.get("composite", 0) > 0:
-        unit = "reaches" if kind == "standard" else "moves between reaches"
-        print(f"WARNING: on {clamped['composite']:.1%} of {unit}, the "
-              "variables combine to a value outside the range of the network "
-              "the model was fitted to; it was clamped to that range, so "
-              "those values don't differ from each other")
 
     for col in table.columns[1:]:
         reaches[col] = table[col].to_numpy()
     reaches.to_file(f"{args.out}.predicted.gpkg", driver="GPKG")
     table.to_csv(f"{args.out}.predicted.tsv", sep="\t", index=False,
                  na_rep="NA")
-    if moves is not None:
-        moves.to_csv(f"{args.out}.predictedMoves.tsv", sep="\t", index=False)
     print(f"Applied model {args.model} ({kind}) to {len(reaches)} reaches; "
           f"outputs: {args.out}.predicted.*")
 

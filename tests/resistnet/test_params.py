@@ -85,12 +85,12 @@ def test_samc_defaults():
         assert args.samc
         assert args.sizes is None
         assert args.ne == 100
-        assert args.max_resist is None
-        assert args.max_resist_for("samc") == 500
-        assert args.max_resist_for("resistance") == 1000
+        assert args.max_resist == 1000
         assert args.fix_resist is None
-        assert args.max_flow == 1.0
+        assert args.max_flow == 0.1
         assert not args.fixFlow
+        assert args.samc_absorption == "none"
+        assert args.samc_pairs == "max"
         assert not args.fixAsym
 
 
@@ -145,17 +145,15 @@ def test_model_conflicts_with_samc():
             parseArgs()
 
 
-def test_units_and_resistance_limits():
-    # Standard model: resistance per km by default (--per_reach: earlier
-    # formulation); --max_resist applies to both models when given
-    testargs = ["prog", "--vars", "var1"]
+def test_resistance_limits():
+    # One --max_resist for every model (default 1000, ResistanceGA's
+    # max.cont); --per_reach (the formulation of earlier versions) is gone
+    testargs = ["prog", "--vars", "var1", "--per_reach"]
+    with patch.object(sys, 'argv', testargs):
+        with pytest.raises(SystemExit):
+            parseArgs()
+    testargs = ["prog", "--vars", "var1", "--max_resist", "50", "--model",
+                "both"]
     with patch.object(sys, 'argv', testargs):
         args = parseArgs()
-        assert not args.per_reach
-    testargs = ["prog", "--vars", "var1", "--per_reach", "--max_resist",
-                "50", "--model", "both"]
-    with patch.object(sys, 'argv', testargs):
-        args = parseArgs()
-        assert args.per_reach
-        assert args.max_resist_for("resistance") == 50
-        assert args.max_resist_for("samc") == 50
+        assert args.max_resist == 50

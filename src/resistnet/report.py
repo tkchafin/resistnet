@@ -33,6 +33,8 @@ REFERENCE_NAMES = {
     "distance_only": "Distance only (river km)",
     "samc_distance": "SAMC distance alone",
     "samc_flow": "SAMC flow alone",
+    "coal_distance": "Coalescent distance alone",
+    "coal_flow": "Coalescent flow alone",
 }
 
 
@@ -63,15 +65,17 @@ def write_pairwise_table(network, prefix):
     """
     Writes {prefix}.pairwise.tsv: for every pair of sites, the genetic
     distance, the river distance (km; isolation by distance), and the best
-    and model-averaged models' distances (for SAMC, the mean passage time
-    of the two directions, as fitted).
+    and model-averaged models' distances (for SAMC, the passage times of
+    the two directions combined as fitted).
 
     Args:
         network: The fitted network (with genetic distances).
         prefix (str): Output prefix of the run.
     """
     samc = os.path.exists(f"{prefix}.Model-Best.CFPTMatrix.tsv")
-    kind = "CFPTMatrix" if samc else "ResistanceMatrix"
+    coal = os.path.exists(f"{prefix}.Model-Best.CoalescenceMatrix.tsv")
+    kind = ("CFPTMatrix" if samc else "CoalescenceMatrix" if coal
+            else "ResistanceMatrix")
     labels = [str(x) for x in network._points_labels.values()]
     iu = np.triu_indices(len(labels), 1)
     names = np.array(labels)
@@ -87,7 +91,9 @@ def write_pairwise_table(network, prefix):
         M.columns = M.columns.astype(str)
         M = M.loc[labels, labels].to_numpy(dtype=float)
         if samc:
-            M = (M + M.T) / 2.0
+            M = (network.pair_distance(M) if hasattr(network,
+                                                     "pair_distance")
+                 else (M + M.T) / 2.0)
         table[f"{which.lower()}_model_distance"] = M[iu]
     table.to_csv(f"{prefix}.pairwise.tsv", sep="\t", index=False)
 
@@ -108,9 +114,8 @@ def describe(row, variables, samc):
         label = TRANSFORMATIONS[t]
         if t:
             label += f", shape {float(row[f'{v}_shape']):g}"
-        if samc:
-            label += (", directional" if int(row[f"{v}_asym"]) == 1
-                      else ", symmetric")
+        if samc and int(row.get(f"{v}_asym", 0) or 0) == 1:
+            label += ", directional"
         if several:
             label += f", weight {float(row[f'{v}_weight']):.2f}"
         parts.append(f"{v} ({label})")
@@ -118,9 +123,10 @@ def describe(row, variables, samc):
     if flow:
         parts.append(f"flow {flow:+.3f}/km")
     text = " + ".join(parts) or "(no variables)"
-    # Standard model per km: the range of its resistance per km
+    # The range of its resistance per km (SAMC: with the flow term, if any)
     max_r = row.get("max_resistance")
-    if not samc and parts and max_r is not None and pd.notna(max_r):
+    has_var = any(row.get(v) == 1 for v in variables)
+    if has_var and max_r is not None and pd.notna(max_r):
         text += f"; resistance 1-{float(max_r):.3g} per km"
     return text
 
@@ -132,10 +138,15 @@ class RunOutputs:
         self.prefix, self.model = prefix, model
         self.samc = model == "samc"
         self.hof = _read(f"{prefix}.HallOfFame.tsv", na_values="-")
-        # Standard model with resistances per km (else per reach, as in
-        # earlier versions)
-        self.per_km = (not self.samc and self.hof is not None
-                       and "max_resistance" in self.hof.columns)
+        # Standard model: resistances per km (runs of earlier versions,
+        # per reach, have no max_resistance column)
+        self.per_km = not self.samc
+        if (self.per_km and self.hof is not None
+                and "max_resistance" not in self.hof.columns):
+            raise ValueError(
+                f"{prefix}.HallOfFame.tsv is a standard run of an earlier "
+                "version (resistances per reach), which is no longer "
+                "supported; rerun it")
         self.variables = [c[:-6] for c in self.hof.columns
                           if c.endswith("_trans")]
         self.hof["model"] = [describe(r, self.variables, self.samc)
@@ -147,7 +158,6 @@ class RunOutputs:
         self.rvi = _read(f"{prefix}.varImportance.tsv")
         self.maw = _read(f"{prefix}.modavgWeights.tsv", na_values="-")
         self.pairwise = _read(f"{prefix}.pairwise.tsv")
-        self.upstream = _read(f"{prefix}.upstreamChanges.tsv")
         self.flow_profile = _read(f"{prefix}.flowProfile.tsv")
         self.points = _read(f"{prefix}.pointsTable.txt")
         kind = "TransitionEdges" if self.samc else "ResistanceEdges"
@@ -478,11 +488,10 @@ def fig_response(run):
     """
     How the best model's resistance responds to each of its variables (as
     ResistanceGA's Plot.trans): the resistance per km due to that variable
-    (standard model per km: 1 + (K - 1) x its weight share x its 0-1
-    value), or its transformed 0-1 value (per reach and SAMC), against its
-    raw values over its range in the network, from the model's
-    specification (modelSpec.json); the network's reaches are marked on
-    each curve.
+    (1 + (K - 1) x its weight share x its 0-1 value; the same for the
+    standard model and SAMC), against its raw values over its range in the
+    network, from the model's specification (modelSpec.json); the
+    network's reaches are marked on each curve.
     """
     path = f"{run.prefix}.modelSpec.json"
     if not os.path.exists(path):
@@ -500,7 +509,7 @@ def fig_response(run):
     fig = make_subplots(rows=nrow, cols=ncol, subplot_titles=names,
                         horizontal_spacing=0.1, vertical_spacing=0.22)
     total = sum(var["weight"] for var in variables.values())
-    per_km = run.per_km and "max_resistance" in model and total > 0
+    per_km = "max_resistance" in model and total > 0
     label = "Resistance per km" if per_km else "Transformed value (0-1)"
     colour = COLOURS[run.model]
 
@@ -553,7 +562,7 @@ def _line_coords(arrays):
 def fig_flow_profile(run):
     """
     AIC of flow alone at each rate, both directions (signed log scale):
-    the evidence for moving upstream being easier or harder.
+    the evidence for gene flow biased downstream or upstream.
     """
     go = _go()
     t = run.flow_profile.sort_values("rate")
@@ -592,8 +601,8 @@ def fig_flow_profile(run):
     ticks = [r for r in (-1, -0.1, -0.01, -0.001, 0, 0.001, 0.01, 0.1, 1)
              if r == 0 or (low <= abs(r) <= np.abs(rate).max() * 1.0001)]
     top = float(t["delta_aic"].max())
-    for xpos, text in ((x.min(), "← moving upstream easier"),
-                       (x.max(), "moving upstream harder →")):
+    for xpos, text in ((x.min(), "← gene flow downstream"),
+                       (x.max(), "gene flow upstream →")):
         fig.add_annotation(x=xpos, y=top, text=text, showarrow=False,
                            xanchor="left" if xpos < 0 else "right",
                            yanchor="bottom", font=dict(color=TEXT2,
@@ -605,29 +614,6 @@ def fig_flow_profile(run):
                      tickvals=position(ticks).tolist(),
                      ticktext=[f"{r:g}" for r in ticks])
     fig.update_yaxes(title="ΔAIC (lower is better)", rangemode="tozero")
-    return fig
-
-
-def fig_upstream(run):
-    """How each variable changes on a step upstream."""
-    go = _go()
-    t = run.upstream.iloc[::-1]
-    fig = go.Figure()
-    for column, name, colour in (("rises", "rises", COLOURS["resistance"]),
-                                 ("no_change", "no change", MUTED),
-                                 ("falls", "falls", COLOURS["samc"])):
-        fig.add_trace(go.Bar(
-            x=t[column], y=t["variable"], orientation="h", name=name,
-            marker=dict(color=colour, line=dict(color="white", width=1.5)),
-            hovertemplate="%{y}: " + name + " on %{x:.0%} of upstream "
-                          "steps<extra></extra>"))
-    fig.update_layout(**plotly_layout(
-        barmode="stack", height=max(240, 44 * len(t) + 120),
-        title="How each variable changes on a step upstream"))
-    fig.update_layout(legend_traceorder="normal")
-    fig.update_xaxes(title="Share of upstream steps", tickformat=".0%",
-                     range=[0, 1])
-    fig.update_yaxes(gridcolor="rgba(0,0,0,0)")
     return fig
 
 
@@ -853,20 +839,19 @@ HOW_IT_WORKS = {
         "distance between cells): distance is always part of the model, "
         "K = 1 is distance alone, and a large K means the variables "
         "dominate."),
-    "reach": (
-        "How this model works: each selected variable is transformed and "
-        "rescaled to 0-1, and their weighted sum, rescaled to 0-1, is each "
-        "reach's resistance, whatever its length (the formulation of "
-        "earlier versions, --per_reach). The distance between two sites is "
-        "the sum along the river between them."),
     "samc": (
-        "How this model works: a random walker moves between adjacent "
-        "reaches with weights 1/resistance, the resistance going from 1 "
-        "to a fitted maximum K with the weighted variables (directional "
-        "variables make one direction harder), times exp(-rate × km moved "
-        "upstream) with a flow term; at each site it is absorbed with "
-        "probability 1/(2 Ne). The distance between two sites is the "
-        "conditional first passage time, averaged over both directions."),
+        "How this model works: samc's random walker on a lattice of the "
+        "river (points about 1 km apart along each reach, and the nodes "
+        "where reaches meet and where the sites are). It moves between "
+        "neighbouring points with samc's conductance, 1 / (resistance per "
+        "km × distance), the resistance per km being the standard "
+        "model's (1 to a fitted maximum K with the weighted variables), "
+        "times exp(-rate × km moved upstream) with a flow term (by "
+        "default nothing absorbs it). The distance between two sites "
+        "combines the passage times of the two directions (by default, "
+        "the larger). In simulations, the walker moved like a lineage "
+        "traced back in time: a negative flow rate meant gene flow biased "
+        "downstream."),
 }
 
 
@@ -881,8 +866,8 @@ def _distance_share(run):
 
 
 def _kind(run):
-    """The model's formulation: "samc", "km" or "reach"."""
-    return "samc" if run.samc else "km" if run.per_km else "reach"
+    """The model's formulation: "samc" or "km"."""
+    return "samc" if run.samc else "km"
 
 
 def _model_section(run):
@@ -926,13 +911,19 @@ def _model_section(run):
         parts.append(_table(ref, cols, numeric=set(cols) - {"name"}))
 
     if run.samc and run.flow_profile is not None:
-        parts.append("<h3>Flow: moving upstream easier or harder?</h3><p>"
+        parts.append("<h3>Flow: gene flow biased downstream or "
+                     "upstream?</h3><p>"
                      "The flow-alone reference model at each rate tried "
-                     "when fitting it: negative rates make moving upstream "
-                     "easier, positive rates harder, and rate 0 is distance "
-                     "alone. Because genetic distances are symmetric, the "
-                     "sign says where along the river connectivity is high, "
-                     "not which way genes move.</p>")
+                     "when fitting it: negative rates make the walker's "
+                     "upstream moves easier, positive rates harder, and "
+                     "rate 0 is distance alone. The walker moves like a "
+                     "lineage traced back in time, against gene flow, so a "
+                     "negative rate means gene flow biased downstream (in "
+                     "simulations, with no absorption and the larger of the "
+                     "two passage times). Gradients along the river (e.g. "
+                     "temperature) and barriers the model does not "
+                     "represent can mimic or hide a direction, and gains of "
+                     "a few AIC units are weak evidence.</p>")
         parts.append(_panel(fig_flow_profile(run)))
     parts.append("<h3>Hall of Fame</h3>")
     parts.append(_panel(fig_aic_profile(run)))
@@ -979,48 +970,24 @@ def _model_section(run):
                      "a pair of sites. Hover for the pair.</p>")
         parts.append(_panel(fig_pairwise(run)))
     if run.geometry and any(e is not None for e in run.edges.values()):
-        if run.samc:
-            layers = {}
-            for which in ("Average", "Best"):
-                e = run.edges[which]
-                if e is None:
-                    continue
-                e = e.set_index("EDGE_ID")
+        layers = {}
+        for which in ("Average", "Best"):
+            e = run.edges[which]
+            if e is not None and "Resistance" in e:
                 label = "Model average" if which == "Average" else \
                     "Best model"
-                layers[f"{label}: probability of moving downstream"] = \
-                    e["Downstream"]
-                layers[f"{label}: probability of moving upstream"] = \
-                    e["Upstream"]
-            fig = fig_map(run, layers, "Probability", fixed_range=(0, 1))
-            note = ("Probability that a walker leaving each reach moves "
-                    "downstream, or upstream (choose in the menu). Grey: "
-                    "no reach in that direction.")
-        else:
-            layers = {}
-            for which in ("Average", "Best"):
-                e = run.edges[which]
-                if e is not None:
-                    label = "Model average" if which == "Average" else \
-                        "Best model"
-                    layers[f"{label}: resistance"] = \
-                        e.set_index("EDGE_ID")["Resistance"]
-            fig = fig_map(run, layers, "Resistance per km" if run.per_km
-                          else "Resistance", log=run.per_km)
-            note = ("Resistance per km of each reach (1 = distance alone, "
-                    "up to the model's maximum K; colours on a log scale; "
-                    "choose the model average or the best model in the "
-                    "menu)." if run.per_km else
-                    "Resistance of each reach (0-1; choose the model "
-                    "average or the best model in the menu).")
+                layers[f"{label}: resistance"] = \
+                    e.set_index("EDGE_ID")["Resistance"]
+        fig = fig_map(run, layers, "Resistance per km", log=True)
+        note = ("Resistance per km of each reach (1 = distance alone, up "
+                "to the model's maximum K; colours on a log scale; choose "
+                "the model average or the best model in the menu).")
+        if run.samc:
+            note += (" The flow term, if any, acts on top of it, the same "
+                     "per km everywhere.")
         parts.append(f"<h3>Map</h3><p>{note} Hover over a reach for its "
                      "value; scroll to zoom.</p>")
         parts.append(_panel(fig))
-    if run.samc and run.upstream is not None:
-        parts.append("<h3>Variables along the river</h3><p>A directional "
-                     "variable that changes the same way on almost every "
-                     "upstream step acts much like the flow term.</p>")
-        parts.append(_panel(fig_upstream(run)))
     return "\n".join(parts)
 
 

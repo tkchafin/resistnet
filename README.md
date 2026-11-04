@@ -12,8 +12,9 @@
     4. [Optimisation Parameters](#opt_params)
     5. [The Standard Model](#standard)
     6. [Directional Models (SAMC)](#samc)
-    7. [Interactive Report](#html_report)
-    8. [Comparing the Two Models](#compare)
+    7. [The Coalescent Model](#coalescent)
+    8. [Interactive Report](#html_report)
+    9. [Comparing the Two Models](#compare)
 3. [Tutorials](#tutorials)
     1. [Example Dataset](#example)
     2. [Utility Scripts](#scripts)
@@ -85,10 +86,13 @@ usage: runResistnet.py [-h] [-g INMAT] [-s SHAPEFILE] [-c COORDS] [-n NETWORK]
                        [-S NSTART] [-C NCAND] [-G GAMMA]
                        [-f {aic,loglik,r2m,delta}] [--fixWeight] [--fixShape]
                        [--max_shape MAX_SHAPE] [--min_weight MIN_WEIGHT]
-                       [--model {resistance,samc,both}] [--samc] [--per_reach]
+                       [--model {resistance,samc,coalescent,both}] [--samc]
                        [--sizes SIZES] [--ne NE] [--infer_origin INFER_ORIGIN]
                        [--max_resist MAX_RESIST] [--fix_resist FIX_RESIST]
                        [--fixAsym] [--max_flow MAX_FLOW] [--fixFlow]
+                       [--samc_absorption {none,sites}]
+                       [--samc_pairs {max,mean}] [--coal_cell_km COAL_CELL_KM]
+                       [--coal_density COAL_DENSITY] [--cell_km CELL_KM]
                        [-a AWSUM] [--use_full] [--report_all]
 
 Optimise resistance networks using Tree-structured Parzen Estimators (TPE)
@@ -167,18 +171,16 @@ options:
                         log-uniformly) (default: 15)
   --min_weight MIN_WEIGHT
                         Minimum weight parameter (default: 0.0)
-  --model {resistance,samc,both}
+  --model {resistance,samc,coalescent,both}
                         Model to fit: resistance (sums of reach resistances
                         along the paths between sites; default), samc (spatial
                         absorbing Markov chain: conditional first passage
-                        times among sites, allowing directional effects), or
-                        both (fitted separately, then ranked together)
-                        (default: None)
+                        times among sites, allowing directional effects),
+                        coalescent (Lundgren & Ralph's mean coalescence times
+                        among sites, allowing directional effects), or both
+                        (resistance and samc, fitted separately, then ranked
+                        together) (default: None)
   --samc                Same as --model samc (default: False)
-  --per_reach           Standard model: each reach costs its composite value
-                        whatever its length (the formulation of earlier
-                        versions), instead of a resistance per km times its
-                        length (default: False)
   --sizes SIZES         SAMC: tsv with columns sample, size (effective
                         population sizes; absorption at each site is 1/(2 *
                         size)) (default: None)
@@ -188,20 +190,37 @@ options:
                         SAMC: attribute giving the next downstream reach ID
                         (default: NEXT_DOWN)
   --max_resist MAX_RESIST
-                        Upper limit for the maximum resistance (relative to a
-                        minimum of 1), which is optimised: per km for the
-                        standard model (default 1000, as ResistanceGA's
-                        max.cont), and of the composite surface for SAMC
-                        (default 500) (default: None)
+                        Upper limit for the maximum resistance per km
+                        (relative to a minimum of 1), which is optimised (as
+                        ResistanceGA's max.cont) (default: 1000.0)
   --fix_resist FIX_RESIST
                         Fix the maximum resistance instead of optimising it
                         (default: None)
   --fixAsym             SAMC: do not consider directional effects of variables
-                        (default: False)
+                        (always the case on the lattice, where only the flow
+                        term is directional; kept for compatibility) (default:
+                        False)
   --max_flow MAX_FLOW   SAMC: upper limit for the rate of the flow (upstream
-                        vs downstream) term, per km (default: 1.0)
+                        vs downstream) term, per km (default: 0.1)
   --fixFlow             SAMC: leave out the flow (upstream vs downstream) term
                         (default: False)
+  --samc_absorption {none,sites}
+                        SAMC: no absorption (passage times are hitting times),
+                        or absorption 1/(2 Ne) at each site per visit
+                        (default: none)
+  --samc_pairs {max,mean}
+                        SAMC: how the passage times of the two directions
+                        between two sites are combined (default: max)
+  --coal_cell_km COAL_CELL_KM
+                        Coalescent model: distance between neighbouring points
+                        of its lattice (km) (default: 5.0)
+  --coal_density COAL_DENSITY
+                        Coalescent model: population per km of river, setting
+                        the coalescence rates relative to the movement rates
+                        (default: 1000.0)
+  --cell_km CELL_KM     SAMC: distance between neighbouring states of the
+                        lattice the walker moves on (km; samc's cell size)
+                        (default: 1.0)
   -a, --awsum AWSUM     Cumulative Akaike weight threshold (default: 1.0)
   --use_full            Use full rather than natural model averaging (default:
                         False)
@@ -308,11 +327,11 @@ The best model from each chain is retained in the Hall of Fame, which is used fo
 | output.modavgWeights.tsv                     | Table giving the model-averaged weights for each covariate                                                                      |
 | output.Model-Average.PairwiseRegplot.pdf     | Regression of pairwise resistance X genetic distances                                                                           |
 | output.pairPlot.pdf                          | Plots of pairwise correlation between fitness metrics across sampled models                                                     |
-| output.Model-Average.ResistanceEdges.tsv     | Effective resistance values for each segment by reach ID                                                                        |
+| output.Model-Average.ResistanceEdges.tsv     | Resistance of each reach by reach ID: per km, not multiplied by the reach's length                                                |
 | output.pointsTable.txt                       | Table of points                                                                                                                 |
 | output.Model-Average.ResistanceMatrix.tsv    | Pairwise effective resistance distances                                                                                         |
 | output.snapDistances.txt                     | Table giving the distance (in km) between input sampling points and nearest graph nodes (useful to diagnose mis-snapped points) |
-| output.Model-Average.streamsByResistance.pdf | Plot of model-averaged effective resistance values for each segment in the network                                              |
+| output.Model-Average.streamsByResistance.pdf | Map of the model-averaged resistance per km of each reach in the network                                                        |
 | output.Model-Best.*                          | As for the output.Model-Average.* files, for the best model                                                                     |
 | output.subgraph.net                          | Compressed representation of the subgraph                                                                                       |
 | output.Null-Model.tsv                        | Table giving fitness metrics for the distance-only and null (population effect only) models                                     |
@@ -336,7 +355,7 @@ fitness run_mm_cyr      run_mm_cyr_weight       ... dor_pc_pva      dor_pc_pva_w
 -451.4939698069141      0       -       ... 1       0.7540635366427507      7.0     1.0     144.60309855972295      ... 0.5078641129098956      0.5078641129098956      True
 ```
 
-The table contains the best model from each of the `-r,--reps` TPE chains. Some of these columns are self-explanatory (i.e., "fitness" is the model fitness, which with the default `-f aic` is the AIC). Other summary metrics included are the Akaike weights, change in AIC relative to the null and "best" models, as well as the other fitness metrics (marginal R^2, log-likelihoods). As in ResistanceGA, the AIC counts both the parameters of the MLPE model (intercept, slope, and two variance components) and the resistance surface parameters: a transformation and shape for each included variable, their weights, and the maximum resistance per km (`max_resistance`; see [The standard model](#standard)). Only relative weights matter (the composite is a weighted mean), so a model with m included variables has m - 1 weight parameters, and 3m surface parameters in all, as ResistanceGA's equation, shape and maximum for each surface. Parameters fixed with `--fixWeight`, `--fixShape` or `--fix_resist` are not counted (nor the maximum resistance with `--per_reach`). The marginal R^2 is computed as in `MuMIn::r.squaredGLMM` (as used by ResistanceGA). Other values in the table include whether or not a variable is included in a model ($var, where $var is the variable name), specified as either "1" (=included) or "0" (=excluded), and the transformation type (=$var_trans), transformation shape parameter (=$var_shape), and weight of the parameter when calculating the composite resistance edges (=$var_weight). For the transformation column, the types of transformations are as follows: 0=Not transformed; 1=Ricker; 2=Reverse Ricker; 3=Inverse Ricker; 4=Reverse-Inverse Ricker (the inverse Ricker of the reversed values, as in ResistanceGA; previously this duplicated the Ricker); 5=Monomolecular; 6=Reverse Monomolecular; 7=Inverse Monomolecular; 8=Reverse-Inverse Monomolecular. In all cases, the larger the shape value, the closer each transformation gets to being linear (=essentially no transformation).
+The table contains the best model from each of the `-r,--reps` TPE chains. Some of these columns are self-explanatory (i.e., "fitness" is the model fitness, which with the default `-f aic` is the AIC). Other summary metrics included are the Akaike weights, change in AIC relative to the null and "best" models, as well as the other fitness metrics (marginal R^2, log-likelihoods). As in ResistanceGA, the AIC counts both the parameters of the MLPE model (intercept, slope, and two variance components) and the resistance surface parameters: a transformation and shape for each included variable, their weights, and the maximum resistance per km (`max_resistance`; see [The standard model](#standard)). Only relative weights matter (the composite is a weighted mean), so a model with m included variables has m - 1 weight parameters, and 3m surface parameters in all, as ResistanceGA's equation, shape and maximum for each surface. Parameters fixed with `--fixWeight`, `--fixShape` or `--fix_resist` are not counted. The marginal R^2 is computed as in `MuMIn::r.squaredGLMM` (as used by ResistanceGA). Other values in the table include whether or not a variable is included in a model ($var, where $var is the variable name), specified as either "1" (=included) or "0" (=excluded), and the transformation type (=$var_trans), transformation shape parameter (=$var_shape), and weight of the parameter when calculating the composite resistance edges (=$var_weight). For the transformation column, the types of transformations are as follows: 0=Not transformed; 1=Ricker; 2=Reverse Ricker; 3=Inverse Ricker; 4=Reverse-Inverse Ricker (the inverse Ricker of the reversed values, as in ResistanceGA; previously this duplicated the Ricker); 5=Monomolecular; 6=Reverse Monomolecular; 7=Inverse Monomolecular; 8=Reverse-Inverse Monomolecular. In all cases, the larger the shape value, the closer each transformation gets to being linear (=essentially no transformation).
 
 #### Covariate relative importance 
 
@@ -372,16 +391,16 @@ Distance is part of every model (see [The standard model](#standard)); in `$out.
 
 #### Effective resistance values 
 
-The model-averaged resistances are computed for each segment in the subgraph (per km: from 1, distance alone, up to the models' maximum resistance; with `--per_reach`, from 0 to 1), and also output for each individual model if using `--report_all`. 
+The model-averaged resistances are computed for each reach in the subgraph (per km: from 1, distance alone, up to the models' maximum resistance), and also output for each individual model if using `--report_all`. A reach's contribution to the path sums is its resistance per km times its length (`--length_col`). 
 
 If you would like to import these into other GIS plotting tools, you can simply perform a left join of the `.ResistanceEdges.tsv` table, using the reach IDs from `--reachid_col` (HYRIV_ID in this example; the column is named EDGE_ID):
 
 ```
 EDGE_ID Resistance
-70605797        74.88762168211983
-70606280        76.1295084372108
-70606496        77.39226674264876
-70606497        77.39226674264876
+70605797        88.5442340913543
+70606280        90.01565746601429
+70606496        91.51181008601205
+70606497        91.51181008601205
 ...
 ...
 ```
@@ -440,36 +459,37 @@ The standard model (`--model resistance`, the default) predicts genetic distance
 
 This is the formulation of [ResistanceGA](https://github.com/wpeterman/ResistanceGA) ([Peterman 2018](https://doi.org/10.1111/2041-210X.12984)), for reaches of different lengths. In ResistanceGA, each continuous surface is 1 + max x f(x), the surfaces are summed (and divided by their minimum), and the conductance between neighbouring cells is divided by the distance between them (`geoCorrection` in gdistance), so each step costs resistance x distance: resistances are per unit of distance. `ResistNet`'s resistance per km equals ResistanceGA's combined surface (up to a constant factor, which doesn't change the fit), with K - 1 and the weights in place of each surface's maximum (the tests check this against ResistanceGA's own functions, to 1e-12), and the AIC counts the same number of parameters (3 per variable). Distance is therefore always part of the model: K = 1 is the `distance_only` reference model (isolation by distance), and a large K means the variables dominate. How much of the resistance per km is due to distance and to each variable, averaged over the network's km (as ResistanceGA's `p.contribution`), is given in the `Contribution` column of `$out.bestModel.tsv` (with a `distance` row), and each model's AIC difference from distance alone in the Hall of Fame (`delta_aic_distance`). Because distance is already included, `LENGTH_KM` should not be used as a covariate.
 
-In earlier versions of `ResistNet`, each reach cost its composite value (rescaled to 0-1) whatever its length, so distance could only enter as a covariate (e.g. `LENGTH_KM`). Reaches can differ in length by more than an order of magnitude (0.4-13.6 km in the example data), so that formulation counts a short reach the same as a long one. `--per_reach` uses it (with no maximum resistance), e.g. to reproduce earlier results. On the example data, full searches (600 iterations x 8 chains, three seeds) found slightly better models per km (best AIC -458.7, median -451.5) than per reach (best -455.1, median -451.2; with `LENGTH_KM` among the candidates, best -452.4, median -450.0; it was never selected, per km or per reach). In simulations with the full search, AIC preferred per km in 9 of 12 datasets simulated per km (by a median of 4.5-10 AIC), and the two tied on data simulated per reach with `LENGTH_KM` as a covariate (within 3.7 AIC); only data simulated per reach with no distance at all favoured per reach (4 of 4, by 1.2-7.9).
+In earlier versions of `ResistNet`, each reach cost its composite value (rescaled to 0-1) whatever its length, so distance could only enter as a covariate (e.g. `LENGTH_KM`). Reaches can differ in length by more than an order of magnitude (0.4-13.6 km in the example data), so that formulation counts a short reach the same as a long one. It is no longer available: it fitted worse, and it is not ResistanceGA's formulation. On the example data, full searches (600 iterations x 8 chains, three seeds) found slightly better models per km (best AIC -458.7, median -451.5) than per reach (best -455.1, median -451.2; with `LENGTH_KM` among the candidates, best -452.4, median -450.0; it was never selected, per km or per reach). In simulations with the full search, AIC preferred per km in 9 of 12 datasets simulated per km (by a median of 4.5-10 AIC), and the two tied on data simulated per reach with `LENGTH_KM` as a covariate (within 3.7 AIC); only data simulated per reach with no distance at all favoured per reach (4 of 4, by 1.2-7.9).
 
 
 ### Directional models (SAMC) <a name="samc"></a>
 
-Effective resistance (circuit theory) is symmetric: moving from A to B costs the same as moving from B to A. With `--model samc` (or `--samc`), `ResistNet` instead models movement among the reaches of the network as a spatial absorbing Markov chain (SAMC; [Fletcher et al. 2019](https://doi.org/10.1111/ele.13333), [Marx et al. 2020](https://doi.org/10.1111/ecog.04891)), in which moving between two reaches can be easier in one direction than the other, e.g. upstream versus downstream.
+Effective resistance (circuit theory) is symmetric: moving from A to B costs the same as moving from B to A. With `--model samc` (or `--samc`), `ResistNet` instead models movement as a spatial absorbing Markov chain (SAMC; [Fletcher et al. 2019](https://doi.org/10.1111/ele.13333)), as in the [samc](https://cran.r-project.org/package=samc) R package ([Marx et al. 2020](https://doi.org/10.1111/ecog.04891)), translated from raster cells to the river network:
 
-The model is built as follows:
+* samc's states are raster cells of equal size. Here they are the points of a lattice of the river: the nodes of the network (where reaches meet, and the sites, which are snapped to nodes) and points splitting each reach into pieces of about `--cell_km` (default 1 km), so that every step covers about the same distance. The network includes the reach downstream of the outlet (found using the `--infer_origin` attribute, `NEXT_DOWN` by default) and one reach beyond each terminal sample site.
+* Each reach's resistance per km is the standard model's (ResistanceGA's surface: 1 + (K - 1) x the weighted mean of the transformed variables, K optimised from 1 to `--max_resist`, default 1000 as for the standard model, or fixed with `--fix_resist`; see [The standard model](#standard)). Points inside a reach take its resistance; a node takes the length-weighted mean over the half-pieces of river around it, as a raster cell over a confluence would.
+* As in samc, a walker moves between neighbouring points with conductance 1 / (mean resistance of the two points x the distance between them), normalised over its neighbours and scaled by 1 - absorption. Reaches meeting at a node are all neighbours through it.
+* By default nothing absorbs the walker (`--samc_absorption none`), so the passage times are hitting times. With `--samc_absorption sites`, a walker at a site is absorbed with probability 1/(2 Ne) per step, the probability that two lineages coalesce; effective population sizes can be provided per sample with `--sizes` (a tsv with columns `sample` and `size`), otherwise all sites have Ne = `--ne` (default 100).
+* A *flow* term can make moving upstream harder or easier: each move's weight is multiplied by exp(-rate x km moved upstream). A positive rate makes the walker's upstream moves harder, a negative rate easier. samc's transition functions can depend on the order of the two cells, so this is a samc model with position along the river as the variable. The rate is per km and is not rescaled to the network, so it means the same in any watershed. Whether the flow term is included, its direction and its rate (from 0.001 to `--max_flow` per km, default 0.1) are optimised, unless `--fixFlow` is used (no flow term). A model can consist of the flow term alone. Variables cannot be directional (on the lattice, a reach's points share its values; `--fixAsym` is kept for compatibility).
+* The distance from site i to site j is the conditional first passage time (CFPT): the expected number of steps to reach j, given that it is reached before absorption elsewhere (as `samc::cond_passage` in R). The two directions between a pair of sites are combined (`--samc_pairs`: their maximum, the default, or their mean) and fitted to the genetic distances with MLPE.
 
-* The states of the chain are the reaches of the sampled network, plus the reach downstream of the outlet (found using the `--infer_origin` attribute, `NEXT_DOWN` by default) and one reach beyond each terminal sample site. Each site corresponds to the reach immediately downstream of it.
-* At each step, a walker at a site is absorbed with probability 1/(2 Ne), the probability that two lineages coalesce. Effective population sizes can be provided per sample with `--sizes` (a tsv with columns `sample` and `size`); otherwise all sites have Ne = `--ne` (default 100).
-* For each selected variable (transformed and rescaled to 0-1 as for the standard model), the resistance of moving from reach i to an adjacent reach j is the mean of the two reaches' values (`$var_asym` = 0) or, if the variable is *directional* (`$var_asym` = 1), the change in value (value at j - value at i), so that moving towards higher transformed values is harder. A decreasing (reverse or inverse) transformation gives the opposite direction in the raw values, so `bestModel.tsv` reports each directional variable's `Effective_direction` in raw values (e.g. "towards higher values harder"; a humped Ricker transformation can give a mix). Whether each variable is directional is optimised like its transformation, unless `--fixAsym` is used (all variables symmetric). A directional variable that changes consistently along the flow (e.g. upstream area, which falls on every upstream step) overlaps with the flow term below; the `upstreamChanges` outputs show how each variable changes on upstream steps.
-* The weighted sum of the variables is rescaled to resistances from 1 to a maximum resistance, which is also optimised (from 1 to `--max_resist`, default 500; or fixed with `--fix_resist`). The movement weights are the inverse resistances.
-* A *flow* term can make moving upstream harder or easier, independently of the variables: each movement weight is multiplied by exp(-rate x km moved upstream), where the distance moved is measured between the midpoints of the two reaches (from `--length_col`; equivalently, the change in `DIST_DN_KM` at the reaches' midpoints in HydroRIVERS). A positive rate makes moving upstream harder, a negative rate easier. The rate is per km and is not rescaled to the network, so it means the same in any watershed. Whether the flow term is included, its direction and its rate (from 0.001 to `--max_flow` per km, default 1) are optimised, unless `--fixFlow` is used (no flow term). A model can consist of the flow term alone.
-* Movement probabilities are the movement weights normalised over the neighbouring reaches (and scaled by 1 - absorption).
-* The distance from site i to site j is the conditional first passage time (CFPT): the expected number of steps to reach j, given that it is reached before absorption elsewhere (as `samc::cond_passage` in R). The mean of the two directions is fitted to the genetic distances with MLPE.
+This translation is checked against samc itself: for a small river drawn on a raster, samc's transition matrix and passage times, built by samc from the raster, equal the lattice's (`tests/resistnet/test_lattice.py`).
 
-The AIC counts the MLPE parameters, the transformation, shape and direction of each selected variable, their relative weights, the maximum resistance, and the flow rate (if the model has a flow term). In addition to the outputs described above, SAMC runs produce:
+**Reading the flow rate.** Genetic distances are symmetric, so a direction can only show through how distances vary along the river. We tested this with simulations of known gene flow (msprime stepping-stone models on the example network and the SMB Black River network, 400 SNPs, migration biased downstream or upstream by up to 0.05 per km, with and without a barrier). With the defaults (no absorption, maximum of the two directions), the fitted rate had the sign *opposite* to the bias of gene flow in 29 of 32 biased datasets, never the same sign, and found a direction in 5 of 24 datasets without bias: **the walker moves like a lineage traced back in time, so a negative rate means gene flow biased downstream.** The rate is attenuated (about a fifth to a tenth of the bias) and, with a barrier that the model does not represent, the direction was missed in half of the biased datasets. With absorption at the sites or the mean of the two directions (the formulation of earlier versions), the fitted direction did not follow the truth (directions were found in most datasets without bias). In simulations with less information (200 SNPs) the direction was mostly missed but never reversed. An AIC gain above 2 found a direction in about a fifth of the datasets without bias, where a likelihood-ratio test at that level would expect one in twenty, so pairwise MLPE overstates the evidence: a gain of 6 or more removed the false positives of the noisier simulations without losing a true one. Gradients along the river (e.g. temperature, which rises downstream) and changes in population density can mimic a direction: in the stepping-stone simulations, whose deme sizes did not follow the length of river, false directions reached gains of 25. Treat the flow term as suggestive, report it alone and with the chosen covariates, and represent known barriers in the model.
+
+The AIC counts the MLPE parameters, the transformation and shape of each selected variable, their relative weights, the maximum resistance per km, and the flow rate (if the model has a flow term). In addition to the outputs described above, SAMC runs produce:
 
 | File Name                                    | Description                                                                                         |
 |----------------------------------------------|-----------------------------------------------------------------------------------------------------|
 | output.Model-Best.CFPTMatrix.tsv             | Conditional first passage times among sites (row = origin, column = destination); not symmetric     |
-| output.Model-Best.TransitionEdges.tsv        | Probability of moving downstream and upstream from each reach                                       |
-| output.Model-Best.streamsByTransition.pdf    | Maps of these probabilities                                                                         |
+| output.Model-Best.TransitionEdges.tsv        | Each reach's resistance per km, and the probabilities of moving downstream and upstream inside it (set by the flow term) |
+| output.Model-Best.streamsByTransition.pdf    | Maps of the resistance per km and of the probability of moving downstream                           |
 | output.adjacencyMatrix.tsv                   | Reach adjacency (1 = column reach is downstream of row reach; -1 = upstream)                        |
 | output.graphOrigin.pdf, graphDirectionality.pdf | The inferred outlet, and the flow direction of each reach                                        |
 | output.upstreamChanges.tsv, .pdf             | Share of upstream steps on which each variable rises, stays the same, or falls                      |
 | output.flowProfile.tsv                       | AIC of flow alone at each rate tried when fitting it, in both directions (rate 0 = distance alone)  |
 
-(and the same for `Model-Average`). The Hall of Fame includes `$var_asym`, `max_resistance` and `flow` (the rate; 0 = no flow term) columns. `Null-Model.tsv` includes two SAMC reference models: `samc_distance`, distance alone (equal movement weights between all neighbouring reaches, i.e. no landscape or flow effect), and `samc_flow`, flow alone (the same plus the flow term, with its rate fitted and given in the `flow` column). The Hall of Fame reports each model's AIC difference from them, `delta_aic_distance` and `delta_aic_flow` (positive = the model fits better, as for `delta_aic_null`), to judge whether the variables explain genetic distances beyond distance and flow alone.
+(and the same for `Model-Average`). The Hall of Fame includes `$var_asym` (always 0), `max_resistance` and `flow` (the rate; 0 = no flow term) columns. `Null-Model.tsv` includes two SAMC reference models: `samc_distance`, distance alone (resistance 1 per km everywhere, i.e. no landscape or flow effect), and `samc_flow`, flow alone (the same plus the flow term, with its rate fitted and given in the `flow` column). The Hall of Fame reports each model's AIC difference from them, `delta_aic_distance` and `delta_aic_flow` (positive = the model fits better, as for `delta_aic_null`), to judge whether the variables explain genetic distances beyond distance and flow alone.
 
 If the downstream reach of the outlet is not in the input network (e.g. it was clipped), the reaches meeting at the outlet are linked to each other directly, with a warning; including it is preferable. For example, using the bundled dataset (see [Example Dataset](#example)):
 
@@ -483,7 +503,25 @@ runResistnet.py \
     -i 50 -r 4 -t 4 --seed 1234 -o nmt_samc
 ```
 
-In this short run, the best SAMC model is a flow term alone (-0.18 per km, i.e. moving upstream easier; AIC -408.7), about the same as the reference model of flow alone (-409.0, with its rate fitted) and better than SAMC distance alone (-383.7). A longer run (600 iterations x 8 chains) finds stream gradient (`sgr_dk_rav`, symmetric) with flow (-0.24 per km; AIC -443.5), still less good than the standard model with degree of regulation (-451.5). The two models fit the same genetic distances with the same MLPE, so their AICs can be compared directly (see below).
+In this short run, the best SAMC model is stream gradient (`sgr_dk_rav`; AIC -412.1), better than the reference model of flow alone (-0.100 per km, the limit, i.e. gene flow biased downstream; -402.8) and SAMC distance alone (-387.9). A longer run (600 iterations x 8 chains) finds degree of regulation (`dor_pc_pva`, inverse monomolecular, resistance 1-14.6 per km) without a flow term (AIC -424.0), less good than the standard model's best (-452.3 in the same search; see below). The two models fit the same genetic distances with the same MLPE, so their AICs can be compared directly.
+
+### The coalescent model <a name="coalescent"></a>
+
+With `--model coalescent`, the genetic distances are predicted from mean coalescence times (computed by `resistnet.coalescent`), as in [Lundgren & Ralph (2019)](https://doi.org/10.1111/1755-0998.13035) ("Are populations like a circuit? Comparing isolation by resistance to a new coalescent-based method"): two lineages, one sampled at each site, move back in time among the demes of a graph until they meet and coalesce. Their mean coalescence time C solves a linear system (their equation 7) given the lineages' movement rates (which can differ between the two directions of an edge) and the coalescence rates of the demes. Resistance distance (the standard model) is the special case of this model when movement is symmetric and the landscape regular; with biased gene flow they differ, and resistance-based inference can be misled.
+
+It is not a separate model so much as a third distance: the resistance surface, search and MLPE are those of the other two, and only the step from the surface to distances between sites differs (path sums for the standard model, passage times for SAMC, coalescence times here).
+
+On the river, ResistNet uses:
+
+* a lattice of the river with points at confluences, tips, the outlet and the sites, and about `--coal_cell_km` apart in between (default 5 km), whatever the reaches' boundaries (the coalescence times need a system the size of the number of pairs of points, so the points are kept few);
+* movement rates from the standard model's resistance per km (ResistanceGA's surface): the rate of a lineage at point x moving to its neighbour y is the link's conductance (1 / the reaches' resistances per km in series over the river it covers), divided by the length of river around x, a finite-volume version of a diffusion along the river, so that results don't depend on the lattice's spacing;
+* coalescence rates 1 / (density x length of river around each point), the population living there (`--coal_density`, default 1000 per km: on the example data, fits do not change from 100 per km up);
+* the flow term of the SAMC model, multiplying each move by exp(-rate x km moved upstream). The lineages move back in time, so **a negative rate means gene flow biased downstream**;
+* linearised F<sub>ST</sub> between sites from the coalescence times (Slatkin 1991), (C<sub>ij</sub> - C<sub>w</sub>) / C<sub>w</sub>, with C<sub>w</sub> the mean of the two within-site times, fitted with MLPE as the other models, so that their AICs can be compared.
+
+The variables, transformations, weights and maximum resistance per km are searched as for the standard model, together with the flow term (as for SAMC). The Hall of Fame, model averaging and outputs are as for SAMC, with `Model-Best.CoalescenceMatrix.tsv` (the predicted linearised F<sub>ST</sub>) instead of the passage times, and the reference models `coal_distance` (resistance 1 per km) and `coal_flow` (the same plus the flow term) in `Null-Model.tsv`. The interactive report does not cover this model yet.
+
+Checks: Lundgren & Ralph's own R code gives the same coalescence times (to 1e-12; see `tests/resistnet/reference/README.md`); the coalescence times equal msprime's own numerical mean coalescence times (to its tolerance); with symmetric movement and high gene flow, the model fits the example data as the standard model's distance alone; and fitted to linearised F<sub>ST</sub> computed exactly from an independent simulation code (a stepping-stone model on a 10 km lattice of the example network or of the SMB Black River network, gene flow biased by -0.05 to +0.05 per km), it reproduces the truth (correlation 1 on the truth's own lattice; 0.99995 with the defaults), finds no direction without bias, and recovers the bias's sign and size (rate = -bias / 2) at every value. On the example data, flow alone gives -0.020 per km (gene flow biased downstream; AIC -419.8, against -386.7 for distance alone), and the best model's surface fits about as well without its flow term (AIC -391.5) as it does as the standard model's resistance distance (-385.5): what this distance adds is the flow term. A caveat for any directional model: variation in population density or movement along the river that the model does not represent can look like a direction (in the SMB White River, the rate's sign reversed once temperature, which rises downstream, was in the model), and AIC gains of a few units are weak evidence for one (see [Reading the flow rate](#samc)).
 
 ### Interactive report <a name="html_report"></a>
 
@@ -513,11 +551,11 @@ For example, adding `--model both` to the command in the [Example Dataset](#exam
 ```
 family      best_model                                                           best_aic   delta_aic  akaike_weight
 resistance  dor_pc_pva (inverse monomolecular, shape 1); resistance 1-145 per km     -451.49    0.00       1.00
-samc        flow -0.176/km (upstream easier)                                     -408.72    42.77      2.7e-10
-reference   SAMC flow alone (-0.157/km)                                          -408.96    42.53      3.0e-10
+samc        sgr_dk_rav (reverse-inverse monomolecular, shape 1)                  -412.06    39.44      1.6e-09
+reference   SAMC flow alone (-0.100/km)                                          -402.76    48.73      1.3e-11
 ```
 
-This short run ranks the standard model first; the SAMC search found only the flow term in 50 iterations (about the same as flow alone). With 600 iterations x 8 chains (seed 1234), the standard model's best is elevation with degree of regulation (resistance 1-995 per km; AIC -452.3; degree of regulation alone is 0.8 behind), and SAMC's best is stream gradient (symmetric) with flow (-0.239/km; -443.5), 8.8 AIC worse. Compare the two models only after runs long enough for both searches to settle. AIC ranks fits, not mechanisms (path resistance vs a walker's passage time), and near-ties of a few AIC units should not be over-read, since the parameter counts for the maximum resistance, direction settings and flow are conventions.
+This short run ranks the standard model first. With 600 iterations x 8 chains (seed 1234), the standard model's best is elevation with degree of regulation (resistance 1-995 per km; AIC -452.3; degree of regulation alone is 0.8 behind), and SAMC's best is degree of regulation without flow (-424.0), 28 AIC worse. Compare the two models only after runs long enough for both searches to settle. AIC ranks fits, not mechanisms (path resistance vs a walker's passage time), and near-ties of a few AIC units should not be over-read, since the parameter counts for the maximum resistance and flow are conventions.
 
 
 ## Tutorials <a name="tutorials"></a>
@@ -574,8 +612,6 @@ Arguments:
     --max_resistance: Maximum resistance: per km (standard model; each
         reach's resistance is 1 + (K - 1) x composite per km, times its
         length) or of the composite (SAMC) (default=100)
-    --per_reach: Standard model: each reach costs its composite value,
-        whatever its length (the formulation of earlier versions)
 
 SAMC (directional) simulations:
     --samc: Simulate conditional first passage times (mean of the two
@@ -587,7 +623,7 @@ SAMC (directional) simulations:
     --infer_origin: Next downstream reach attribute (def=NEXT_DOWN)
 ```
 
-Simulations require a compressed input network (i.e., as output by `runResistnet.py` or `autoStreamTree`), and a specifications file which should be tab-delimited and provide some covariates you would like to simulate effective resistances with, along with their weights, transformations, and shapes (using the same codes as in the Hall of Fame). An optional `AGG` column gives the method used to aggregate each variable across reaches sharing an ID (default ARITH, as in `runResistnet.py`). Resistances are computed in exactly the same way as when fitting models with `runResistnet.py`, so simulated models can be recovered using the same settings: per km, with the maximum resistance per km set by `--max_resistance` (default 100), or per reach with `--per_reach`. An example can be found in `src/resistnet/data/simparams.tsv`:
+Simulations require a compressed input network (i.e., as output by `runResistnet.py` or `autoStreamTree`), and a specifications file which should be tab-delimited and provide some covariates you would like to simulate effective resistances with, along with their weights, transformations, and shapes (using the same codes as in the Hall of Fame). An optional `AGG` column gives the method used to aggregate each variable across reaches sharing an ID (default ARITH, as in `runResistnet.py`). Resistances are computed in exactly the same way as when fitting models with `runResistnet.py`, so simulated models can be recovered using the same settings: per km, with the maximum resistance per km set by `--max_resistance` (default 100). An example can be found in `src/resistnet/data/simparams.tsv`:
 ```
 VAR     WEIGHT  TRANSFORM       SHAPE
 dor_pc_pva      1.0     7       1
@@ -603,14 +639,14 @@ simResistnet.py -n src/resistnet/data/nmt.network -c HYRIV_ID -s 50 -r 10 -o sim
 
 This will produce a number of outputs named `*.ResistanceMatrix.tsv` and `*.coords`, which can be supplied directly as inputs to `runResistnet.py` via `-g` and `-c` (with the same network and `--reachid_col`), for example to test if `ResistNet` model optimisation can recover the specified model in your network, given different sample sizes.
 
-With `--samc`, the distances are instead the conditional first passage times of a SAMC model (see [Directional models](#samc)), averaged over the two directions as when fitting, and rescaled to 0-1; the passage times themselves (row = origin, column = destination) are written to `*.CFPTMatrix.tsv`. The specifications file can then include an `ASYM` column (1 = directional, 0 = symmetric; default 0), and `--max_resistance`, `--flow` and `--ne` set the maximum resistance, the flow rate (per km) and the effective population size at every site. With no variables (a header line only), movement weights are equal, so e.g. `--flow 0.05` simulates flow alone. For example:
+With `--samc`, the distances are instead the conditional first passage times of a SAMC model (see [Directional models](#samc)), the two directions combined as when fitting, and rescaled to 0-1; the passage times themselves (row = origin, column = destination) are written to `*.CFPTMatrix.tsv`. `--max_resistance`, `--flow`, `--ne` and `--cell_km` set the maximum resistance per km, the flow rate (per km), the effective population size at every site and the lattice's distance between states. With no variables (a header line only), the resistance is 1 per km, so e.g. `--flow 0.05` simulates flow alone. For example:
 
 ```
 simResistnet.py -n src/resistnet/data/nmt.network -c HYRIV_ID -s 20 -r 10 \
     -o samc_sim -i spec.tsv --samc --max_resistance 50 --flow -0.05
 ```
 
-The movement weights and passage times are computed exactly as when fitting SAMC models, so simulated models can be recovered with `runResistnet.py --samc` (with the same `--ne`).
+The movement weights and passage times are computed exactly as when fitting SAMC models, so simulated models can be recovered with `runResistnet.py --samc` (with the same `--ne` and `--cell_km`). These simulations are SAMC's own model, so they test the search, not whether SAMC describes gene flow (see [Directional models](#samc)).
 
 Note that because samples are random nodes, the network used for simulations should have a unique ID for every reach (such as `HYRIV_ID` in HydroRIVERS). If IDs are shared by several reaches (e.g., the `EDGE_ID` segments in `autoStreamTree` outputs, which are defined between the original sampling sites), new samples can fall within these segments, which cannot be represented. If the network has several unconnected parts (e.g. other basins in the reach layer, as in `nmt.network`), samples are drawn from the largest. 
 
@@ -657,7 +693,7 @@ SAMC runs (detected from their Hall of Fame columns):
       --sizes [default=100]
 ```
 
-Most arguments are used in the same way as their equivalents in `runResistnet.py`, but one difference is in how a group of replicate run outputs are passed. Runs are found in the directory given and its subdirectories (e.g. the `DIR/NAME/{model}/` directories of `runResistnet.py`), and `--model resistance` or `--model samc` uses only the runs of that model. Runs of the SAMC model are recognised from their Hall of Fame columns and averaged as a SAMC model (with `--sizes` or `--ne` as for `runResistnet.py`), giving model-averaged passage times and transition probabilities; standard and SAMC runs can't be mixed in one ensemble. Likewise, standard runs per km (with a `max_resistance` column) and per reach (`--per_reach`, or earlier versions) are recognised and can't be mixed. The simplest way is to provide the path to an output directory, where outputs are named like `{prefix}_{rep}.*`. Only the `$prefix.HallOfFame.tsv` files are read. Example outputs, from 10 short runs of the example dataset with different seeds, can be found in `src/resistnet/data/nmt_ensemble/replicates`:
+Most arguments are used in the same way as their equivalents in `runResistnet.py`, but one difference is in how a group of replicate run outputs are passed. Runs are found in the directory given and its subdirectories (e.g. the `DIR/NAME/{model}/` directories of `runResistnet.py`), and `--model resistance` or `--model samc` uses only the runs of that model. Runs of the SAMC model are recognised from their Hall of Fame columns and averaged as a SAMC model (with `--sizes` or `--ne` as for `runResistnet.py`), giving model-averaged passage times and transition probabilities; standard and SAMC runs can't be mixed in one ensemble. Standard runs of earlier versions (resistances per reach, with no `max_resistance` column) are no longer supported. The simplest way is to provide the path to an output directory, where outputs are named like `{prefix}_{rep}.*`. Only the `$prefix.HallOfFame.tsv` files are read. Example outputs, from 10 short runs of the example dataset with different seeds, can be found in `src/resistnet/data/nmt_ensemble/replicates`:
 ```
 nmt_1.HallOfFame.tsv
 nmt_10.HallOfFame.tsv
@@ -688,15 +724,15 @@ ensembleResistnet.py \
 
 #### Applying a model to another network with predictResistnet.py
 
-Each run writes `$out.modelSpec.json`, giving every Hall of Fame model (best first) together with the constants needed to compute it again: for each variable, its range in the network the model was fitted to (used for the 0-10 rescaling), its transformation and shape, its range after transformation, and its weight; and the maximum resistance per km (standard models; for models per reach, `--per_reach` or earlier versions, the range of the composite surface; for SAMC models, the range of the composite surface, the ranges of the link values, the maximum resistance and the flow rate). `predictResistnet.py` applies one of these models to the reaches of another network, e.g. another watershed:
+Each run writes `$out.modelSpec.json`, giving every Hall of Fame model (best first) together with the constants needed to compute it again: for each variable, its range in the network the model was fitted to (used for the 0-10 rescaling), its transformation and shape, its range after transformation, and its weight; and the maximum resistance per km (standard models; models of earlier versions, per reach, are no longer supported; for SAMC models, also the flow rate and the lattice's `cell_km`; SAMC models of earlier versions, which moved between reaches, are no longer supported). `predictResistnet.py` applies one of these models to the reaches of another network, e.g. another watershed:
 
 ```
 predictResistnet.py -s other_watershed.shp -m out/resistance/out.modelSpec.json -o other
 ```
 
-Because every rescaling uses the fitted network's ranges, a reach with the same values as a reach of the fitted network gets the same result. Values outside those ranges are clamped to them (with a warning giving the share of reaches affected for each variable), so predictions far outside the fitted network's conditions are flat rather than extrapolated. For SAMC models (and standard models per reach), the same applies to the variables' combined value: even when each variable is within its range, a combination the fitted network didn't have can fall outside the combined range, and is clamped to it (with a warning giving the share of reaches, or of moves for SAMC); for standard models per km, the combined value is a weighted mean of the variables' clamped values, so it is always within range. If most reaches are affected, the predicted values barely differ from each other. Variables whose ranges are tied to position in the watershed (e.g. `DIST_DN_KM`, the distance to the sea) rarely overlap between watersheds, so models using them transfer poorly; the SAMC flow rate is per km and transfers as it is. Models are applied reach by reach: if the fitted network merged reaches into longer segments (e.g. the `EDGE_ID` segments of `autoStreamTree` outputs), their values were aggregated over those segments.
+Because every rescaling uses the fitted network's ranges, a reach with the same values as a reach of the fitted network gets the same result. Values outside those ranges are clamped to them (with a warning giving the share of reaches affected for each variable), so predictions far outside the fitted network's conditions are flat rather than extrapolated. The variables' combined value is a weighted mean of their clamped values, so it is always within range. If most reaches are affected, the predicted values barely differ from each other. Variables whose ranges are tied to position in the watershed (e.g. `DIST_DN_KM`, the distance to the sea) rarely overlap between watersheds, so models using them transfer poorly; the SAMC flow rate is per km and transfers as it is. Models are applied reach by reach: if the fitted network merged reaches into longer segments (e.g. the `EDGE_ID` segments of `autoStreamTree` outputs), their values were aggregated over those segments.
 
-For a standard model, the output (`other.predicted.tsv`, and `other.predicted.gpkg` with the reaches) gives each reach's resistance per km (`resistance`, from 1 to the model's maximum resistance per km) and, if the reaches have `--length_col`, that times the reach's length (`reach_resistance`, which is what sums along paths); for models per reach, its resistance (0-1). For a SAMC model, it gives the movement weights to the downstream reach and to the upstream reaches, and the share of moves that go downstream (`p_downstream`, without absorption), with each move in `other.predictedMoves.tsv`; reaches are linked through `--next_down_col` (`NEXT_DOWN` in HydroRIVERS). `-n` selects a model by its rank (default: the best).
+For a standard model, the output (`other.predicted.tsv`, and `other.predicted.gpkg` with the reaches) gives each reach's resistance per km (`resistance`, from 1 to the model's maximum resistance per km) and, if the reaches have `--length_col`, that times the reach's length (`reach_resistance`, which is what sums along paths). A SAMC model gives the same (its resistance per km is the standard model's) and the probability of moving downstream inside each reach (`p_downstream`: from a state whose two neighbours are on the reach, so it depends only on the flow term and the reach's link length, `--length_col` / its number of `cell_km` pieces; NA for reaches of one piece). `-n` selects a model by its rank (default: the best).
 
 ### Integration Into Workflows <a name="workflows"></a>
 

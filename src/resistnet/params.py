@@ -180,27 +180,23 @@ class parseArgs:
 
         # Model and SAMC model options
         parser.add_argument(
-            '--model', type=str, choices=['resistance', 'samc', 'both'],
+            '--model', type=str,
+            choices=['resistance', 'samc', 'coalescent', 'both'],
             default=None,
             help=(
                 'Model to fit: resistance (sums of reach resistances along '
                 'the paths between sites; default), samc (spatial absorbing '
                 'Markov chain: conditional first passage times among sites, '
-                'allowing directional effects), or both (fitted separately, '
-                'then ranked together)'
+                'allowing directional effects), coalescent (Lundgren & '
+                "Ralph's mean coalescence times among sites, allowing "
+                'directional effects), or both '
+                '(resistance and samc, fitted separately, then ranked '
+                'together)'
             )
         )
         parser.add_argument(
             '--samc', action='store_true',
             help='Same as --model samc'
-        )
-        parser.add_argument(
-            '--per_reach', action='store_true',
-            help=(
-                'Standard model: each reach costs its composite value '
-                'whatever its length (the formulation of earlier versions), '
-                'instead of a resistance per km times its length'
-            )
         )
         parser.add_argument(
             '--sizes', type=str,
@@ -218,12 +214,11 @@ class parseArgs:
             help='SAMC: attribute giving the next downstream reach ID'
         )
         parser.add_argument(
-            '--max_resist', type=float, default=None,
+            '--max_resist', type=float, default=1000.0,
             help=(
-                'Upper limit for the maximum resistance (relative to a '
-                'minimum of 1), which is optimised: per km for the standard '
-                "model (default 1000, as ResistanceGA's max.cont), and of "
-                'the composite surface for SAMC (default 500)'
+                'Upper limit for the maximum resistance per km (relative to '
+                'a minimum of 1), which is optimised (as ResistanceGA\'s '
+                'max.cont)'
             )
         )
         parser.add_argument(
@@ -232,10 +227,12 @@ class parseArgs:
         )
         parser.add_argument(
             '--fixAsym', action='store_true',
-            help='SAMC: do not consider directional effects of variables'
+            help=('SAMC: do not consider directional effects of variables '
+                  '(always the case on the lattice, where only the flow '
+                  'term is directional; kept for compatibility)')
         )
         parser.add_argument(
-            '--max_flow', type=float, default=1.0,
+            '--max_flow', type=float, default=0.1,
             help=(
                 'SAMC: upper limit for the rate of the flow (upstream vs '
                 'downstream) term, per km'
@@ -244,6 +241,33 @@ class parseArgs:
         parser.add_argument(
             '--fixFlow', action='store_true',
             help='SAMC: leave out the flow (upstream vs downstream) term'
+        )
+        parser.add_argument(
+            '--samc_absorption', type=str, choices=['none', 'sites'],
+            default='none',
+            help=('SAMC: no absorption (passage times are hitting times), '
+                  'or absorption 1/(2 Ne) at each site per visit')
+        )
+        parser.add_argument(
+            '--samc_pairs', type=str, choices=['max', 'mean'],
+            default='max',
+            help=('SAMC: how the passage times of the two directions '
+                  'between two sites are combined')
+        )
+        parser.add_argument(
+            '--coal_cell_km', type=float, default=5.0,
+            help=('Coalescent model: distance between neighbouring points '
+                  'of its lattice (km)')
+        )
+        parser.add_argument(
+            '--coal_density', type=float, default=1000.0,
+            help=('Coalescent model: population per km of river, setting '
+                  'the coalescence rates relative to the movement rates')
+        )
+        parser.add_argument(
+            '--cell_km', type=float, default=1.0,
+            help=('SAMC: distance between neighbouring states of the '
+                  "lattice the walker moves on (km; samc's cell size)")
         )
 
         # Multi-model inference options
@@ -275,13 +299,15 @@ class parseArgs:
             parser.error("--vcf and -g/--inmat can't both be used")
         if self.vcf and not self.popmap:
             parser.error("--vcf needs --popmap")
-        if self.max_resist is not None and self.max_resist <= 1:
+        if self.max_resist <= 1:
             parser.error("--max_resist must be greater than 1")
         if self.fix_resist is not None and self.fix_resist < 1:
             parser.error("--fix_resist must be at least 1")
         # The smallest flow rate searched (samc_network.MIN_FLOW)
         if self.max_flow <= 0.001:
             parser.error("--max_flow must be greater than 0.001")
+        if self.cell_km <= 0:
+            parser.error("--cell_km must be positive")
 
         # 'delta' refers to the MLPE output column delta_aic_null
         if self.fitmetric == 'delta':
@@ -308,19 +334,3 @@ class parseArgs:
             sys.exit(1)
         if self.vars:
             self.agg_opts = {var: "ARITH" for var in self.variables}
-
-    def max_resist_for(self, model):
-        """
-        The upper limit of the maximum resistance for a model: --max_resist,
-        or by default 1000 for the standard model (per km, as ResistanceGA's
-        max.cont) and 500 for SAMC (of the composite surface).
-
-        Args:
-            model (str): "resistance" or "samc".
-
-        Returns:
-            float: The upper limit.
-        """
-        if self.max_resist is not None:
-            return float(self.max_resist)
-        return 500.0 if model == "samc" else 1000.0

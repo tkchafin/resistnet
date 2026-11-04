@@ -19,6 +19,8 @@ from resistnet.resistance_network import ResistanceNetwork
 from resistnet.resistance_network import ResistanceNetworkWorker
 from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.samc_network import ResistanceNetworkSAMCWorker
+from resistnet.coalescent_network import ResistanceNetworkCoalescent
+from resistnet.coalescent_network import ResistanceNetworkCoalescentWorker
 from resistnet.samc_network import MIN_FLOW
 from resistnet.report import write_pairwise_table
 from resistnet.hall_of_fame import HallOfFame
@@ -81,12 +83,9 @@ class ModelRunner:
         self.num_attributes = getattr(
             resistance_network, "num_attributes", 4
         )
-        # Standard model with resistances per km: each model also has a
-        # maximum resistance per km (after the variables' attributes)
-        self.per_km = (
-            self.num_attributes == 4
-            and getattr(resistance_network, "units", "reach") == "km"
-        )
+        # Standard model: each model also has a maximum resistance per km
+        # (after the variables' attributes)
+        self.per_km = self.num_attributes == 4
 
         random.seed(self.seed)
         np.random.seed(self.seed)
@@ -404,7 +403,9 @@ class ModelRunner:
         # get worker type
         # NOTE: THe order is important here, have to do subclass before
         # parent check (since both will return true)
-        if isinstance(self.resistance_network, ResistanceNetworkSAMC):
+        if isinstance(self.resistance_network, ResistanceNetworkCoalescent):
+            worker_type = "coalescent"
+        elif isinstance(self.resistance_network, ResistanceNetworkSAMC):
             worker_type = "samc"
         elif isinstance(self.resistance_network, ResistanceNetwork):
             worker_type = "base"
@@ -440,11 +441,10 @@ class ModelRunner:
         }
         if worker_type == "base":
             net = self.resistance_network
-            worker_args['units'] = getattr(net, "units", "reach")
             worker_args['lengths'] = getattr(net, "_lengths", None)
             worker_args['max_resist'] = getattr(net, "max_resist", 1000)
             worker_args['fix_resist'] = getattr(net, "fix_resist", None)
-        if worker_type == "samc":
+        if worker_type in ("samc", "coalescent"):
             worker_args['adj'] = self.resistance_network._adj
             worker_args['origin'] = self.resistance_network._origin
             worker_args['R'] = self.resistance_network._R
@@ -459,6 +459,12 @@ class ModelRunner:
             worker_args[
                 'edge_site_indices'
                 ] = self.resistance_network._edge_site_indices
+            worker_args['lattice'] = self.resistance_network._lattice
+            worker_args['site_states'] = self.resistance_network._site_states
+            worker_args['R_lat'] = self.resistance_network._R_lat
+            worker_args['cell_km'] = self.resistance_network.cell_km
+            worker_args['absorption'] = self.resistance_network.absorption
+            worker_args['pairs'] = self.resistance_network.pairs
 
         fd, self._worker_args_file = tempfile.mkstemp(
             prefix="resistnet_worker_", suffix=".pkl")
@@ -508,6 +514,8 @@ class ModelRunner:
                 worker = ResistanceNetworkWorker(**worker_args)
             elif worker_type == "samc":
                 worker = ResistanceNetworkSAMCWorker(**worker_args)
+            elif worker_type == "coalescent":
+                worker = ResistanceNetworkCoalescentWorker(**worker_args)
             else:
                 raise ValueError("Worker type not implemented")
         except Exception:
@@ -802,15 +810,18 @@ class ModelRunnerTPE(ModelRunner):
 
             # Directional effect (SAMC only): 1 = moving towards higher
             # (transformed) values is harder, 0 = symmetric; the reversed
-            # transformations give the opposite direction
+            # transformations give the opposite direction. Not on the
+            # lattice (directional False), where only the flow term is
             if self.num_attributes == 5:
+                directional = getattr(self.resistance_network,
+                                      "directional", True)
                 self.space[f"{var_name}_asym"] = hp.choice(
                     f"{var_name}_asym",
-                    [0] if self.fixAsym else [0, 1]
+                    [0] if self.fixAsym or not directional else [0, 1]
                 )
 
         if self.per_km:
-            # Maximum resistance per km K (standard model, units "km"),
+            # Maximum resistance per km K (standard model),
             # log-uniform from 1 (distance alone), as SAMC's
             net = self.resistance_network
             if net.fix_resist is not None:
@@ -823,7 +834,7 @@ class ModelRunnerTPE(ModelRunner):
                 )
 
         if self.num_attributes == 5:
-            # Maximum resistance of the composite surface (SAMC only)
+            # Maximum resistance per km (SAMC)
             net = self.resistance_network
             if net.fix_resist is not None:
                 self.space["max_resistance"] = hp.choice(

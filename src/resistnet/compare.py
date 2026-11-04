@@ -31,6 +31,8 @@ REFERENCES = {
     "distance_only": ("reference", "distance only (km; standard model)", 4),
     "samc_distance": ("reference", "SAMC distance alone", 4),
     "samc_flow": ("reference", "SAMC flow alone", 5),
+    "coal_distance": ("reference", "coalescent distance alone", 4),
+    "coal_flow": ("reference", "coalescent flow alone", 5),
 }
 
 
@@ -82,8 +84,9 @@ def describe(row, variables, network, runner):
         parts.append(f"{v} ({label})")
     flow = float(row["flow"]) if samc and "flow" in row else 0.0
     if flow:
-        parts.append(f"flow {flow:+.3f}/km (upstream "
-                     f"{'harder' if flow > 0 else 'easier'})")
+        # The walker moves like a lineage, against gene flow
+        parts.append(f"flow {flow:+.3f}/km (gene flow "
+                     f"{'upstream' if flow > 0 else 'downstream'})")
     text = " + ".join(parts)
     # Standard model per km: the range of its resistance per km
     if not samc and parts and "max_resistance" in row:
@@ -163,7 +166,7 @@ def comparison_tables(runs, tol=1e-6):
                 refs[ref] = table.loc[ref]
     for ref, r in refs.items():
         family, model, k = REFERENCES[ref]
-        if ref == "samc_flow":
+        if ref in ("samc_flow", "coal_flow"):
             model += f" ({float(r['flow']):+.3f}/km)"
         rows.append({"family": family, "model": model, "k": k,
                      "loglik": float(r["loglik"]), "aic": float(r["aic"])})
