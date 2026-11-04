@@ -173,12 +173,11 @@ class parseArgs:
             help='SAMC: attribute giving the next downstream reach ID'
         )
         parser.add_argument(
-            '--max_resist', type=float, default=None,
+            '--max_resist', type=float, default=1000.0,
             help=(
-                'Upper limit for the maximum resistance (relative to a '
-                'minimum of 1), which is optimised: per km for the standard '
-                "model (default 1000, as ResistanceGA's max.cont), and of "
-                'the composite surface for SAMC (default 500)'
+                'Upper limit for the maximum resistance per km (relative to '
+                'a minimum of 1), which is optimised (as ResistanceGA\'s '
+                'max.cont)'
             )
         )
         parser.add_argument(
@@ -187,10 +186,12 @@ class parseArgs:
         )
         parser.add_argument(
             '--fixAsym', action='store_true',
-            help='SAMC: do not consider directional effects of variables'
+            help=('SAMC: do not consider directional effects of variables '
+                  '(always the case on the lattice, where only the flow '
+                  'term is directional; kept for compatibility)')
         )
         parser.add_argument(
-            '--max_flow', type=float, default=1.0,
+            '--max_flow', type=float, default=0.1,
             help=(
                 'SAMC: upper limit for the rate of the flow (upstream vs '
                 'downstream) term, per km'
@@ -199,6 +200,23 @@ class parseArgs:
         parser.add_argument(
             '--fixFlow', action='store_true',
             help='SAMC: leave out the flow (upstream vs downstream) term'
+        )
+        parser.add_argument(
+            '--samc_absorption', type=str, choices=['none', 'sites'],
+            default='none',
+            help=('SAMC: no absorption (passage times are hitting times), '
+                  'or absorption 1/(2 Ne) at each site per visit')
+        )
+        parser.add_argument(
+            '--samc_pairs', type=str, choices=['max', 'mean'],
+            default='max',
+            help=('SAMC: how the passage times of the two directions '
+                  'between two sites are combined')
+        )
+        parser.add_argument(
+            '--cell_km', type=float, default=1.0,
+            help=('SAMC: distance between neighbouring states of the '
+                  "lattice the walker moves on (km; samc's cell size)")
         )
 
         # Multi-model inference options
@@ -226,13 +244,15 @@ class parseArgs:
             parser.error(f"--samc conflicts with --model {self.model}")
         self.models = (["resistance", "samc"] if self.model == "both"
                        else [self.model])
-        if self.max_resist is not None and self.max_resist <= 1:
+        if self.max_resist <= 1:
             parser.error("--max_resist must be greater than 1")
         if self.fix_resist is not None and self.fix_resist < 1:
             parser.error("--fix_resist must be at least 1")
         # The smallest flow rate searched (samc_network.MIN_FLOW)
         if self.max_flow <= 0.001:
             parser.error("--max_flow must be greater than 0.001")
+        if self.cell_km <= 0:
+            parser.error("--cell_km must be positive")
 
         # 'delta' refers to the MLPE output column delta_aic_null
         if self.fitmetric == 'delta':
@@ -259,19 +279,3 @@ class parseArgs:
             sys.exit(1)
         if self.vars:
             self.agg_opts = {var: "ARITH" for var in self.variables}
-
-    def max_resist_for(self, model):
-        """
-        The upper limit of the maximum resistance for a model: --max_resist,
-        or by default 1000 for the standard model (per km, as ResistanceGA's
-        max.cont) and 500 for SAMC (of the composite surface).
-
-        Args:
-            model (str): "resistance" or "samc".
-
-        Returns:
-            float: The upper limit.
-        """
-        if self.max_resist is not None:
-            return float(self.max_resist)
-        return 500.0 if model == "samc" else 1000.0

@@ -66,7 +66,7 @@ def test_spec_reproduces_resistances(net, t, s):
     reaches = raw_values(net)
     reaches.insert(0, "HYRIV_ID", reaches.index.to_numpy())
     reaches["LENGTH_KM"] = net._lengths
-    table, _, _ = pr.predict_reaches(
+    table, _ = pr.predict_reaches(
         reaches, {"reachid_col": "HYRIV_ID", "models": [spec]})
     np.testing.assert_allclose(
         table["reach_resistance"],
@@ -75,14 +75,17 @@ def test_spec_reproduces_resistances(net, t, s):
 
 
 def test_spec_of_earlier_version_refused(tmp_path):
-    # Standard models of earlier versions (per reach: no units "km") are
-    # no longer supported
+    # Standard models of earlier versions (per reach: no units "km") and
+    # SAMC models of earlier versions (moves between reaches: no cell_km)
+    # are no longer supported
     path = tmp_path / "old.modelSpec.json"
-    path.write_text(json.dumps({"models": [
-        {"type": "standard", "variables": {}, "composite_min": 0.0,
-         "composite_max": 1.0}]}))
-    with pytest.raises(ValueError, match="earlier version"):
-        pr.load_spec(str(path))
+    for m in [{"type": "standard", "variables": {}, "composite_min": 0.0,
+               "composite_max": 1.0},
+              {"type": "samc", "variables": {}, "max_resistance": 10.0,
+               "flow": 0.0}]:
+        path.write_text(json.dumps({"models": [m]}))
+        with pytest.raises(ValueError, match="earlier version"):
+            pr.load_spec(str(path))
 
 
 def test_spec_file_and_reach_prediction(net, tmp_path):
@@ -99,8 +102,7 @@ def test_spec_file_and_reach_prediction(net, tmp_path):
     raw = raw_values(net)
     reaches = raw.copy()
     reaches.insert(0, "HYRIV_ID", raw.index.to_numpy())
-    table, moves, clamped = pr.predict_reaches(reaches, spec)
-    assert moves is None
+    table, clamped = pr.predict_reaches(reaches, spec)
     assert all(v == 0 for v in clamped.values())
     hof = pd.read_csv(f"{out}.HallOfFame.tsv", sep="\t", na_values="-")
     ind = runner._row_individual(runner.bests.getHOF().iloc[0])
@@ -113,31 +115,22 @@ def test_spec_file_and_reach_prediction(net, tmp_path):
     for v, var in best["variables"].items():
         far = reaches.copy()
         far[v] = np.where(far[v] == far[v].max(), far[v] + 100, far[v])
-        far_table, _, far_clamped = pr.predict_reaches(far, spec)
+        far_table, far_clamped = pr.predict_reaches(far, spec)
         np.testing.assert_allclose(far_table["resistance"],
                                    table["resistance"])
         assert far_clamped[v] > 0
     json.dumps(spec)
 
 
-def test_composite_clamped_and_reported():
-    # SAMC: each variable is within its training range, but their
-    # combination on a move can still fall outside the training composite
-    # range (the variables' minima didn't occur together): it is clamped,
-    # and reported (here two reaches, one link each way)
-    var = {"min": 0.0, "max": 10.0, "transform": 0, "shape": 0.0,
-           "tmin": 0.0, "tmax": 10.0, "weight": 1.0}
-    samc = {"type": "samc", "variables": {"a": dict(var), "b": dict(var)},
-            "composite_min": 0.5, "composite_max": 1.5,
-            "max_resistance": 10.0, "flow": 0.0}
-    for v in samc["variables"].values():
-        v.update(asym=0, link_min=0.0, link_max=1.0)
-    reaches = pd.DataFrame({"HYRIV_ID": [1, 2], "NEXT_DOWN": [2, 0],
-                            "LENGTH_KM": [1.0, 1.0],
-                            "a": [0.0, 1.0], "b": [0.0, 1.0]})
-    spec = {"reachid_col": "HYRIV_ID", "length_col": "LENGTH_KM",
-            "models": [samc]}
-    table, moves, clamped = pr.predict_reaches(reaches, spec)
-    # Links (mean of 0 and 0.1 on the 0-1 scale) sum to 0.1 < 0.5: clamped
-    assert clamped["composite"] == 1.0
-    np.testing.assert_allclose(moves["weight"], 1.0)
+def test_samc_downstream():
+    # SAMC: a state inside a reach has its two neighbours on the same reach,
+    # the same distance away, so P(downstream) = 1 / (1 + exp(-2 flow l)),
+    # l the link length (reach length / its number of pieces); NaN for a
+    # reach of one piece (no inner state)
+    model = {"cell_km": 1.0, "flow": 0.4}
+    p = pr.samc_downstream([3.0, 2.4, 0.7], model)
+    np.testing.assert_allclose(p[:2], 1 / (1 + np.exp(-0.8 * np.array(
+        [1.0, 1.2]))))
+    assert np.isnan(p[2])
+    np.testing.assert_allclose(
+        pr.samc_downstream([3.0], {"cell_km": 1.0, "flow": 0.0}), 0.5)

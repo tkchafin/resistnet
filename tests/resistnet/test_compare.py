@@ -126,7 +126,8 @@ def test_run_both_models_layout(tmp_path):
         assert os.path.exists(os.path.join(out, f"nmt.{ext}.tsv"))
 
     # The pairwise tables: genetic distances as in the input, and model
-    # distances as in the written matrices (SAMC: mean of both directions)
+    # distances as in the written matrices (SAMC: the larger of the two
+    # directions, by default)
     gen = pd.read_csv(os.path.join(DATA, "nmt.popGenDistMat.txt"),
                       sep="\t", index_col=0)
     for model, kind in (("resistance", "ResistanceMatrix"),
@@ -141,9 +142,10 @@ def test_run_both_models_layout(tmp_path):
         M = pd.read_csv(f"{prefix}.Model-Best.{kind}.tsv", sep="\t",
                         index_col=0)
         M.columns = M.columns.astype(str)
+        combine = max if model == "samc" else (lambda x, y: (x + y) / 2)
         np.testing.assert_allclose(
             pw["best_model_distance"],
-            [(M.loc[a, b] + M.loc[b, a]) / 2
+            [combine(M.loc[a, b], M.loc[b, a])
              for a, b in zip(pw["site1"], pw["site2"])], rtol=1e-12)
         # River distance is the distance-only reference model's distance:
         # MLPE on it gives that model's log-likelihood

@@ -53,13 +53,14 @@ def effectiveResistanceMatrix(points, inc_matrix, edge_resistance):
     return r
 
 
-def conditionalFirstPassTime(Q, sites_i, gendist, absorption=None):
+def conditionalFirstPassTime(Q, sites_i, gendist, absorption=None,
+                             combine="mean"):
     """
     Conditional first passage times (CFPT) among sites, fitted to genetic
     distances with MLPE.
 
-    Genetic distances are symmetric, so the model uses the mean of the two
-    directions between each pair of sites.
+    Genetic distances are symmetric, so the model combines the two
+    directions between each pair of sites (their mean or their maximum).
 
     Args:
         Q (scipy.sparse matrix): Transient transition matrix.
@@ -67,6 +68,8 @@ def conditionalFirstPassTime(Q, sites_i, gendist, absorption=None):
         gendist (numpy.ndarray): Genetic distance matrix.
         absorption (array-like, optional): Total absorption of each state
             (see CFPT.cond_passage).
+        combine (str): How the two directions between a pair of sites are
+            combined: "mean" or "max".
 
     Returns:
         tuple: The CFPT matrix (row = origin, column = destination), and the
@@ -75,5 +78,26 @@ def conditionalFirstPassTime(Q, sites_i, gendist, absorption=None):
     cfpt = cfpt_samc.CFPT(Q, sites_i, absorption)
     if not np.all(np.isfinite(cfpt)):
         return cfpt, None
-    res = mlpe.MLPE(gendist, (cfpt + cfpt.T) / 2.0, scale=True)
+    res = mlpe.MLPE(gendist, combine_directions(cfpt, combine), scale=True)
     return cfpt, res
+
+
+def combine_directions(T, how="mean"):
+    """
+    Combines the passage times of the two directions between each pair of
+    sites into a symmetric distance: their mean, or their maximum.
+
+    Args:
+        T (numpy.ndarray): Passage times (row = origin, column =
+                           destination).
+        how (str): "mean" or "max".
+
+    Returns:
+        numpy.ndarray: The symmetric distances.
+    """
+    T = np.asarray(T, dtype=float)
+    if how == "mean":
+        return (T + T.T) / 2.0
+    if how == "max":
+        return np.maximum(T, T.T)
+    raise ValueError(f"combine must be 'mean' or 'max', not {how!r}")

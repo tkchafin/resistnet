@@ -71,7 +71,8 @@ def cond_passage(Q, dest, absorption=None):
     which is enough unless some b is below 1e-15 or the refinement does not
     converge (very ill-conditioned chains); then the subtraction-free
     elimination of Grassmann, Taksar & Heyman (1985), which is accurate
-    element-wise regardless of conditioning, is used instead.
+    element-wise regardless of conditioning, is used instead (also when
+    the LU factorisation fails as numerically singular).
 
     Args:
         Q (scipy.sparse matrix): Transient transition matrix.
@@ -91,8 +92,16 @@ def cond_passage(Q, dest, absorption=None):
     qj = Q[keep][:, [dest]].toarray().ravel()
 
     A = sp.csc_matrix(sp.identity(n - 1) - Qj)
-    lu = splu(A)
-    b, ok_b = _refine(lu, A, qj, lu.solve(qj))
+    try:
+        lu = splu(A)
+    except RuntimeError:
+        # Numerically singular (e.g. hitting times beyond floating point
+        # range): the subtraction-free elimination below
+        lu = None
+    if lu is not None:
+        b, ok_b = _refine(lu, A, qj, lu.solve(qj))
+    else:
+        ok_b = False
     if ok_b and np.all(b > 1e-15):
         x, ok_x = _refine(lu, A, b, lu.solve(b))
         if ok_x:
