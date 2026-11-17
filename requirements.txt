@@ -31,7 +31,6 @@ cryptography @ file:///Users/runner/miniforge3/conda-bld/cryptography-split_1675
 custom-inherit==2.4.1
 cycler @ file:///home/conda/feedstock_root/build_artifacts/cycler_1635519461629/work
 datrie @ file:///Users/runner/miniforge3/conda-bld/datrie_1667337166057/work
-deap @ file:///Users/runner/miniforge3/conda-bld/deap_1667048222520/work
 defusedxml @ file:///home/conda/feedstock_root/build_artifacts/defusedxml_1615232257335/work
 deprecat==2.1.1
 dill==0.3.7
