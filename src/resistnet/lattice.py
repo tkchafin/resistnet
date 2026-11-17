@@ -41,8 +41,11 @@ class Lattice:
         reach_states (list): For each reach, its inner states, from upstream
                              to downstream.
         reach_link (numpy.ndarray): Length of the links of each reach.
-        reach_ends (numpy.ndarray): Upstream and downstream node (state)
-                                    of each reach.
+        chains (list): For each edge of the network (a reach, or one part
+                       of a reach split into several edges): its reach
+                       index, upstream and downstream node states, inner
+                       states from upstream to downstream, and link
+                       length (km).
         span (float): Distance from the outlet to the furthest state (km).
     """
 
@@ -84,20 +87,19 @@ class Lattice:
         a, b, length, link_reach = [], [], [], []
         self.reach_states = [[] for _ in edge_order]
         self.reach_link = np.full(len(edge_order), np.nan)
-        self.reach_ends = np.zeros((len(edge_order), 2), dtype=int)
+        self.chains = []
         for u, v, d in K.edges(data=True):
             e = reach_ix[d[reachid_col]]
-            self.reach_ends[e] = ix[u], ix[v]
             L = float(d[length_col])
             pieces = max(1, int(round(L / self.cell_km)))
             self.reach_link[e] = L / pieces
-            prev = ix[u]
+            prev, inner = ix[u], []
             for k in range(1, pieces + 1):
                 if k < pieces:
                     P.append(pos[ix[u]] - k * L / pieces)
                     state_reach.append(e)
                     cur = len(P) - 1
-                    self.reach_states[e].append(cur)
+                    inner.append(cur)
                 else:
                     cur = ix[v]
                 a.append(prev)
@@ -105,6 +107,8 @@ class Lattice:
                 length.append(L / pieces)
                 link_reach.append(e)
                 prev = cur
+            self.reach_states[e] += inner
+            self.chains.append((e, ix[u], ix[v], inner, L / pieces))
         a, b = np.array(a, dtype=int), np.array(b, dtype=int)
         length = np.array(length, dtype=float)
         link_reach = np.array(link_reach, dtype=int)
@@ -136,8 +140,10 @@ class Lattice:
         rows = [nodes]
         own = sp.identity(n_reach, format="csr")
         inner = [None] * (self.n - n_nodes)
-        for e, states in enumerate(self.reach_states):
-            u, v = self.reach_ends[e]
+        # Each edge is its own chain of states from its upstream node to
+        # its downstream node (a reach split into several edges has one
+        # chain per part, each with the reach's value at its middle)
+        for e, u, v, states, _ in self.chains:
             for k, s in enumerate(states):
                 f = (k + 1) / (len(states) + 1)
                 if f <= 0.5:
@@ -241,20 +247,17 @@ class Lattice:
         Returns:
             numpy.ndarray: Columns (downstream, upstream), in edge order.
         """
-        if potential is None:
-            down = 1.0 / (1.0 + np.exp(-2.0 * rate * self.reach_link))
-        else:
-            U = np.asarray(potential, dtype=float)
-            down = np.full(len(self.reach_states), np.nan)
-            for e, states in enumerate(self.reach_states):
-                if not states:
-                    continue
-                u, v = self.reach_ends[e]
-                chain = [u] + list(states) + [v]
-                bias = np.array([U[chain[k + 1]] - U[chain[k - 1]]
-                                 for k in range(1, len(chain) - 1)])
-                down[e] = np.mean(1.0 / (1.0 + np.exp(
-                    -2.0 * rate * self.reach_link[e] + bias)))
-        inner = np.array([len(s) > 0 for s in self.reach_states])
-        down = np.where(inner, down, np.nan)
+        U = None if potential is None else np.asarray(potential, dtype=float)
+        vals = [[] for _ in self.reach_states]
+        for e, u, v, states, link in self.chains:
+            if not states:
+                continue
+            if U is None:
+                vals[e].append(1.0 / (1.0 + np.exp(-2.0 * rate * link)))
+                continue
+            chain = [u] + list(states) + [v]
+            bias = np.array([U[chain[k + 1]] - U[chain[k - 1]]
+                             for k in range(1, len(chain) - 1)])
+            vals[e].extend(1.0 / (1.0 + np.exp(-2.0 * rate * link + bias)))
+        down = np.array([np.mean(v) if v else np.nan for v in vals])
         return np.column_stack((down, 1.0 - down))

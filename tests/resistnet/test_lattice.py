@@ -222,8 +222,7 @@ def test_reach_moves_potential():
     Q = cfpt.transition_matrix(lat.weights(rate=rate, potential=U),
                                np.zeros(lat.n)).tocsr()
     moves = lat.reach_moves(rate, U)
-    for e, states in enumerate(lat.reach_states):
-        u, v = lat.reach_ends[e]
+    for e, u, v, states, _ in lat.chains:
         chain = [u] + list(states) + [v]
         down = [Q[chain[k], chain[k + 1]]
                 for k in range(1, len(chain) - 1)]
@@ -255,6 +254,45 @@ def test_weights_flow_and_distance():
         s = states[1]                   # neighbours: states[0], states[2]
         assert Q[s, states[2]] == pytest.approx(moves[e, 0])
         assert Q[s, states[0]] == pytest.approx(moves[e, 1])
+
+
+def test_multi_part_reach():
+    # A reach split into two edges with the same ID (as autoStreamTree
+    # does with multi-part reaches): each part is its own chain, with the
+    # reach's value at its middle; the symmetric model is unchanged
+    K, order, lat, cells = river()
+    K2 = nx.DiGraph()
+    for rid, (u, v, _) in REACHES.items():
+        L = abs(v[0] - u[0]) + abs(v[1] - u[1])
+        if rid == 3:
+            K2.add_edge(u, (6, 8), HYRIV_ID=3, LENGTH_KM=3.0)
+            K2.add_edge((6, 8), v, HYRIV_ID=3, LENGTH_KM=3.0)
+        else:
+            K2.add_edge(u, v, HYRIV_ID=rid, LENGTH_KM=float(L))
+    lat2 = Lattice(K2, order, "HYRIV_ID", "LENGTH_KM", cell_km=1.0)
+    assert lat2.n == lat.n and len(lat2.chains) == 6
+    e3 = order.index(3)
+    parts = [c for c in lat2.chains if c[0] == e3]
+    assert [len(c[3]) for c in parts] == [2, 2]
+    assert sorted(parts[0][3] + parts[1][3]) == sorted(lat2.reach_states[e3])
+    # Same movement weights and passage times between the sites
+    r = [REACHES[e][2] for e in order]
+    sites = list(SITES)
+    for rate in (0.0, 0.2):
+        T = [cfpt.CFPT(cfpt.transition_matrix(x.weights(r, rate),
+                                              np.zeros(x.n)),
+                       x.states(sites)) for x in (lat, lat2)]
+        np.testing.assert_allclose(T[0], T[1], rtol=1e-12)
+    # Values: the split node takes the reach's value (both half-links are
+    # reach 3), and each part's inner states lie between its ends and the
+    # reach's value
+    X = [DIRECTIONAL[e] for e in order]
+    x = lat2.state_values(X)
+    assert x[lat2.states([(6, 8)])[0]] == pytest.approx(0.4)
+    for _, u, v, states, _ in parts:
+        lo, hi = min(x[u], x[v], 0.4), max(x[u], x[v], 0.4)
+        assert np.all((x[states] >= lo - 1e-12) & (x[states] <= hi + 1e-12))
+    assert np.all(np.isfinite(lat2.reach_moves(0.1, lat2.state_values(X))))
 
 
 def test_one_outlet_required():
