@@ -18,10 +18,9 @@ def parsePairwise(points, inc_matrix, multi, gendist):
                result (res).
     """
     r = effectiveResistanceMatrix(points, inc_matrix, multi)
-    # res = mlpe_rga.MLPE_R(gendist, r, scale=True)
-    res2 = mlpe.MLPE(gendist, r, scale=True)
+    res = mlpe.MLPE(gendist, r, scale=True)
 
-    return r, res2
+    return r, res
 
 
 def effectiveResistanceMatrix(points, inc_matrix, edge_resistance):

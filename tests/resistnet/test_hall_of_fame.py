@@ -147,15 +147,6 @@ def test_print_hof(hall_of_fame_fixture):
     assert "var2" in output, "Output should contain 'var2'"
 
 
-def test_calculate_bic(hall_of_fame_fixture):
-    n = 10
-
-    hall_of_fame_fixture.calculate_bic(n)
-
-    assert "bic" in hall_of_fame_fixture.data.columns, \
-        "BIC column not added to data"
-
-
 def test_delta_aic(hall_of_fame_fixture):
     hall_of_fame_fixture.delta_aic()
 

@@ -89,7 +89,6 @@ def test_outlet_reaches_linked(samc_net, tmp_path):
         verbose=False)
     n_comp, _ = sp.csgraph.connected_components(net._adj, directed=False)
     assert n_comp == 1
-    assert len(net._edge_site_indices) == 14
     assert len(net._site_states) == 14
     idx = {e: i for i, e in enumerate(net._edge_order)}
     root = sorted(idx[d[net.reachid_col]] for _, _, d in
@@ -132,15 +131,31 @@ def test_lattice_sites_and_absorption(samc_net, ref_net):
     ("tmp_dc_cyr", 5, REF_TMP_DIR_TO_SITE5)])
 def test_cfpt_precision(samc_net, var, site, ref):
     # Passage times on extremely uneven moves between reaches (a numerical
-    # test of CFPT)
+    # test of CFPT), with the original reach states: each site's state is
+    # the reach below its node, absorbing with probability 1 / (2 Ne)
     from resistnet.CFPT import CFPT, transition_matrix
-    from resistnet.utils import minmax, minmax_nonzero
+
+    def minmax(x):
+        return (x - x.min()) / (x.max() - x.min())
+
+    def minmax_nonzero(x):
+        x = minmax(x)
+        x[x == 0] = x[x > 0].min()
+        return x
+
+    idx = {e: i for i, e in enumerate(samc_net._edge_order)}
+    sites = list(samc_net._points_snapped.keys())
+    tips = [idx[samc_net._K.edges[s, next(samc_net._K.successors(s))]
+                [samc_net.reachid_col]] for s in sites]
+    R = np.zeros(len(idx))
+    for s, t in zip(sites, tips):
+        R[t] = 1 / (2 * samc_net._sizes[s])
     v = samc_net._predictors[var].to_numpy(dtype=float)
     v = (v - v.min()) / (v.max() - v.min())
     rows, cols = samc_net._adj.nonzero()
     w = minmax_nonzero(1 / minmax_nonzero(minmax(v[cols] - v[rows])))
     W = sp.csr_matrix((w, (rows, cols)), shape=samc_net._adj.shape)
-    T = CFPT(transition_matrix(W, samc_net._R), samc_net._edge_site_indices)
+    T = CFPT(transition_matrix(W, R), tips)
     np.testing.assert_allclose(T[:, site], ref, rtol=1e-10)
 
 

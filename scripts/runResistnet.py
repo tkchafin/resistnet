@@ -103,41 +103,6 @@ def main():
     if any(m in runs for m in ("resistance", "samc")):
         build_report(params.out)
 
-    # # Step 2: Initialise ModelRunner
-    # runner = ModelRunnerGA(
-    #     resistance_network=network,
-    #     seed=params.seed,
-    #     verbose=True
-    # )
-
-    # # Step 3: Run GA optimisation
-    # runner.run_ga(
-    #     maxgens=params.maxGens,
-    #     fitmetric=params.fitmetric,
-    #     threads=params.GA_procs,
-    #     burnin=params.burnin,
-    #     deltaB=params.deltaB,
-    #     deltaB_perc=params.deltaB_perc,
-    #     indpb=params.indpb,
-    #     mutpb=params.mutpb,
-    #     cxpb=params.cxpb,
-    #     nFail=params.nfail,
-    #     popsize=params.popsize,
-    #     maxpopsize=params.maxpopsize,
-    #     fixWeight=params.fixWeight,
-    #     fixShape=params.fixShape,
-    #     min_weight=params.min_weight,
-    #     max_shape=params.max_shape,
-    #     max_hof_size=params.max_hof_size,
-    #     awsum=params.awsum,
-    #     only_keep=params.only_keep,
-    #     use_full=params.use_full,
-    #     fixed_params=params.transFile,
-    #     out=params.out,
-    #     plot=True,
-    #     verbose=True
-    # )
-
 
 def build_network(params, model, prefix):
     """

@@ -170,10 +170,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         self._edge_origin = None
         self._reach_origin = None
         self._Kd = None
-        self._edge_absorption = None
-        self._R = None
-        self._edge_site_indices = None
-        self._flow_pos = None
         self._lattice = None
         self._site_states = None
         self._R_lat = None
@@ -187,11 +183,7 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
 
         # direct graph
         self.polarise_network(self._origin)
-        self._flow_pos = self.flow_positions()
         self.plot_upstream_changes(self.output_prefix)
-
-        # calculate edge-wise absorption
-        self.calculate_absorption()
 
         # The lattice the walker moves on
         self.build_lattice()
@@ -468,79 +460,6 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         dense_adj_matrix = self._adj.toarray()
         adj_out = self.output_prefix + ".adjacencyMatrix.tsv"
         np.savetxt(adj_out, dense_adj_matrix, delimiter='\t', fmt='%d')
-
-    def flow_positions(self):
-        """
-        Distance along the flow from the middle of each reach to the outlet of
-        the network (in the units of length_col, i.e. km).
-
-        Differences between adjacent reaches are the distance moved upstream
-        (positive) or downstream (negative) between their midpoints; up to a
-        constant, this is the distance to the sea (DIST_DN_KM in
-        HydroRIVERS) at each reach's midpoint.
-
-        Returns:
-            numpy.ndarray: Position of each reach, ordered as self._edge_order
-        """
-        eid = self.reachid_col
-        length = {d[eid]: d[self.length_col]
-                  for _, _, d in self._K.edges(data=True)}
-        L = np.array([float(length[e]) for e in self._edge_order])
-        rows, cols = self._adj.nonzero()
-        down = np.asarray(self._adj[rows, cols]).ravel() == 1
-        nxt = dict(zip(rows[down], cols[down]))
-
-        # Distance from the downstream end of each reach to the outlet
-        below = np.full(len(L), np.nan)
-        for start in range(len(L)):
-            chain = [start]
-            while chain[-1] in nxt and np.isnan(below[chain[-1]]):
-                chain.append(nxt[chain[-1]])
-            last = chain[-1]
-            if np.isnan(below[last]):
-                below[last] = 0.0
-            for s in reversed(chain[:-1]):
-                below[s] = below[nxt[s]] + L[nxt[s]]
-        return below + L / 2.0
-
-    def calculate_absorption(self):
-        # Initialize the array for absorption values, filled with zeros
-        n = len(self._edge_order)
-        self._edge_absorption = [0] * n
-
-        # Mapping from edge IDs to indices in the absorption array
-        edge_to_idx = {
-            edge_id: idx for idx, edge_id in enumerate(self._edge_order)}
-
-        sites = list(self._points_snapped.keys())
-        tips = [None] * len(sites)
-        # Iterate over edges in the graph
-        for u, _, edge_data in self._K.edges(data=True):
-            # Get the edge ID from edge_data using the identifier column name
-            if self.reachid_col in edge_data:
-                edge_id = edge_data[self.reachid_col]
-                if edge_id in edge_to_idx:
-                    # Determine if the 'source' node (u) is sample site
-                    if u in sites:
-                        # Get size
-                        if u in self._sizes:
-                            pop_size = self._sizes[u]
-                            # Calculate the absorption value for the edge
-                            # 1/2Ne (prob 2 alleles coalesce)
-                            absorption_value = 1 / (2 * pop_size)
-                            idx = edge_to_idx[edge_id]
-                            self._edge_absorption[idx] = absorption_value
-                            tips[sites.index(u)] = idx
-                        else:
-                            print(f"Population size missing for {u}")
-        missing = [s for s, t in zip(sites, tips) if t is None]
-        if missing:
-            raise ValueError(
-                f"No downstream reach found for sample sites {missing}"
-            )
-        self._R = np.array(self._edge_absorption)
-        self._R = self._R.reshape(-1, 1)
-        self._edge_site_indices = tips
 
     def read_sizes(self):
         """
@@ -1353,14 +1272,10 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         gendist (numpy.ndarray): Genetic distance matrix.
         adj (scipy.sparse matrix): Reach adjacency matrix.
         origin (tuple): Origin node.
-        R (numpy.ndarray): Absorption array R
         allSymmetric (bool): Ignore flow direction in the adjacency matrix.
-        edge_site_indices (list): Reach index of each site.
         fixAsym (bool): Directional variables are not searched.
         max_resist (float): Upper limit of the maximum resistance.
         fix_resist (float): Fixed maximum resistance (None to optimise).
-        flow_pos (numpy.ndarray): Position of each reach along the flow (see
-                                  flow_positions()).
         max_flow (float): Upper limit of the flow rate.
         lattice (Lattice): The lattice the walker moves on.
         site_states (list): Lattice state of each site.
@@ -1372,10 +1287,9 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
                  variables, agg_opts, fitmetric, fixWeight, fixShape,
                  min_weight, max_shape, inc, point_coords, points_names,
                  points_snapped, points_labels, predictors, edge_order,
-                 gendist, adj, origin, R, allSymmetric, edge_site_indices,
-                 fixAsym=False, max_resist=1000, fix_resist=None,
-                 flow_pos=None, max_flow=0.1, lattice=None,
-                 site_states=None, R_lat=None, cell_km=1.0,
+                 gendist, adj, origin, allSymmetric, fixAsym=False,
+                 max_resist=1000, fix_resist=None, max_flow=0.1,
+                 lattice=None, site_states=None, R_lat=None, cell_km=1.0,
                  absorption="none", pairs="max"):
 
         self.network = network
@@ -1414,9 +1328,6 @@ class ResistanceNetworkSAMCWorker(ResistanceNetworkSAMC):
         self._edge_order = edge_order
         self._gendist = gendist
         self._adj = adj
-        self._R = R
-        self._edge_site_indices = edge_site_indices
-        self._flow_pos = flow_pos
         self._lattice = lattice
         self._site_states = site_states
         self._R_lat = R_lat

@@ -28,8 +28,7 @@ from resistnet.hall_of_fame import HallOfFame
 
 class ModelRunner:
     """
-    Class to handle running the genetic algorithm for optimizing a ResistNet
-    model.
+    Class to handle running the model search for a ResistNet model.
 
     Attributes:
         seed (int): Seed for random number generator.
@@ -40,7 +39,6 @@ class ModelRunner:
         result_queue (Queue): Queue for results.
         workers (list): List of worker processes.
         bests (HallOfFame): Hall of fame for best models.
-        toolbox (deap.base.Toolbox): Toolbox for genetic algorithm.
         logger (list): List to store logging information.
     """
 
@@ -447,18 +445,13 @@ class ModelRunner:
         if worker_type in ("samc", "coalescent"):
             worker_args['adj'] = self.resistance_network._adj
             worker_args['origin'] = self.resistance_network._origin
-            worker_args['R'] = self.resistance_network._R
             worker_args['fixAsym'] = self.fixAsym
             worker_args['max_resist'] = self.resistance_network.max_resist
             worker_args['fix_resist'] = self.resistance_network.fix_resist
-            worker_args['flow_pos'] = self.resistance_network._flow_pos
             worker_args['max_flow'] = self.resistance_network.max_flow
             worker_args[
                 'allSymmetric'
                 ] = self.resistance_network.allSymmetric
-            worker_args[
-                'edge_site_indices'
-                ] = self.resistance_network._edge_site_indices
             worker_args['lattice'] = self.resistance_network._lattice
             worker_args['site_states'] = self.resistance_network._site_states
             worker_args['R_lat'] = self.resistance_network._R_lat
@@ -716,7 +709,6 @@ class ModelRunnerTPE(ModelRunner):
             verbose (bool): Flag to control verbosity of output.
         """
         super().__init__(resistance_network, seed, verbose)
-        self.toolbox = None
 
         self.max_evals = 100
         self.num_workers = 10
@@ -1164,18 +1156,6 @@ class ModelRunnerTPE(ModelRunner):
         except Exception as e:
             print(f"An error occurred while processing the Hall of Fame: {e}")
             raise
-
-
-def weight_generator(min_weight):
-    # Decide at random whether the weight will be positive or negative
-    def generate():
-        if random.random() < 0.5:
-            # Generate a negative weight
-            return random.uniform(-1.0, -min_weight)
-        else:
-            # Generate a positive weight
-            return random.uniform(min_weight, 1.0)
-    return generate
 
 
 def dummy_objective(params):

@@ -205,29 +205,6 @@ class HallOfFame:
                                max_col):
             print(self.maw)
 
-    def recalculate_aic(self):
-        """
-        Recalculate the Akaike Information Criterion (AIC) for the models.
-
-        AIC is calculated using the formula: -2 * log-likelihood + 2 * k,
-        where k is the number of variables in the model.
-        """
-        k = self.data[self.variables].apply(lambda x: (x == 1).sum(), axis=1)
-        self.data["aic"] = -2 * self.data["loglik"] + 2 * k
-
-    def calculate_bic(self, n):
-        """
-        Calculate the Bayesian Information Criterion (BIC) for the models.
-
-        Args:
-            n (int): The number of observations.
-
-        BIC is calculated using the formula: -2 * log-likelihood + k * log(n),
-        where k is the number of variables in the model.
-        """
-        k = self.data[self.variables].apply(lambda x: (x == 1).sum(), axis=1)
-        self.data["bic"] = -2 * self.data["loglik"] + k * np.log(n)
-
     def delta_aic(self):
         """
         Calculate the difference in AIC values relative to the best model.

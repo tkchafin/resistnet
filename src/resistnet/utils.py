@@ -13,33 +13,6 @@ from autostreamtree import network as astnet
 from autostreamtree.network import find_pair, nCr  # noqa: F401
 
 
-def graph_to_dag(K, origin):
-    """
-    Convert an undirected graph to a Directed Acyclic Graph (DAG) where all
-    edges are directed toward the tips from the root/ source node.
-
-    Args:
-        K (networkx.Graph): The undirected graph to be converted.
-        origin (node): The node in the graph that will act as the source point
-                       or root.
-
-    Returns:
-        networkx.DiGraph: A directed version of the input graph with all paths
-                          oriented away from the specified root node.
-    """
-    # Create an empty Directed Graph
-    D = nx.DiGraph()
-
-    # Start BFS from the root node, adding edges to D
-    for parent, child in nx.bfs_edges(K, source=origin):
-        D.add_edge(parent, child)  # direction is root -> tips
-        # copy attributes
-        if K.has_edge(parent, child):
-            for key, value in K[parent][child].items():
-                D[child][parent][key] = value
-    return D
-
-
 def graph_to_dag_converging(K, origin):
     """
     Convert an undirected graph to a Directed Acyclic Graph (DAG) where all
@@ -66,43 +39,6 @@ def graph_to_dag_converging(K, origin):
             for key, value in K[parent][child].items():
                 D[child][parent][key] = value
     return D
-
-
-def minmax(X):
-    """
-    Perform min-max scaling on a NumPy array, scaling all values to be between
-    0 and 1.
-
-    Args:
-        X (numpy.ndarray): The input array to be scaled.
-
-    Returns:
-        numpy.ndarray: The scaled array, with all values between 0 and 1.
-    """
-    X_min = X.min()
-    X_max = X.max()
-    X_scaled = (X - X_min) / (X_max - X_min)
-    return X_scaled
-
-
-def minmax_nonzero(X):
-    """
-    Perform min-max scaling on a NumPy array, initially scaling all values to
-    be between 0 and 1, and then adjusting the scale so that the smallest
-    non-zero value becomes 1 and other values are adjusted accordingly.
-
-    Args:
-        X (numpy.ndarray): The input array to be scaled.
-
-    Returns:
-        numpy.ndarray: The scaled array, with values adjusted as described.
-    """
-    X_min = X.min()
-    X_max = X.max()
-    X_scaled = (X - X_min) / (X_max - X_min)
-    smallest_nonzero = np.min(X_scaled[X_scaled > 0])
-    X_scaled[X_scaled == 0] = smallest_nonzero
-    return X_scaled
 
 
 def haversine(coord1, coord2):

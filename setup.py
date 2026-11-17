@@ -30,7 +30,6 @@ setup(
         "momepy",
         "geopy",
         "hyperopt",
-        "deap",
         "scipy",
         "autostreamtree"
     ],
