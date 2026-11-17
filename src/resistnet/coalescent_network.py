@@ -37,6 +37,8 @@ class CoalescentMethods:
     worker (see ResistanceNetworkCoalescent)."""
 
     null_prefix = "coal"
+    # Only the flow term is directional
+    directional = False
 
     def _fit(self, reach_r, rate):
         """MLPE results for the linearised FST predicted with the given

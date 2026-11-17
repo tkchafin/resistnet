@@ -191,8 +191,7 @@ class parseArgs:
         parser.add_argument(
             '--fixAsym', action='store_true',
             help=('SAMC: do not consider directional effects of variables '
-                  '(always the case on the lattice, where only the flow '
-                  'term is directional; kept for compatibility)')
+                  '(the flow term can still be directional; see --fixFlow)')
         )
         parser.add_argument(
             '--max_flow', type=float, default=0.1,

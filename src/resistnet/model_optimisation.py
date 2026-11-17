@@ -810,8 +810,9 @@ class ModelRunnerTPE(ModelRunner):
 
             # Directional effect (SAMC only): 1 = moving towards higher
             # (transformed) values is harder, 0 = symmetric; the reversed
-            # transformations give the opposite direction. Not on the
-            # lattice (directional False), where only the flow term is
+            # transformations give the opposite direction. Not where
+            # variables can't be directional (directional False: the
+            # coalescent model, whose only direction is the flow term)
             if self.num_attributes == 5:
                 directional = getattr(self.resistance_network,
                                       "directional", True)

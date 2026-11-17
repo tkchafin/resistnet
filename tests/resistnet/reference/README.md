@@ -14,6 +14,15 @@ against them rather than against its own earlier output.
   conditional passage times among the sites (`samc_raster_cfpt.tsv`).
   `python test_lattice.py` writes the input rasters. The lattice
   (`resistnet/lattice.py`) must give the same matrix and passage times.
+- `samc_raster_dir_*.tsv`: the same river with a directional potential
+  instead of a resistance surface (`samc_raster_potential.tsv`: 1.5 x the
+  directional variable `DIRECTIONAL` of `test_lattice.py` at each cell),
+  absorption and sites as above. `samc_raster_dir.R` builds samc's model
+  from it with the transition function exp(-(x[2] - x[1])) of the two
+  cells' values (samc passes the cell moved from, then to; `sym = FALSE`)
+  and writes its transient matrix (`samc_raster_dir_Q.tsv`) and the
+  conditional passage times among the sites (`samc_raster_dir_cfpt.tsv`).
+  The lattice's weights with that potential must give the same.
 - `nmt_samc_lattice_*.tsv`: conditional first passage times among the 14
   sites (row = origin, column = destination), from `samc::cond_passage`
   (samc 3.2.1, `samc(data = P)`), for three SAMC models on the lattice of
