@@ -895,7 +895,7 @@ class ModelRunnerTPE(ModelRunner):
     def run_tpe(self, max_evals=100, threads=4, fitmetric="aic",
                 fixWeight=None, fixShape=None, fixAsym=False, min_weight=None,
                 max_shape=None, only_keep=None,
-                use_full=False, verbose=True, report_all=False, nFail=200,
+                use_full=False, verbose=True, report_all=False, nFail=None,
                 awsum=0.95, fixed_params=None, out=None, plot=True, reps=10,
                 n_startup=40, n_candidates=48, gamma=0.15, pweight=0.7,
                 fixFlow=False):
@@ -917,9 +917,10 @@ class ModelRunnerTPE(ModelRunner):
             verbose (bool): Flag to control verbosity of output.
             report_all (bool): Flag to generate full outputs for all retained
                                models.
-            nFail (int): Stop after this many iterations without improving
-                         the best model, counted after the n_startup random
-                         start-up iterations.
+            nFail (int, optional): Stop after this many iterations without
+                         improving the best model, counted after the
+                         n_startup random start-up iterations. None
+                         (default): run all max_evals iterations.
             awsum (float): Cumulative Akaike weight threshold to retain top N
                            models.
             fixed_params (dict): Fixed parameters to narrow the search space.
@@ -961,7 +962,7 @@ class ModelRunnerTPE(ModelRunner):
 
             for iteration in range(max_evals):
                 # Check if the global failure threshold has been reached
-                if global_fails >= nFail:
+                if nFail is not None and global_fails >= nFail:
                     print(f"Stopping due to {nFail} consecutive failures")
                     break
 

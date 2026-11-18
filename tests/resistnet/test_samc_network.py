@@ -7,6 +7,7 @@ import pytest
 import scipy.sparse as sp
 
 import resistnet
+import resistnet.samc_network as samc_network
 from resistnet.samc_network import ResistanceNetworkSAMC
 from resistnet.model_optimisation import ModelRunnerTPE
 
@@ -55,8 +56,37 @@ def samc_net(tmp_path_factory):
         variables=VARIABLES,
         inmat=os.path.join(data, "nmt.popGenDistMat.txt"),
         agg_opts={v: "ARITH" for v in VARIABLES},
-        out=str(out / "samc"), verbose=False
+        out=str(out / "samc"), verbose=False, cell_km=1.0, max_flow=0.1
     )
+
+
+def test_network_defaults(tmp_path):
+    # With no cell or flow cap given, both come from the network: the
+    # cell is the shortest reach (NMT 0.36 km: one 15 arc-second pixel),
+    # the cap 15 / the span, so that 2 x rate x span <= 30
+    data = os.path.join(os.path.dirname(resistnet.__file__), "data")
+    net = ResistanceNetworkSAMC(
+        network=None, shapefile=os.path.join(data, "nmt.gpkg"), sizes=None,
+        coords=os.path.join(data, "nmt.pointCoords.txt"),
+        variables=["sgr_dk_rav"], inmat=None,
+        agg_opts={"sgr_dk_rav": "ARITH"}, out=str(tmp_path / "d"),
+        verbose=False)
+    L = [float(d[net.length_col]) for _, _, d in net._K.edges(data=True)]
+    assert net.cell_km == pytest.approx(min(L))
+    assert net._lattice.cell_km == net.cell_km
+    span = samc_network.network_span(net._K, net.length_col)
+    assert span == pytest.approx(net._lattice.span)
+    assert net.max_flow == pytest.approx(samc_network.FLOW_SPAN_CAP / span)
+    # A smaller state budget raises the cell just enough
+    cell = samc_network.auto_cell_km(net._K, net.length_col, max_states=300)
+    assert cell > min(L)
+    from resistnet.lattice import Lattice
+    lat = Lattice(net._K, list(net._edge_order), net.reachid_col,
+                  net.length_col, cell)
+    assert lat.n <= 300
+    lat = Lattice(net._K, list(net._edge_order), net.reachid_col,
+                  net.length_col, cell * 0.99)
+    assert lat.n > 300
 
 
 def test_outlet_reaches_linked(samc_net, tmp_path):
@@ -579,7 +609,8 @@ def _ref_net(out):
         coords=os.path.join(data, "nmt.pointCoords.txt"), variables=v,
         inmat=os.path.join(data, "nmt.popGenDistMat.txt"),
         agg_opts={x: "ARITH" for x in v}, out=os.path.join(str(out), "ref"),
-        verbose=False, absorption="sites", pairs="mean")
+        verbose=False, absorption="sites", pairs="mean", cell_km=1.0,
+        max_flow=0.1)
 
 
 @pytest.fixture(scope="module")
@@ -632,7 +663,8 @@ def _simulate_samc(tmp_path, spec, flow, seed=4, samples=12):
     spec.to_csv(spec_file, sep="\t", index=False)
     sim = SimResistanceNetworkSAMC(
         network=os.path.join(data, "nmt.network"), reachid_col="HYRIV_ID",
-        length_col="LENGTH_KM", seed=seed, max_resistance=20.0, flow=flow)
+        length_col="LENGTH_KM", seed=seed, max_resistance=20.0, flow=flow,
+        cell_km=1.0, max_flow=0.1)
     out = str(tmp_path / "sim")
     sim.simulate(str(spec_file), 1, samples, out)
     return data, f"{out}_1"
@@ -653,7 +685,7 @@ def test_simulate_samc_recovers_flow(tmp_path):
         sizes=None, coords=f"{base}.coords", variables=["LENGTH_KM"],
         inmat=f"{base}.ResistanceMatrix.tsv",
         agg_opts={"LENGTH_KM": "ARITH"}, out=str(tmp_path / "fit"),
-        verbose=False)
+        verbose=False, cell_km=1.0, max_flow=0.1)
     rate, res = net._fit_flow_alone()
     assert rate == pytest.approx(0.05, rel=1e-3)
     assert res["r2m"].iloc[0] > 0.999
@@ -673,7 +705,7 @@ def test_simulate_samc_matches_fitted_model(tmp_path):
         network=os.path.join(data, "nmt.network"), shapefile=None,
         sizes=None, coords=f"{base}.coords", variables=list(spec["VAR"]),
         inmat=None, agg_opts={v: "ARITH" for v in spec["VAR"]},
-        out=str(tmp_path / "fit"), verbose=False)
+        out=str(tmp_path / "fit"), verbose=False, cell_km=1.0, max_flow=0.1)
     ind = []
     for v in net._predictors.columns:
         s = spec.set_index("VAR").loc[v]
@@ -709,7 +741,7 @@ def test_simulate_samc_directional(tmp_path):
         sizes=None, coords=f"{base}.coords", variables=["ele_mt_cav"],
         inmat=f"{base}.ResistanceMatrix.tsv",
         agg_opts={"ele_mt_cav": "ARITH"}, out=str(tmp_path / "fit"),
-        verbose=False)
+        verbose=False, cell_km=1.0, max_flow=0.1)
     T = CFPT(net._transition_matrix([1, 0.3, 0, 1, 1, 20.0, 0.0]),
              net._site_states, net._R_lat)
     fitted = pd.DataFrame(np.maximum(T, T.T),
@@ -767,7 +799,7 @@ def test_ensemble_samc(samc_net, tmp_path):
                           "ensembleResistnet.py")
     args = ["-n", os.path.join(data, "nmt.network"), "-c", "HYRIV_ID",
             "-C", os.path.join(data, "nmt.pointCoords.txt"), "-t", "1",
-            "-X"]
+            "-X", "--cell_km", "1", "--max_flow", "0.1"]
     out = str(tmp_path / "ens")
     p = subprocess.run([sys.executable, script, "-i", str(reps), "-o", out,
                         *args], capture_output=True, text=True)

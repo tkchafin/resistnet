@@ -117,6 +117,7 @@ def main():
             length_col=params.length_col,
             ne=params.ne,
             cell_km=params.cell_km,
+            max_flow=params.max_flow,
             absorption=params.samc_absorption,
             pairs=params.samc_pairs,
             out=params.out,
@@ -261,7 +262,8 @@ class ParseArgs:
                  "awsum=", "list=", "threads=", "edge_agg=", "varFile=",
                  "report_all", "noPlot", "only_best",
                  "only_keep", "coords=", "seed=", "use_full", "sizes=",
-                 "ne=", "model=", "cell_km=", "samc_absorption=",
+                 "ne=", "model=", "cell_km=", "max_flow=",
+                 "samc_absorption=",
                  "samc_pairs="]
             )
 
@@ -310,7 +312,8 @@ class ParseArgs:
         self.use_full = False
         self.sizes = None
         self.ne = 100
-        self.cell_km = 1.0
+        self.cell_km = None
+        self.max_flow = None
         self.samc_absorption = "none"
         self.samc_pairs = "max"
         self.model = None
@@ -380,6 +383,8 @@ class ParseArgs:
                 self.ne = float(arg)
             elif opt == "cell_km":
                 self.cell_km = float(arg)
+            elif opt == "max_flow":
+                self.max_flow = float(arg)
             elif opt == "samc_absorption":
                 self.samc_absorption = arg
             elif opt == "samc_pairs":
@@ -455,7 +460,10 @@ class ParseArgs:
             "--ne: Effective population size for all sites without\n"
             "      --sizes [default=100]\n"
             "--cell_km: Distance between neighbouring states of the\n"
-            "      lattice (km) [default=1]\n"
+            "      lattice (km) [default=the network's shortest reach]\n"
+            "--max_flow: Flow-rate cap (per km) of the runs, which also\n"
+            "      scales directional strengths [default=15 / the\n"
+            "      network's span, as runResistnet.py]\n"
             "--samc_absorption: none or sites, as for runResistnet.py\n"
             "      [default=none]\n"
             "--samc_pairs: max or mean, as for runResistnet.py\n"

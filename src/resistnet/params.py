@@ -84,14 +84,15 @@ class parseArgs:
             )
         )
         parser.add_argument(
-            '-F', '--nfail', type=int, default=200, required=False,
+            '-F', '--nfail', type=int, default=None, required=False,
             help=(
                 'Number of iterations without improvement to stop (counted '
-                'after the --nstart random start-up iterations)'
+                'after the --nstart random start-up iterations). Default: '
+                'off (run all --max_iter iterations)'
             )
         )
         parser.add_argument(
-            '-i', '--max_iter', type=int, default=500, required=False,
+            '-i', '--max_iter', type=int, default=2000, required=False,
             help='Maximum number of iterations (one model per chain each)'
         )
         parser.add_argument(
@@ -194,10 +195,13 @@ class parseArgs:
                   '(the flow term can still be directional; see --fixFlow)')
         )
         parser.add_argument(
-            '--max_flow', type=float, default=0.1,
+            '--max_flow', type=float, default=None,
             help=(
-                'SAMC: upper limit for the rate of the flow (upstream vs '
-                'downstream) term, per km'
+                'SAMC and coalescent: upper limit for the rate of the flow '
+                '(upstream vs downstream) term, per km; also scales SAMC '
+                'directional strengths. Default: 15 / the network\'s span '
+                '(km from the outlet to the furthest node), so that '
+                '2 x rate x span <= 30'
             )
         )
         parser.add_argument(
@@ -227,9 +231,12 @@ class parseArgs:
                   'the coalescence rates relative to the movement rates')
         )
         parser.add_argument(
-            '--cell_km', type=float, default=1.0,
+            '--cell_km', type=float, default=None,
             help=('SAMC: distance between neighbouring states of the '
-                  "lattice the walker moves on (km; samc's cell size)")
+                  "lattice the walker moves on (km; samc's cell size). "
+                  "Default: the network's shortest reach (its native "
+                  'resolution), raised if needed to keep the lattice '
+                  'within 20000 states')
         )
 
         # Multi-model inference options
@@ -262,9 +269,9 @@ class parseArgs:
         if self.fix_resist is not None and self.fix_resist < 1:
             parser.error("--fix_resist must be at least 1")
         # The smallest flow rate searched (samc_network.MIN_FLOW)
-        if self.max_flow <= 0.001:
+        if self.max_flow is not None and self.max_flow <= 0.001:
             parser.error("--max_flow must be greater than 0.001")
-        if self.cell_km <= 0:
+        if self.cell_km is not None and self.cell_km <= 0:
             parser.error("--cell_km must be positive")
 
         # 'delta' refers to the MLPE output column delta_aic_null

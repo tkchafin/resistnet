@@ -20,6 +20,72 @@ from resistnet.resistance_network import SimResistanceNetwork
 
 # Smallest non-zero flow rate searched (per km)
 MIN_FLOW = 1e-3
+# Default cap of the flow rate: 2 x rate x span <= 2 x FLOW_SPAN_CAP, the
+# total log-asymmetry of moves along the network. Fitted rates on NMT,
+# Black and White stayed within 17 on that scale; the coalescent model's
+# solve stays accurate (relative residual < 1e-5) up to about 30, and
+# breaks down from about 50 (review/samc_diagnostics/defaults/flowcap).
+FLOW_SPAN_CAP = 15.0
+# Upper limit on the number of SAMC lattice states with the default cell
+MAX_AUTO_STATES = 20000
+
+
+def network_span(K, length_col):
+    """
+    The distance (km) from the outlet to the furthest node of a network
+    directed towards its outlet.
+
+    Args:
+        K (networkx.DiGraph): The network, edges pointing downstream.
+        length_col (str): Edge attribute giving the reach length (km).
+
+    Returns:
+        float: The span (km).
+    """
+    outlets = [v for v in K.nodes if K.out_degree(v) == 0]
+    dist = nx.single_source_dijkstra_path_length(
+        K.reverse(copy=False), outlets[0],
+        weight=lambda u, v, d: float(d[length_col]))
+    return float(max(dist.values()))
+
+
+def auto_cell_km(K, length_col, max_states=MAX_AUTO_STATES):
+    """
+    The default SAMC cell: the network's shortest reach, which is its
+    native resolution (the shortest HydroRIVERS reach is one pixel of the
+    15 arc-second grid it is built on). Reaches shorter than the cell
+    become one short link that the walk over-weights, so the cell is not
+    larger than the shortest reach unless the lattice would have more than
+    max_states states, in which case it is the smallest cell that keeps
+    within that number.
+
+    Args:
+        K (networkx.DiGraph): The network.
+        length_col (str): Edge attribute giving the reach length (km).
+        max_states (int): Upper limit on the number of states.
+
+    Returns:
+        float: The cell (km).
+    """
+    L = np.array([float(d[length_col]) for _, _, d in K.edges(data=True)])
+    L = L[L > 0]
+    n_nodes = K.number_of_nodes()
+
+    def states(cell):
+        pieces = np.maximum(1, np.round(L / cell))
+        return n_nodes + int(np.sum(pieces - 1))
+
+    cell = float(L.min())
+    if states(cell) <= max_states:
+        return cell
+    lo, hi = cell, float(L.sum())
+    for _ in range(60):
+        mid = np.sqrt(lo * hi)
+        if states(mid) <= max_states:
+            hi = mid
+        else:
+            lo = mid
+    return float(hi)
 
 
 class ResistanceNetworkSAMC(ResistanceNetwork):
@@ -68,8 +134,8 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
                  agg_opts, pop_agg="ARITH", reachid_col="HYRIV_ID",
                  length_col="LENGTH_KM", infer_origin="NEXT_DOWN",
                  origin=None, out="out", verbose=True, minimize=False,
-                 ne=100, max_resist=1000, fix_resist=None, max_flow=0.1,
-                 cell_km=1.0, absorption="none", pairs="max"):
+                 ne=100, max_resist=1000, fix_resist=None, max_flow=None,
+                 cell_km=None, absorption="none", pairs="max"):
         """
         Constructs all the necessary attributes for the ResistanceNetwork
         object.
@@ -102,12 +168,13 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
             fix_resist (float, optional): Fix that maximum resistance
                         instead of optimising it.
             max_flow (float): Upper limit of the flow term's rate (per km;
-                        see flow_rate()). Defaults to 0.1: in simulations,
-                        gene flow biased by up to 0.05 per km gave rates
-                        within 0.03, and larger rates appeared only as
-                        artefacts.
+                        see flow_rate()). Defaults to FLOW_SPAN_CAP / the
+                        network's span (km from the outlet to the
+                        furthest node), so that 2 x rate x span <= 30
+                        on any network.
             cell_km (float): Distance between neighbouring states of the
-                        lattice (km). Defaults to 1.
+                        lattice (km). Defaults to the network's shortest
+                        reach (see auto_cell_km()).
             absorption (str): "none" (default): no absorption, so the
                         passage times are hitting times; "sites": a walker
                         at a site is absorbed with probability 1/(2 Ne) per
@@ -184,6 +251,17 @@ class ResistanceNetworkSAMC(ResistanceNetwork):
         # direct graph
         self.polarise_network(self._origin)
         self.plot_upstream_changes(self.output_prefix)
+
+        # Defaults that depend on the network
+        if self.cell_km is None:
+            self.cell_km = auto_cell_km(self._K, self.length_col)
+        if self.max_flow is None:
+            self.max_flow = max(
+                FLOW_SPAN_CAP / network_span(self._K, self.length_col),
+                10 * MIN_FLOW)
+        if self.verbose:
+            print(f"Lattice cell {self.cell_km:.4g} km; flow rate cap "
+                  f"{self.max_flow:.4g} per km")
 
         # The lattice the walker moves on
         self.build_lattice()
@@ -1356,17 +1434,20 @@ class SimResistanceNetworkSAMC(SimResistanceNetwork):
         infer_origin (str, optional): Attribute giving each reach's next
                                       downstream reach. Defaults to NEXT_DOWN.
         cell_km (float, optional): Distance between neighbouring states of
-                                   the lattice (km). Defaults to 1.
+                                   the lattice (km). Defaults to the
+                                   network's shortest reach, as when
+                                   fitting.
         absorption, pairs (str, optional): As for ResistanceNetworkSAMC.
         max_flow (float, optional): As for ResistanceNetworkSAMC: a
                                     directional variable's strength is its
                                     weight x max_flow per km, as when
-                                    fitting. Defaults to 0.1.
+                                    fitting. Defaults to FLOW_SPAN_CAP /
+                                    the network's span, as when fitting.
     """
     def __init__(self, network, reachid_col, length_col, verbose=False,
                  seed=None, ne=100, max_resistance=100.0, flow=0.0,
-                 infer_origin="NEXT_DOWN", cell_km=1.0, absorption="none",
-                 pairs="max", max_flow=0.1):
+                 infer_origin="NEXT_DOWN", cell_km=None, absorption="none",
+                 pairs="max", max_flow=None):
         super().__init__(network, reachid_col, length_col, verbose=verbose,
                          seed=seed)
         self.ne = ne

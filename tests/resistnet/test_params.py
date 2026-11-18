@@ -75,7 +75,9 @@ def test_fitmetric_default_aic():
     with patch.object(sys, 'argv', testargs):
         args = parseArgs()
         assert args.fitmetric == "aic"
-        assert args.nfail == 200
+        assert args.nfail is None
+        assert args.max_iter == 2000
+        assert args.cell_km is None
 
 
 def test_samc_defaults():
@@ -87,7 +89,7 @@ def test_samc_defaults():
         assert args.ne == 100
         assert args.max_resist == 1000
         assert args.fix_resist is None
-        assert args.max_flow == 0.1
+        assert args.max_flow is None
         assert not args.fixFlow
         assert args.samc_absorption == "none"
         assert args.samc_pairs == "max"

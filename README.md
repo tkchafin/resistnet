@@ -130,10 +130,11 @@ options:
                         <Optional aggregator function> (default: None)
   -F, --nfail NFAIL     Number of iterations without improvement to stop
                         (counted after the --nstart random start-up
-                        iterations) (default: 200)
+                        iterations). Default: off (run all --max_iter
+                        iterations) (default: None)
   -i, --max_iter MAX_ITER
                         Maximum number of iterations (one model per chain
-                        each) (default: 500)
+                        each) (default: 2000)
   -r, --reps REPS       Number of independent TPE chains (default: 10)
   -P, --pweight PWEIGHT
                         TPE prior weight (default: 0.7)
@@ -180,8 +181,11 @@ options:
   --fixAsym             SAMC: do not consider directional effects of variables
                         (the flow term can still be directional; see
                         --fixFlow) (default: False)
-  --max_flow MAX_FLOW   SAMC: upper limit for the rate of the flow (upstream
-                        vs downstream) term, per km (default: 0.1)
+  --max_flow MAX_FLOW   SAMC and coalescent: upper limit for the rate of the
+                        flow (upstream vs downstream) term, per km; also
+                        scales SAMC directional strengths. Default: 15 / the
+                        network's span (km from the outlet to the furthest
+                        node), so that 2 x rate x span <= 30 (default: None)
   --fixFlow             SAMC: leave out the flow (upstream vs downstream) term
                         (default: False)
   --samc_absorption {none,sites}
@@ -199,8 +203,10 @@ options:
                         the coalescence rates relative to the movement rates
                         (default: 1000.0)
   --cell_km CELL_KM     SAMC: distance between neighbouring states of the
-                        lattice the walker moves on (km; samc's cell size)
-                        (default: 1.0)
+                        lattice the walker moves on (km; samc's cell size).
+                        Default: the network's shortest reach (its native
+                        resolution), raised if needed to keep the lattice
+                        within 20000 states (default: None)
   -a, --awsum AWSUM     Cumulative Akaike weight threshold (default: 1.0)
   --use_full            Use full rather than natural model averaging (default:
                         False)
@@ -279,7 +285,7 @@ Iteration 4, Current Best: -378.79724054203325
 ...
 ...
 ```
-The optimisation stops after `-i,--max_iter` iterations, or earlier if the best result has not improved for `-F,--nfail` consecutive iterations (not counting the `-S,--nstart` random start-up iterations, which explore the space before the search proper). The best model found by each chain is then reported:
+The optimisation stops after `-i,--max_iter` iterations (default 2000), or earlier if `-F,--nfail` is given and the best result has not improved for that many consecutive iterations (not counting the `-S,--nstart` random start-up iterations, which explore the space before the search proper). The best model found by each chain is then reported:
 ```
 ...
 ...
@@ -392,10 +398,11 @@ These are also plotted for simple visualisation on the input spatial network, in
 ```
   -F, --nfail NFAIL     Number of iterations without improvement to stop
                         (counted after the --nstart random start-up
-                        iterations) (default: 200)
+                        iterations). Default: off (run all --max_iter
+                        iterations) (default: None)
   -i, --max_iter MAX_ITER
                         Maximum number of iterations (one model per chain
-                        each) (default: 500)
+                        each) (default: 2000)
   -r, --reps REPS       Number of independent TPE chains (default: 10)
   -P, --pweight PWEIGHT
                         TPE prior weight (default: 0.7)
@@ -444,11 +451,11 @@ In earlier versions of `ResistNet`, each reach cost its composite value (rescale
 
 Effective resistance (circuit theory) is symmetric: moving from A to B costs the same as moving from B to A. With `--model samc` (or `--samc`), `ResistNet` instead models movement as a spatial absorbing Markov chain (SAMC; [Fletcher et al. 2019](https://doi.org/10.1111/ele.13333)), as in the [samc](https://cran.r-project.org/package=samc) R package ([Marx et al. 2020](https://doi.org/10.1111/ecog.04891)), translated from raster cells to the river network:
 
-* samc's states are raster cells of equal size. Here they are the points of a lattice of the river: the nodes of the network (where reaches meet, and the sites, which are snapped to nodes) and points splitting each reach into pieces of about `--cell_km` (default 1 km), so that every step covers about the same distance. The network includes the reach downstream of the outlet (found using the `--infer_origin` attribute, `NEXT_DOWN` by default) and one reach beyond each terminal sample site.
+* samc's states are raster cells of equal size. Here they are the points of a lattice of the river: the nodes of the network (where reaches meet, and the sites, which are snapped to nodes) and points splitting each reach into pieces of about `--cell_km`, so that every step covers about the same distance. The default cell is the network's shortest reach, which is its native resolution: HydroRIVERS reaches are built on a 15 arc-second grid, and the shortest reach is one pixel (0.36-0.37 km on the example rivers). A reach shorter than the cell would become one short link that the walk over-weights, so passage times converge from about that cell down (within about 1 AIC of much finer cells for distance, flow and symmetric variables); the cell is raised only if the lattice would have more than 20000 states. The network includes the reach downstream of the outlet (found using the `--infer_origin` attribute, `NEXT_DOWN` by default) and one reach beyond each terminal sample site.
 * Each reach's resistance per km is the standard model's (ResistanceGA's surface: 1 + (K - 1) x the weighted mean of the transformed variables, K optimised from 1 to `--max_resist`, default 1000 as for the standard model, or fixed with `--fix_resist`; see [The standard model](#standard)). Points inside a reach take its resistance; a node takes the length-weighted mean over the half-pieces of river around it, as a raster cell over a confluence would.
 * As in samc, a walker moves between neighbouring points with conductance 1 / (mean resistance of the two points x the distance between them), normalised over its neighbours and scaled by 1 - absorption. Reaches meeting at a node are all neighbours through it.
 * By default nothing absorbs the walker (`--samc_absorption none`), so the passage times are hitting times. With `--samc_absorption sites`, a walker at a site is absorbed with probability 1/(2 Ne) per step, the probability that two lineages coalesce; effective population sizes can be provided per sample with `--sizes` (a tsv with columns `sample` and `size`), otherwise all sites have Ne = `--ne` (default 100).
-* A *flow* term can make moving upstream harder or easier: each move's weight is multiplied by exp(-rate x km moved upstream). A positive rate makes the walker's upstream moves harder, a negative rate easier. samc's transition functions can depend on the order of the two cells, so this is a samc model with position along the river as the variable. The rate is per km and is not rescaled to the network, so it means the same in any watershed. Whether the flow term is included, its direction and its rate (from 0.001 to `--max_flow` per km, default 0.1) are optimised, unless `--fixFlow` is used (no flow term). A model can consist of the flow term alone.
+* A *flow* term can make moving upstream harder or easier: each move's weight is multiplied by exp(-rate x km moved upstream). A positive rate makes the walker's upstream moves harder, a negative rate easier. samc's transition functions can depend on the order of the two cells, so this is a samc model with position along the river as the variable. The rate is per km and is not rescaled to the network, so it means the same in any watershed. Whether the flow term is included, its direction and its rate (from 0.001 to `--max_flow` per km; by default 15 / the network's span, the distance from the outlet to the furthest point, so that the total asymmetry 2 x rate x span is at most 30: fitted rates on three test rivers stayed within 17 on that scale, and the coalescent model's equations stay accurate up to about 30) are optimised, unless `--fixFlow` is used (no flow term). A model can consist of the flow term alone.
 * Variables can be *directional* (considered unless `--fixAsym` is used): instead of adding to the resistance, a directional variable makes moving towards its higher (transformed) values harder, and the reversed transformations make it easier (the Hall of Fame and model descriptions give the effective direction in the raw values). Its values change along the river from point to point, as they would across raster cells: each reach's value at its middle, each node's the length-weighted mean of the half-pieces of river around it, and linear in between. Each move's weight is multiplied by exp(-strength x span x (x<sub>to</sub> - x<sub>from</sub>)), with x the variable's transformed values (0-1), span the distance from the outlet to the furthest point (km) and strength = its weight x `--max_flow` (per km, as the flow rate). This is again samc's transition function of the order of the two cells; the flow term is the special case of a variable rising steadily from the outlet to the furthest point (strength = rate). Directional variables are not part of the resistance surface: the maximum resistance per km and the relative weights are the symmetric variables'.
 * The distance from site i to site j is the conditional first passage time (CFPT): the expected number of steps to reach j, given that it is reached before absorption elsewhere (as `samc::cond_passage` in R). The two directions between a pair of sites are combined (`--samc_pairs`: their maximum, the default, or their mean) and fitted to the genetic distances with MLPE.
 

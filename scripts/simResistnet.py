@@ -73,7 +73,7 @@ class ParseArgs:
         self.ne = 100.0
         self.max_resistance = 100.0
         self.flow = 0.0
-        self.cell_km = 1.0
+        self.cell_km = None
         self.samc_absorption = "none"
         self.samc_pairs = "max"
         self.infer_origin = "NEXT_DOWN"
@@ -155,13 +155,13 @@ SAMC (directional) simulations:
     --samc: Simulate conditional first passage times (mean of the two
         directions) under a SAMC model on the lattice, instead of
         effective resistances; the input table may have an ASYM column
-        (1 = directional, with strength WEIGHT x 0.1 per km, as when
-        fitting with the default --max_flow)
+        (1 = directional, with strength WEIGHT x the default flow cap,
+        15 / the network's span per km, as when fitting)
     --ne: Effective population size at every site (default=100)
     --flow: Flow rate per km (positive = moving upstream harder;
         default=0, no flow term)
     --cell_km: Distance between neighbouring states of the lattice
-        (km; default=1)
+        (km; default=the network's shortest reach)
     --samc_absorption: none or sites, as for runResistnet.py
         (default=none)
     --samc_pairs: max or mean, as for runResistnet.py (default=max)
